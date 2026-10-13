@@ -1,4 +1,6 @@
 import type { Page } from 'playwright-core'
+import { errors } from 'playwright-core'
+import { isTransientDomIssue } from '../../shared/domErrors.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { warmupTopics, feedPostContext, feedPostMatches } from '../../shared/warmupTopics.js'
 import { actionLocator } from './action-locator.js'
@@ -66,7 +68,10 @@ export async function watchTopicPosts(page: Page, topic: string, count: number, 
     const tile = tiles.nth(index)
     const href = await tile.getAttribute('href')
     if (!href || seen.has(href) || !await tile.isVisible()) continue
-    await (await actionLocator(tile, session.timeout(5_000))).click({ timeout: session.timeout(5_000) })
+    const box = await tile.boundingBox()
+    const height = page.viewportSize()?.height ?? 800
+    if (!box || box.y + box.height <= 0 || box.y >= height) continue
+    await (await actionLocator(tile, session.timeout(20_000))).click({ timeout: session.timeout(20_000) })
     opened = true
     break
   }
@@ -129,7 +134,16 @@ export async function browseTopics(page: Page, end: number, config: Record<strin
   const started = deps.now()
   const bounded = async (action: () => Promise<void>) => {
     try { await action() }
-    catch (error) { if (!(error instanceof SessionEnded) || session.stopped()) throw error }
+    catch (error) {
+      if (error instanceof SessionEnded) {
+        if (session.stopped()) throw error
+        return
+      }
+      if (!(error instanceof errors.TimeoutError) && !isTransientDomIssue(error)) throw error
+      session.check()
+      await assertInstagramReady(page)
+      log({ event: 'automation.warmup.topic_browsing_unavailable', error, outcome: 'skipped' })
+    }
   }
   try {
     if (homeFeed && !state.feedViewed) {

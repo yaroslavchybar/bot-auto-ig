@@ -1,4 +1,5 @@
 import { test } from 'node:test'
+import { visibleActionGeometry } from './actions/action-locator.test-support.js'
 import assert from 'node:assert/strict'
 import type { BrowserSession } from '../browser/cloak.js'
 import { runAutomation, setProfilePollIntervalMs } from './worker.js'
@@ -80,7 +81,7 @@ test('standalone stories use configured viewing times', async () => {
         }),
         locator: () => ({
           first: () => ({ isVisible: async () => true, click: async () => {},
-            elementHandle: async () => ({ hover: async () => {}, click: async () => {}, dispose: async () => {} }),
+            elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => {}, dispose: async () => {} }),
           }),
           count: async () => 0,
           nth: () => ({ isVisible: async () => false, click: async () => {} }),

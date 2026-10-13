@@ -7,6 +7,7 @@ import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/war
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { maintainPost } from './maintenance.js'
 import { clickAction } from './action-locator.js'
+import { smoothScroll } from './scroll.js'
 import {
   chance,
   numeric,
@@ -132,9 +133,7 @@ async function waitForSettle(page: Page, session: BrowseSession): Promise<void> 
   }
 }
 
-// Next reel the human way: cursor over the video, one short wheel tick,
-// then wait. A continuous eased glide carries momentum through the whole
-// loaded batch, so never smoothScroll here — tick, check, repeat.
+// Short eased glides stop as soon as the reel changes, avoiding batch overshoot.
 async function advanceReel(page: Page, session: BrowseSession): Promise<boolean> {
   const sleep = session.wait
   session.check()
@@ -149,7 +148,7 @@ async function advanceReel(page: Page, session: BrowseSession): Promise<boolean>
       await sleep(random(200, 500))
     }
     for (let i = 0; i < 5; i++) {
-      await page.mouse.wheel(0, random(200, 280)).catch(() => undefined)
+      await smoothScroll(page, random(200, 280), session, () => reelId(page.url()) !== before)
       await sleep(random(1000, 1400))
       const now = reelId(page.url())
       if (now && now !== before) {
@@ -157,13 +156,7 @@ async function advanceReel(page: Page, session: BrowseSession): Promise<boolean>
         return true
       }
     }
-    await page.keyboard
-      .press(Math.random() < 0.7 ? 'ArrowDown' : 'PageDown')
-      .catch(() => undefined)
-    await sleep(random(2000, 3000))
-    const now = reelId(page.url())
-    if (now && now !== before) await waitForSettle(page, session)
-    return !!now && now !== before
+    return false
   } catch {
     return false
   }

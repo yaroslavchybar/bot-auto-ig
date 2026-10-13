@@ -1,9 +1,11 @@
+import { visibleActionGeometry } from './actions/action-locator.test-support.js'
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Window } from 'happy-dom';
 import type { Page } from 'playwright-core';
 import { readFollowNotifications, notificationTimeUpperBound, followsUs, likeRecentPost, ownUsername } from './follow-back.js';
 import { followButton, followingButton } from './follow.js';
+import { BrowseSession } from './actions/session.js';
 
 async function notifications(html: string, options: { stopped?: boolean; since?: number; loading?: boolean } = {}) {
   const window = new Window();
@@ -11,11 +13,12 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
   const heading = window.document.querySelector('h1')!;
   const panel = heading.parentElement!;
   Object.defineProperties(panel, { clientHeight: { value: 500 }, scrollHeight: { value: 800 } });
+  panel.getBoundingClientRect = () => ({ left: 0, right: 400, top: 0, bottom: 500 }) as DOMRect;
   const previous = globalThis.getComputedStyle;
   globalThis.getComputedStyle = window.getComputedStyle.bind(window) as unknown as typeof getComputedStyle;
-  let closed = false, scrolls = 0;
+  let closed = false, scrolls = 0, wheels = 0;
   const close = { filter() { return this; }, first() { return this; }, isVisible: async () => !closed,
-    elementHandle: async () => ({ hover: async () => {}, click: async () => { closed = true; }, dispose: async () => {} }) };
+    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => { closed = true; }, dispose: async () => {} }) };
   const title = { filter() { return this; }, first() { return this; }, isVisible: async () => !closed,
     waitFor: async () => {}, evaluate: async (fn: (el: HTMLElement) => unknown) => fn(heading as unknown as HTMLElement),
     locator: (selector: string) => { assert.match(selector, /^xpath=ancestor::/); return { getByRole: () => close }; } };
@@ -25,7 +28,7 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
       ? title
       : {
         elementHandle: async () => ({
-          hover: async () => {},
+          ...visibleActionGeometry, hover: async () => {},
           click: async () => { if (opts.name === 'Close') closed = true; },
           dispose: async () => {},
         }),
@@ -41,19 +44,24 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
       return controls.get(selector);
     },
     waitForTimeout: async () => { scrolls++; },
+    mouse: { move: async (x: number, y: number) => { assert.equal(x, 200); assert.equal(y, 250); },
+      wheel: async (_x: number, y: number) => { wheels++; panel.scrollTop = Math.min(300, panel.scrollTop + y); } },
   } as unknown as Page;
   try {
-    const result = await readFollowNotifications(page, () => options.stopped ?? false, options.since);
+    const session = new BrowseSession(Infinity, () => options.stopped ?? false);
+    session.wait = async () => { session.check(); };
+    const result = await readFollowNotifications(page, () => options.stopped ?? false, options.since, session);
     assert.equal(closed, !options.stopped);
-    return { result, scrolls };
+    return { result, scrolls, wheels };
   } finally { globalThis.getComputedStyle = previous; await window.happyDOM.close(); }
 }
 
 const row = (name: string, text: string) => `<div data-pressable-container="true"><a href="/${name}/"><img alt="${name}'s profile picture"></a><span><a href="/${name}/">${name}</a> ${text}</span><button>Following</button></div>`;
 
 test('notifications extract only follow events, excluding likes, comments and duplicate avatars', async () => {
-  const { result } = await notifications(row('alice', 'started following you. 1d') + row('bob', 'liked your post. 1h') + row('carol', 'commented: started following someone else.') + row('alice', 'started following you. 2d'));
+  const { result, wheels } = await notifications(row('alice', 'started following you. 1d') + row('bob', 'liked your post. 1h') + row('carol', 'commented: started following someone else.') + row('alice', 'started following you. 2d'));
   assert.deepEqual(result, ['alice']);
+  assert.ok(wheels > 1, 'notification scanning uses smooth wheel input');
 });
 
 test('a fully loaded empty notification panel completes as an empty list', async () => {
@@ -113,7 +121,7 @@ test('live follow-back verification requires an exact username in the current fo
     const controls = new Map<string, unknown>();
     const actionable = <T extends object>(index: number, methods: T) => {
       const xpath = `/*[1]/*[${index}]`;
-      const target = { ...methods, elementHandle: async () => ({ hover: async () => {}, ...methods, dispose: async () => {} }) };
+      const target = { ...methods, elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, ...methods, dispose: async () => {} }) };
       controls.set(`xpath=${xpath}`, target);
       return target;
     };

@@ -3,18 +3,19 @@ import { profileControls } from './follow.js';
 import { actionLocator, clickAction } from './actions/action-locator.js';
 import { closeNotifications, notificationsHeading, openNotifications } from './actions/instagram-state.js';
 import { BrowseSession } from './actions/session.js';
+import { smoothScroll } from './actions/scroll.js';
 
 /** Read only follow events; likes/comments and suggested accounts are not followers. */
-export async function readFollowNotifications(page: Page, stopped: () => boolean, since = 0): Promise<string[] | null> {
+export async function readFollowNotifications(page: Page, stopped: () => boolean, since = 0,
+  session = new BrowseSession(Infinity, stopped)): Promise<string[] | null> {
   if (stopped()) return null;
-  const session = new BrowseSession(Infinity, stopped);
   if (!await openNotifications(page, session)) return null;
   const heading = notificationsHeading(page);
   try {
     await (await actionLocator(page.getByRole('button', { name: 'Follows', exact: true }))).click({ timeout: 10_000 });
     const names = new Set<string>();
     let stable = 0, previous = '';
-    for (let step = 0; step < 60 && !stopped(); step++) {
+    for (let step = 0; step < 60 && !stopped() && !session.stopped(); step++) {
       const state = await heading.evaluate(el => {
         let panel = el.parentElement;
         while (panel && !['auto', 'scroll'].includes(getComputedStyle(panel).overflowY)) panel = panel.parentElement;
@@ -27,7 +28,13 @@ export async function readFollowNotifications(page: Page, stopped: () => boolean
             .map(a => a.textContent!.trim().toLowerCase()));
         return { usernames, dates: rows.map(row => row.textContent?.split(/started following you\./i)[1] ?? ''),
           bottom: panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 2,
-          height: panel.scrollHeight, loading: !!panel.querySelector('[role="progressbar"]') };
+          height: panel.scrollHeight, loading: !!panel.querySelector('[role="progressbar"]'),
+          panelHeight: panel.clientHeight, box: (() => {
+            const rect = panel.getBoundingClientRect();
+            const view = el.ownerDocument.defaultView!;
+            return { left: Math.max(0, rect.left), right: Math.min(view.innerWidth, rect.right),
+              top: Math.max(0, rect.top), bottom: Math.min(view.innerHeight, rect.bottom) };
+          })() };
       });
       for (const name of state.usernames) names.add(name);
       // Let the filter/load settle before treating cached rows as the end of the scan.
@@ -37,11 +44,11 @@ export async function readFollowNotifications(page: Page, stopped: () => boolean
       if (stable >= 2 && (state.bottom || old)) return [...names];
       if (names.size > 1000) return null;
       previous = signature;
-      if (!old) await heading.evaluate(el => {
-        let panel = el.parentElement;
-        while (panel && !['auto', 'scroll'].includes(getComputedStyle(panel).overflowY)) panel = panel.parentElement;
-        if (panel) panel.scrollTop += panel.clientHeight * 0.8;
-      });
+      if (!old && state.box.right > state.box.left && state.box.bottom > state.box.top) {
+        session.check();
+        await page.mouse.move((state.box.left + state.box.right) / 2, (state.box.top + state.box.bottom) / 2);
+        await smoothScroll(page, state.panelHeight * 0.8, session);
+      }
       await page.waitForTimeout(1000);
     }
     return null; // An interrupted scan must not suppress the next attempt today.

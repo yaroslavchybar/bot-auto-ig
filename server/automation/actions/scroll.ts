@@ -1,12 +1,29 @@
 import type { Locator, Page } from 'playwright-core'
 import { random } from './shared.js'
-import { driftMouse } from './mouse.js'
 import { BrowseSession } from './session.js'
+
+type ScrollBounds = { top: number; bottom: number; left: number; right: number }
+type ScrollTarget = Pick<Locator, 'boundingBox'> & { evaluate: (fn: (node: Element) => ScrollBounds) => Promise<ScrollBounds> }
+
+function scrollBounds(node: Element): ScrollBounds {
+  const view = node.ownerDocument.defaultView!
+  let parent = node.parentElement
+  while (parent) {
+    const style = view.getComputedStyle(parent)
+    if (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight) {
+      const rect = parent.getBoundingClientRect()
+      return { top: Math.max(0, rect.top), bottom: Math.min(view.innerHeight, rect.bottom),
+        left: Math.max(0, rect.left), right: Math.min(view.innerWidth, rect.right) }
+    }
+    parent = parent.parentElement
+  }
+  return { top: 0, bottom: view.innerHeight, left: 0, right: view.innerWidth }
+}
 
 // Smooth, trackpad-like scroll using only real wheel events (never JS).
 // Emits many tiny deltas on a ~60Hz cadence with an ease-in-out velocity
 // profile, so the page glides instead of jumping in chunks.
-export async function smoothScroll(page: Page, total: number, session = new BrowseSession()): Promise<void> {
+export async function smoothScroll(page: Page, total: number, session = new BrowseSession(), done: () => boolean = () => false): Promise<void> {
   const sleep = session.wait
   session.check()
   const dir = Math.sign(total) || 1
@@ -17,113 +34,18 @@ export async function smoothScroll(page: Page, total: number, session = new Brow
   let emitted = 0
   for (let i = 0; i < frames; i++) {
     session.check()
+    if (done()) return
     const t = (i + 1) / frames
     // ease-in-out: slow start, fast middle, gentle settle.
     const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
-    const delta = Math.max(
-      1,
-      Math.round((eased * dist - emitted) * random(0.7, 1.3)),
-    )
+    const delta = Math.min(dist - emitted, i === frames - 1 ? dist - emitted : Math.max(
+      0, Math.round((eased * dist - emitted) * random(0.7, 1.3)),
+    ))
+    if (delta <= 0) continue
     emitted += delta
     await page.mouse.wheel(0, delta * dir).catch(() => undefined)
     await sleep(random(12, 32))
   }
-}
-
-// Sometimes humans use keys instead of the wheel. Rare; mouse owns scrolling.
-async function keyScroll(page: Page, session: BrowseSession): Promise<void> {
-  const sleep = session.wait
-  session.check()
-  const roll = Math.random()
-  const key =
-    roll < 0.45 ? 'Space' : roll < 0.65 ? 'PageDown' : roll < 0.88 ? 'ArrowDown' : 'ArrowUp'
-  await page.keyboard.press(key).catch(() => undefined)
-  await sleep(random(250, 700))
-  // Key presses jump far; humans often correct with a small wheel move after.
-  if (Math.random() < 0.5) {
-    await smoothScroll(page, random(40, 160), session)
-    await sleep(random(120, 350))
-  }
-}
-
-// Grab the scrollbar and drag it, like a mouse user. Every move goes through
-// Cloak's humanized cursor. Leaves the cursor parked on the scrollbar.
-async function dragScrollbar(page: Page, session: BrowseSession): Promise<void> {
-  const sleep = session.wait
-  session.check()
-  const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
-  const x = viewport.width - random(4, 12)
-  const startY = random(viewport.height * 0.3, viewport.height * 0.6)
-  const travel = random(120, 320)
-  try {
-    await page.mouse.move(x, startY)
-    await sleep(random(120, 350))
-    await page.mouse.down()
-    const legs = Math.round(random(3, 6))
-    for (let i = 1; i <= legs; i++) {
-      await page.mouse.move(x, startY + (travel * i) / legs)
-      await sleep(random(30, 80))
-    }
-    await sleep(random(100, 300))
-  } catch {
-    // Drags can fail if the page navigated; wheel still works.
-  } finally {
-    await page.mouse.up().catch(() => undefined)
-  }
-}
-
-export type CursorState = { onScrollbar: boolean }
-
-// Scroll past the current post the way a mouse user would: the cursor sits
-// over the content and the wheel does the work, with an occasional scrollbar
-// drag or key press for variety. Travel clears the whole post so the next
-// pick can't land on it again. Hesitates, then moves on.
-export async function scrollPastPost(
-  page: Page,
-  cursor: CursorState,
-  clearHeight = 0,
-  session = new BrowseSession(),
-): Promise<void> {
-  const sleep = session.wait
-  session.check()
-  const roll = Math.random()
-  if (roll < 0.12) {
-    await dragScrollbar(page, session)
-    cursor.onScrollbar = true
-  } else {
-    if (cursor.onScrollbar) {
-      // Wheel-scrolls originate where the cursor points; move back to content.
-      await driftMouse(page, undefined, undefined, session)
-      cursor.onScrollbar = false
-      await sleep(random(150, 400))
-    }
-    if (roll < 0.22) {
-      await keyScroll(page, session)
-    } else {
-      // Full post height plus margin; falls back to the old range.
-      await smoothScroll(
-        page,
-        random(
-          Math.max(450, clearHeight + 120),
-          Math.max(950, clearHeight + 350),
-        ),
-        session,
-      )
-    }
-  }
-  // Hesitation: short pause, sometimes a second tiny nudge.
-  await sleep(random(200, 700))
-  if (Math.random() < 0.3) {
-    await smoothScroll(page, random(30, 120), session)
-    await sleep(random(150, 400))
-  }
-  // Re-read: glide back up a bit.
-  if (Math.random() < 0.12) {
-    await sleep(random(300, 900))
-    await smoothScroll(page, -random(80, 220), session)
-  }
-  // Never rest straddling two posts; settle on the most visible one.
-  await settleOnPost(page, session)
 }
 
 // Align whichever post is most visible to fully in view. No-op when one
@@ -176,21 +98,30 @@ export async function alignPostOnScreen(page: Page, target: Locator, session = n
 
 // Bring an element into view with eased wheel glides (never Playwright's
 // instant jump-scroll), so it can be clicked where it actually is.
-export async function revealForClick(page: Page, el: Locator, session = new BrowseSession()): Promise<boolean> {
+export async function revealForClick(page: Page, el: ScrollTarget, session = new BrowseSession()): Promise<boolean> {
   const sleep = session.wait
   session.check()
   const vp = page.viewportSize() ?? { width: 1280, height: 800 }
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 12; i++) {
     const box = await el.boundingBox().catch(() => null)
     if (!box) return false
-    if (box.y > 0 && box.y + Math.min(box.height, 60) < vp.height) return true
-    const delta = box.y < vp.height / 2 ? box.y - 120 : box.y - vp.height + 220
-    if (Math.abs(delta) < 20) return true
-    await smoothScroll(page, Math.max(-600, Math.min(600, delta)), session)
-    await sleep(random(300, 600))
+    // Use the nearest scrollable ancestor so overlays scroll instead of the page behind them.
+    const bounds = await el.evaluate(scrollBounds)
+    const top = bounds.top, bottom = Math.min(bounds.bottom, vp.height)
+    if (bottom <= top || bounds.right <= bounds.left) return false
+    if (box.x + box.width / 2 <= bounds.left || box.x + box.width / 2 >= bounds.right) return false
+    const centerY = box.y + box.height / 2
+    // Oversized targets cannot fit fully; reveal their interaction point instead.
+    if (box.height <= bottom - top
+      ? box.y >= top && box.y + box.height <= bottom
+      : centerY > top && centerY < bottom) return true
+    const delta = centerY - (top + bottom) / 2
+    if (Math.abs(delta) < 20) return false
+    await page.mouse.move((bounds.left + bounds.right) / 2, (top + bottom) / 2)
+    await smoothScroll(page, Math.max(-800, Math.min(800, delta)), session)
+    await sleep(random(150, 300))
   }
-  const box = await el.boundingBox().catch(() => null)
-  return !!box && box.y > 0 && box.y < vp.height
+  return false
 }
 
 export async function scrollModal(page: Page, dialog: Locator, ticks = 3, session = new BrowseSession()): Promise<void> {

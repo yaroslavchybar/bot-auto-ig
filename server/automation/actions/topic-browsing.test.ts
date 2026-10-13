@@ -1,6 +1,9 @@
+import { visibleActionGeometry } from './action-locator.test-support.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
+import { errors } from 'playwright-core'
+import { ElementNotVisibleError } from 'cloakbrowser/human'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { browseTopics, watchTopicPosts, topicGridUrl, TOPIC_NEXT_RESULT, type TopicBrowseState } from './topic-browsing.js'
 import { BrowseSession, SessionEnded } from './session.js'
@@ -96,10 +99,53 @@ test('Instagram warnings are propagated instead of treated as the end of a topic
     budget, state, () => {}, () => false, deps), /Instagram limit needs attention/)
 })
 
+for (const failure of [new errors.TimeoutError('Click timed out while moving to its target'), new ElementNotVisibleError('<ElementHandle>')])
+  test(`temporary Explore failure continues into normal reels: ${failure.name}`, async () => {
+    const calls: string[] = []
+    const page = { url: () => 'https://www.instagram.com/explore/',
+      locator: () => ({ filter: () => ({ evaluateAll: async () => null }) }) } as unknown as Page
+    const deps = { now: Date.now, random: (min: number) => min,
+      topic: async () => { throw failure },
+      openReels: async () => { calls.push('open-reels'); return true },
+      reels: async () => { calls.push('reels') },
+      feed: async () => { calls.push('feed'); return 'finished' },
+    } as unknown as NonNullable<Parameters<typeof browseTopics>[7]>
+    const result = await browseTopics(page, Date.now() + 60_000, { warmup_topics: 'fitness' },
+      new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 20, stories: 0 }),
+      { feedViewed: true, profilesChecked: true, seenPosts: new Set() },
+      event => { assert.equal(event.outcome, 'skipped'); calls.push('skipped') }, () => false, deps)
+    assert.equal(result, 'finished')
+    assert.deepEqual(calls, ['skipped', 'open-reels', 'reels', 'feed'])
+  })
+
+test('Explore timeout recovery still stops on an Instagram checkpoint', async () => {
+  const page = { url: () => 'https://www.instagram.com/challenge/123/' } as Page
+  const deps = { now: Date.now, random: (min: number) => min,
+    topic: async () => { throw new errors.TimeoutError('Click timed out') },
+    openReels: async () => { throw new Error('Must stop before opening reels') },
+  } as unknown as NonNullable<Parameters<typeof browseTopics>[7]>
+  await assert.rejects(browseTopics(page, Date.now() + 60_000, { warmup_topics: 'fitness' },
+    new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 20, stories: 0 }),
+    { feedViewed: true, profilesChecked: true, seenPosts: new Set() }, () => {}, () => false, deps), /checkpoint needs attention/)
+})
+
+test('a stop during an Explore failure prevents fallback browsing', async () => {
+  let stopped = false
+  const deps = { now: Date.now, random: (min: number) => min,
+    topic: async () => { stopped = true; throw new errors.TimeoutError('Click timed out') },
+    openReels: async () => { throw new Error('Must not browse after stopping') },
+  } as unknown as NonNullable<Parameters<typeof browseTopics>[7]>
+  assert.equal(await browseTopics({} as Page, Date.now() + 60_000, { warmup_topics: 'fitness' },
+    new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 20, stories: 0 }),
+    { feedViewed: true, profilesChecked: true, seenPosts: new Set() }, () => {}, () => stopped, deps), 'stopped')
+})
+
 test('topic results use the outer Next control and never carousel or engagement buttons', async () => {
+  const originalNow = Date.now
+  let now = originalNow()
   let url = '', nextClicks = 0, closed = false
   const next = { isVisible: async () => true, elementHandle: async () => ({
-    hover: async () => {},
+    ...visibleActionGeometry, hover: async () => {},
     click: async () => { url = 'https://www.instagram.com/p/two/'; nextClicks++ }, dispose: async () => {} }),
   }
   const article = { evaluate: async () => ({ text: 'Strength exercises', relationship: 'not-followed' as const }), waitFor: async () => {}, getByText: () => ({ count: async () => 0 }),
@@ -112,10 +158,11 @@ test('topic results use the outer Next control and never carousel or engagement 
   const dialog = { filter() { return this }, first() { return this }, getByRole: (role: string) => {
     assert.equal(role, 'article'); return article
   }, locator: (selector: string) => { assert.equal(selector, TOPIC_NEXT_RESULT); return next } }
-  const tile = { getAttribute: async () => '/p/one/', isVisible: async () => true,
-    elementHandle: async () => ({ hover: async () => {}, click: async () => { url = 'https://www.instagram.com/p/one/' }, dispose: async () => {} }) }
+  const tile = { ...visibleActionGeometry, getAttribute: async () => '/p/one/', isVisible: async () => true,
+    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { now += 6000 }, click: async () => { url = 'https://www.instagram.com/p/one/' }, dispose: async () => {} }) }
   const tiles = { first: () => ({ waitFor: async () => {} }), count: async () => 1, nth: () => tile }
   const page = {
+    viewportSize: () => ({ width: 1280, height: 800 }),
     url: () => url, goto: async (value: string) => { url = value },
     waitForURL: async (matches: (value: URL) => boolean) => { assert.ok(matches(new URL(url))) },
     getByRole: (role: string) => { assert.equal(role, 'dialog'); return dialog },
@@ -130,8 +177,11 @@ test('topic results use the outer Next control and never carousel or engagement 
   const session = new BrowseSession(Date.now() + 60_000)
   session.wait = async () => {}
   const seen = new Set<string>()
-  await watchTopicPosts(page, 'fitness', 2, new WarmupActivityBudget({ likes: 0, profiles: 2, reels: 20, stories: 2 }),
-    seen, session, () => {}, false, async () => true)
+  Date.now = () => now
+  try {
+    await watchTopicPosts(page, 'fitness', 2, new WarmupActivityBudget({ likes: 0, profiles: 2, reels: 20, stories: 2 }),
+      seen, session, () => {}, false, async () => true)
+  } finally { Date.now = originalNow }
   assert.equal(nextClicks, 1)
   assert.deepEqual([...seen], ['/p/one/', '/p/two/'])
   assert.equal(closed, true)

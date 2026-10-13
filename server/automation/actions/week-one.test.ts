@@ -1,3 +1,4 @@
+import { visibleActionGeometry } from './action-locator.test-support.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
@@ -9,7 +10,7 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
   let url = 'https://www.instagram.com/', followed = false
   const calls: string[] = []
   const control = { filter() { return this }, first() { return this }, isVisible: async () => true,
-    waitFor: async () => {}, hover: async () => {}, click: async () => {}, fill: async () => {}, dispose: async () => {},
+    waitFor: async () => {}, ...visibleActionGeometry, hover: async () => {}, click: async () => {}, fill: async () => {}, dispose: async () => {},
     elementHandle: async function() { return this } }
   const page = {
     url: () => url,

@@ -1,3 +1,4 @@
+import { visibleActionGeometry } from './action-locator.test-support.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
@@ -20,11 +21,12 @@ test('maintenance pins the post controls, shares its cap, and reads comments wit
     let liked = false, saved = false, commentsOpen = false
     const calls: string[] = []
     const makeControl = (label: string) => ({
+      ...visibleActionGeometry,
       first() { return this }, count: async () => label === 'Unlike' ? Number(liked) : 1,
       isVisible: async () => label === 'Save' ? !saved : true,
       boundingBox: async () => ({ x: 100, y: 100, width: 30, height: 30 }),
       waitFor: async () => { if (label === 'Unlike') assert.ok(liked) },
-      elementHandle: async () => ({ hover: async () => {}, dispose: async () => {}, click: async () => {
+      elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {}, click: async () => {
         calls.push(label)
         if (label === 'Like') liked = true
         if (label === 'Save') saved = true

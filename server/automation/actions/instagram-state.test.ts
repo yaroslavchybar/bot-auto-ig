@@ -1,3 +1,4 @@
+import { visibleActionGeometry } from './action-locator.test-support.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Window } from 'happy-dom'
@@ -74,7 +75,7 @@ function notificationFixture(
     },
     isVisible: async () => opened,
     elementHandle: async () => ({
-      hover: async () => {},
+      ...visibleActionGeometry, hover: async () => {},
       click: async () => {
         if (options.closedBeforeError) opened = false
         if (options.closeFailure) throw new ElementNotVisibleError('<ElementHandle>')
@@ -123,7 +124,7 @@ function notificationFixture(
           elementHandle: async () => {
             const selected = ++selections
             return {
-              hover: async () => {},
+              ...visibleActionGeometry, hover: async () => {},
               click: async () => {
                 if (options.openedBeforeError) opened = true
                 if (selected <= (options.failures ?? 0))

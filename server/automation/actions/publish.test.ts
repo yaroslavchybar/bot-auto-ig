@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
 import { BrowseSession, SessionEnded } from './session.js'
 import { publishFeedPost } from './publish.js'
+import { visibleActionGeometry } from './action-locator.test-support.js'
 
 type Box = { x: number; y: number; width: number; height: number }
 const box = (): Box => ({ x: 10, y: 10, width: 100, height: 20 })
@@ -10,6 +11,8 @@ const box = (): Box => ({ x: 10, y: 10, width: 100, height: 20 })
 class FakeItem {
   constructor(private owner: FakePage, private visible: () => boolean, private onClick?: () => void) {}
   async boundingBox(): Promise<Box | null> { return box() }
+  evaluate = visibleActionGeometry.evaluate
+  async ownerFrame() { return { page: () => this.owner } }
   async isVisible(): Promise<boolean> { return this.visible() }
   async click(_options?: unknown): Promise<void> { this.onClick?.() }
   async hover(): Promise<void> {}

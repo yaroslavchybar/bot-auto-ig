@@ -1,3 +1,4 @@
+import { visibleActionGeometry } from './actions/action-locator.test-support.js'
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Page } from 'playwright-core';
@@ -12,8 +13,8 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
   };
   const locator = {
     first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; }, filter() { return this; },
-    getByRole() { return this; }, count: async () => 1, hover: async () => {}, isVisible: async () => false,
-    evaluate: async () => '/*[1]', page: () => page,
+    getByRole() { return this; }, count: async () => 1, ...visibleActionGeometry, hover: async () => {}, isVisible: async () => false,
+    page: () => page,
     elementHandle: async function() { return this; }, dispose: async () => {},
     click: async () => { calls.push('message-button'); },
     fill: async () => { calls.push('compose'); },

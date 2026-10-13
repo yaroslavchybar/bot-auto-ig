@@ -1,3 +1,4 @@
+import { visibleActionGeometry } from './action-locator.test-support.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { Window } from 'happy-dom'
@@ -16,7 +17,7 @@ for (const method of ['click', 'fill', 'hover'] as const) {
       const handle = {
         click: async () => { assert.ok(selected.isConnected, 'detached'); events.push('click') },
         fill: async (value: string) => { assert.ok(selected.isConnected, 'detached'); events.push(value) },
-        hover: async () => { assert.ok(selected.isConnected, 'detached'); events.push('hover') },
+        ...visibleActionGeometry, hover: async () => { assert.ok(selected.isConnected, 'detached'); events.push('hover') },
         dispose: async () => { disposed++ },
       }
       const target = {
@@ -50,10 +51,55 @@ test('a missing element fails before an action can be created', async () => {
   await assert.rejects(actionLocator({ elementHandle: async () => null } as unknown as Locator), /detached or missing/)
 })
 
+test('clicking an offscreen pinned control reveals it with small wheel deltas before mouse input', async () => {
+  let y = 1100, wheels = 0, disposed = false
+  const calls: string[] = []
+  const page = { viewportSize: () => ({ width: 1280, height: 800 }),
+    mouse: { move: async () => { calls.push('position-scroll') },
+      wheel: async (_x: number, delta: number) => { assert.ok(delta > 0 && delta < 100); wheels++; y -= delta } },
+  }
+  const handle = { ...visibleActionGeometry,
+    ownerFrame: async () => ({ page: () => page }),
+    boundingBox: async () => ({ x: 100, y, width: 40, height: 40 }),
+    hover: async (options: { human_config: { scroll_target_zone: number[] } }) => {
+      assert.ok(y >= 0 && y + 40 <= 800)
+      assert.deepEqual(options.human_config.scroll_target_zone, [0, 1])
+      calls.push('hover')
+    },
+    click: async () => { calls.push('click') }, dispose: async () => { disposed = true },
+  }
+  await clickAction({ elementHandle: async () => handle } as unknown as Locator, 5000)
+  assert.ok(wheels > 1)
+  assert.deepEqual(calls.slice(-2), ['hover', 'click'])
+  assert.equal(disposed, true)
+})
+
+test('smooth revealing inside an overlay positions the wheel over that overlay', async () => {
+  const window = new Window()
+  try {
+    window.document.body.innerHTML = '<div style="overflow-y:auto"><button>Selected</button></div>'
+    const node = window.document.querySelector('button')!, panel = node.parentElement!
+    Object.defineProperties(panel, { scrollHeight: { value: 1000 }, clientHeight: { value: 200 } })
+    panel.getBoundingClientRect = () => ({ top: 200, bottom: 400, left: 300, right: 600 }) as DOMRect
+    let y = 450, wheels = 0
+    const page = { viewportSize: () => ({ width: 1280, height: 800 }),
+      mouse: { move: async (x: number, y: number) => { assert.equal(x, 450); assert.equal(y, 300) },
+        wheel: async (_x: number, delta: number) => { wheels++; y -= delta } } }
+    await clickAction({ elementHandle: async () => ({ ...visibleActionGeometry,
+      ownerFrame: async () => ({ page: () => page }),
+      evaluate: async (fn: (el: Element) => unknown) => fn(node as unknown as Element),
+      boundingBox: async () => ({ x: 350, y, width: 40, height: 40 }),
+      hover: async () => { assert.ok(y >= 200 && y + 40 <= 400) },
+      click: async () => {}, dispose: async () => {},
+    }) } as unknown as Locator, 5000)
+    assert.ok(wheels > 1)
+  } finally { await window.happyDOM.close() }
+})
+
 test('handle cleanup does not hide the original action error', async () => {
   const failure = new Error('Target detached')
   const action = await actionLocator({ elementHandle: async () => ({
-    hover: async () => {},
+    ...visibleActionGeometry, hover: async () => {},
     click: async () => { throw failure },
     dispose: async () => { throw new Error('Page closed') },
   }) } as unknown as Locator)
@@ -64,7 +110,7 @@ test('failed cursor movement prevents clicking and disposes the pinned handle', 
   const failure = new Error('Target moved behind a dialog')
   let clicks = 0, disposed = false
   const action = await actionLocator({ elementHandle: async () => ({
-    hover: async () => { throw failure }, click: async () => { clicks++ },
+    ...visibleActionGeometry, hover: async () => { throw failure }, click: async () => { clicks++ },
     dispose: async () => { disposed = true },
   }) } as unknown as Locator)
   await assert.rejects(action.click(), error => error === failure)
@@ -79,7 +125,7 @@ test('cursor movement and clicking share one timeout and keep the requested clic
   try {
     const calls: string[] = []
     const action = await actionLocator({ elementHandle: async () => ({
-      hover: async (options: { timeout: number; position: { x: number; y: number } }) => {
+      ...visibleActionGeometry, hover: async (options: { timeout: number; position: { x: number; y: number } }) => {
         assert.equal(options.timeout, 100)
         assert.deepEqual(options.position, { x: 2, y: 3 })
         calls.push('move'); now += 40
@@ -92,7 +138,7 @@ test('cursor movement and clicking share one timeout and keep the requested clic
     assert.deepEqual(calls, ['move', 'click'])
     let clicks = 0
     const expired = await actionLocator({ elementHandle: async () => ({
-      hover: async () => { now += 100 }, click: async () => { clicks++ }, dispose: async () => {},
+      ...visibleActionGeometry, hover: async () => { now += 100 }, click: async () => { clicks++ }, dispose: async () => {},
     }) } as unknown as Locator)
     await assert.rejects(expired.click({ timeout: 100 }), /timed out while moving/)
     assert.equal(clicks, 0)
@@ -105,6 +151,7 @@ test('Cloak patches frame-selected handles and rejects a detached target before 
   let disposed = false
   const forbidden = async () => { throw new Error('Must not issue input for a detached target') }
   const handle = {
+    ...visibleActionGeometry,
     ...Object.fromEntries(['click', 'dblclick', 'hover', 'type', 'fill', 'selectOption', 'check',
       'uncheck', 'setChecked', 'tap', 'focus', '$', '$$', 'waitForSelector'].map(name => [name, forbidden])),
     _humanPatched: false,
@@ -128,7 +175,7 @@ test('selection timeout prevents any cursor input and still cleans up the handle
   try {
     await assert.rejects(clickAction({ elementHandle: async () => {
       now += 100
-      return { hover: async () => { inputs++ }, click: async () => { inputs++ },
+      return { ...visibleActionGeometry, hover: async () => { inputs++ }, click: async () => { inputs++ },
         dispose: async () => { disposed = true } }
     } } as unknown as Locator, 100), /timed out while selecting/)
     assert.equal(inputs, 0)
@@ -139,7 +186,7 @@ test('selection timeout prevents any cursor input and still cleans up the handle
 test('explicit zero timeout allows cursor movement and clicking without a deadline', async () => {
   const calls: string[] = []
   await clickAction({ elementHandle: async () => ({
-    hover: async (options: { timeout: number }) => { assert.equal(options.timeout, 0); calls.push('move') },
+    ...visibleActionGeometry, hover: async (options: { timeout: number }) => { assert.equal(options.timeout, 0); calls.push('move') },
     click: async (options: { timeout: number }) => { assert.equal(options.timeout, 0); calls.push('click') },
     dispose: async () => { calls.push('dispose') },
   }) } as unknown as Locator, 0)
@@ -153,7 +200,7 @@ test('expiry between clock reads never passes an accidental zero timeout to hove
   Date.now = () => times.shift() ?? 1100
   try {
     await assert.rejects(clickAction({ elementHandle: async () => ({
-      hover: async () => { inputs++ }, click: async () => { inputs++ },
+      ...visibleActionGeometry, hover: async () => { inputs++ }, click: async () => { inputs++ },
       dispose: async () => { disposed = true },
     }) } as unknown as Locator, 100), /timed out while selecting/)
     assert.equal(inputs, 0)
@@ -169,7 +216,7 @@ test('a session timeout recalculated after selection does not count selection tw
     const action = await actionLocator({ elementHandle: async () => {
       now += 40
       return {
-        hover: async (options: { timeout: number }) => { assert.equal(options.timeout, 60); now += 40 },
+        ...visibleActionGeometry, hover: async (options: { timeout: number }) => { assert.equal(options.timeout, 60); now += 40 },
         click: async (options: { timeout: number }) => { assert.equal(options.timeout, 20) },
         dispose: async () => { disposed = true },
       }
@@ -185,10 +232,11 @@ test('Cloak emits mouse movement onto the pinned button before mouse-down', asyn
   const calls: string[] = []
   const forbidden = async () => { throw new Error('Must use the humanized mouse path') }
   const handle = {
+    ...visibleActionGeometry,
     ...Object.fromEntries(['click', 'dblclick', 'hover', 'type', 'fill', 'selectOption', 'check',
       'uncheck', 'setChecked', 'tap', 'focus', '$', '$$', 'waitForSelector'].map(name => [name, forbidden])),
     boundingBox: async () => ({ x: 100, y: 100, width: 40, height: 40 }),
-    evaluate: async () => false, dispose: async () => { calls.push('dispose') },
+    dispose: async () => { calls.push('dispose') },
   }
   const frame = { waitForSelector: async () => handle }
   const cursor = { x: 10, y: 10, initialized: true }

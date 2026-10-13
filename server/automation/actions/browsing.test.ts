@@ -1,9 +1,10 @@
+import { visibleActionGeometry } from './action-locator.test-support.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
 import { Window } from 'happy-dom'
 import { BrowseSession, SessionEnded } from './session.js'
-import { settleOnPost, smoothScroll } from './scroll.js'
+import { revealForClick, settleOnPost, smoothScroll } from './scroll.js'
 import { likeVisible, clickVisible } from './mouse.js'
 import { detourDelay, postChoices, viewContent, viewVideo } from './viewing.js'
 import { openDMs } from './inbox.js'
@@ -11,6 +12,35 @@ import { openReels } from './reels.js'
 import { backToFeed } from './navigation.js'
 import { openAuthorProfile, openOwnProfile } from './profiles.js'
 import { watchStories } from './stories.js'
+
+for (const { height, startY, needsScroll } of [
+  { height: 400, startY: 100, needsScroll: false },
+  { height: 400, startY: 500, needsScroll: true },
+  { height: 400, startY: 0, needsScroll: true },
+  { height: 100, startY: 160, needsScroll: true },
+]) test(`revealing a ${height}px target at ${startY}px respects a 200px scroll region`, async () => {
+  const window = new Window()
+  try {
+    window.document.body.innerHTML = '<div style="overflow-y:auto"><a>Target</a></div>'
+    const node = window.document.querySelector('a')!, panel = node.parentElement!
+    Object.defineProperties(panel, { clientHeight: { value: 200 }, scrollHeight: { value: 1200 } })
+    panel.getBoundingClientRect = () => ({ top: 200, bottom: 400, left: 300, right: 600 }) as DOMRect
+    let y = startY, wheels = 0
+    const target = {
+      boundingBox: async () => ({ x: 350, y, width: 40, height }),
+      evaluate: async <R>(fn: (el: Element) => R): Promise<R> => fn(node as unknown as Element),
+    }
+    const page = { viewportSize: () => ({ width: 1280, height: 800 }),
+      mouse: { move: async () => {}, wheel: async (_x: number, delta: number) => { wheels++; y -= delta } },
+    } as unknown as Page
+    const session = new BrowseSession()
+    session.wait = async () => {}
+    assert.equal(await revealForClick(page, target, session), true)
+    assert.equal(wheels > 0, needsScroll)
+    if (height > 200) assert.ok(y + height / 2 > 200 && y + height / 2 < 400)
+    else assert.ok(y >= 200 && y + height <= 400, 'a target that fits must remain fully visible')
+  } finally { await window.happyDOM.close() }
+})
 
 test('settling checks posts beyond six and ignores fully offscreen posts', async () => {
   const checked: number[] = []
@@ -99,6 +129,7 @@ function likeTarget(alreadyLiked: boolean, confirms: boolean, y = 100) {
   let clicks = 0
   const unlike = { count: async () => Number(liked), first: () => ({ waitFor: async () => {} }) }
   const button = {
+    ...visibleActionGeometry,
     boundingBox: async () => ({ x: 100, y, width: 30, height: 30 }),
     elementHandle: async () => button,
     hover: async () => {},
@@ -139,7 +170,7 @@ test('opening an author adapts the selected nested link before clicking', async 
     boundingBox: async () => ({ x: 100, y: 100, width: 100, height: 30 }),
     isVisible: async () => true,
     elementHandle: async () => ({
-      hover: async () => {},
+      ...visibleActionGeometry, hover: async () => {},
       click: async () => { currentUrl = 'https://www.instagram.com/alice/' },
       dispose: async () => {},
     }),
@@ -164,7 +195,7 @@ test('stories wait for the button tray and honor a stop while it loads', async (
     const story = {
       first() { return this },
       elementHandle: async () => story,
-      hover: async () => {},
+      ...visibleActionGeometry, hover: async () => {},
       dispose: async () => {},
       waitFor: async () => { loaded = true; stopped = stopWhileLoading },
       isVisible: async () => loaded,
@@ -198,7 +229,7 @@ test('stories skip a hidden first control in either tray layout', async () => {
           return { count: async () => nodes.length, first: () => ({
             waitFor: async () => { assert.ok(nodes[0]) },
             isVisible: async () => !!nodes[0] && nodes[0].getAttribute('style') !== 'display:none',
-            elementHandle: async () => ({ hover: async () => {}, click: async () => { clicked = nodes[0]!.id }, dispose: async () => {} }),
+            elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => { clicked = nodes[0]!.id }, dispose: async () => {} }),
           }) }
         },
       } as unknown as Page
@@ -218,11 +249,11 @@ test('stories return zero for missing trays and only completed views after an ea
       boundingBox: async () => ({ x: 100, y: 100, width: 40, height: 40 }),
       page: () => page,
       elementHandle: async () => control, dispose: async () => {},
-      hover: async () => {},
+      ...visibleActionGeometry, hover: async () => {},
       click: async () => { stopped = mode === 'stop on open' },
     }
     const next = { ...control, elementHandle: async () => ({
-      hover: async () => {},
+      ...visibleActionGeometry, hover: async () => {},
       click: async () => { stopped = true }, dispose: async () => {},
     }) }
     const page = {
