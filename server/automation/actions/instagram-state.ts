@@ -4,9 +4,10 @@ import { clickAction } from './action-locator.js'
 import { isTransientDomIssue } from '../../shared/domErrors.js'
 import { BrowseSession } from './session.js'
 import { random, type ActionLogger } from './shared.js'
+import { dismissMetaAccountPopup } from './navigation.js'
 
 /** Check Instagram's warnings, never captions or comments with similar wording. */
-export async function assertInstagramReady(page: Page): Promise<void> {
+export async function assertInstagramReady(page: Page, session?: BrowseSession): Promise<void> {
   if (
     /^\/(?:challenge|checkpoint|accounts\/(?:login|suspended|disabled))(?:\/|$)/.test(
       new URL(page.url()).pathname,
@@ -17,6 +18,7 @@ export async function assertInstagramReady(page: Page): Promise<void> {
     .locator('[role="dialog"], [role="alertdialog"], [role="alert"]')
     .filter({ visible: true })
     .evaluateAll((boxes) => {
+      let metaAccount = false
       for (const box of boxes) {
         if (box.querySelector('article, video, svg[aria-label="Like"]')) continue
         const text = (box as HTMLElement).innerText
@@ -27,9 +29,17 @@ export async function assertInstagramReady(page: Page): Promise<void> {
         )
           return 'checkpoint'
         if (/try again later|we limit how often|action blocked/i.test(text)) return 'limit'
+        if (text.includes('Your updated account works across Meta apps and devices') &&
+          [...box.querySelectorAll('*')].some(node => node.textContent?.trim() === 'Your Meta Account is here'))
+          metaAccount = true
       }
-      return null
+      return metaAccount ? 'meta_account' : null
     })
+  if (warning === 'meta_account') {
+    if (!await dismissMetaAccountPopup(page, session))
+      throw new Error('Instagram Meta account popup needs attention')
+    return
+  }
   if (warning) throw new Error(`Instagram ${warning} needs attention`)
 }
 

@@ -91,11 +91,43 @@ async function dismissConsent(page: Page, session: BrowseSession): Promise<boole
   return clicked.size > 0
 }
 
-// Handles consent screens and "Not Now" popups. Returns true after dismissal.
+/** Close the Meta account announcement without opening its "See what's new" flow. */
+export async function dismissMetaAccountPopup(page: Page, session = new BrowseSession(Date.now() + 5_000)): Promise<boolean> {
+  session.check()
+  try {
+    const popup = page.locator(
+      '[role="dialog"]:has-text("Your Meta Account is here"):has-text("Your updated account works across Meta apps and devices"):not(:has(article, video)), ' +
+      '[role="alertdialog"]:has-text("Your Meta Account is here"):has-text("Your updated account works across Meta apps and devices"):not(:has(article, video))',
+    ).filter({ visible: true }).first()
+    if (!await popup.isVisible()) return false
+    if (!await popup.getByText('Your Meta Account is here', { exact: true }).first().isVisible()) return false
+    const close = popup.locator(
+      'button[aria-label="Close"], [role="button"][aria-label="Close"], ' +
+      'button:has(svg[aria-label="Close"]), [role="button"]:has(svg[aria-label="Close"])',
+    ).filter({ visible: true }).first()
+    if (!await close.isVisible()) return false
+    const handle = await popup.elementHandle({ timeout: session.timeout(1_000) })
+    if (!handle) return false
+    try {
+      await clickAction(close, session.timeout(2_000))
+      await handle.waitForElementState('hidden', { timeout: session.timeout(1_500) })
+      return true
+    } finally {
+      await handle.dispose().catch(() => undefined)
+    }
+  } catch (error) {
+    session.check()
+    if (error instanceof StealthDomError) throw error
+    return false
+  }
+}
+
+// Handles consent screens, Meta announcements and "Not Now" popups.
 export async function dismissPopups(page: Page, session = new BrowseSession(Date.now() + 15_000)): Promise<boolean> {
   session.check()
   const consentClicked = await dismissConsent(page, session)
   if (consentClicked && isInstagramConsentPage(page)) return false
+  const metaClosed = await dismissMetaAccountPopup(page, session)
   const buttons = page.locator('[role="dialog"] button:has-text("Not Now"), [role="dialog"] [role="button"]:has-text("Not Now")')
   const count = await buttons.count().catch(() => 0)
   let visible = 0
@@ -122,7 +154,7 @@ export async function dismissPopups(page: Page, session = new BrowseSession(Date
       await popup.dispose().catch(() => undefined)
     }
   }
-  return consentClicked
+  return consentClicked || metaClosed
 }
 
 export async function closeDialog(page: Page, session = new BrowseSession()): Promise<void> {

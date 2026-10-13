@@ -6,6 +6,103 @@ import type { Page } from 'playwright-core'
 import { assertInstagramReady, checkNotifications } from './instagram-state.js'
 import { BrowseSession } from './session.js'
 import { ElementNotVisibleError } from 'cloakbrowser/human'
+import { dismissMetaAccountPopup, dismissPopups } from './navigation.js'
+
+function metaAccountFixture(remainsOpen = false) {
+  const window = new Window()
+  window.document.body.innerHTML = '<div role="dialog" id="messages"><button>Close</button></div>' +
+    '<div role="dialog" id="meta"><h2>Your Meta Account is here</h2>' +
+    '<p>Your updated account works across Meta apps and devices</p>' +
+    '<button id="close"><svg aria-label="Close"></svg></button><button>See what\'s new</button></div>'
+  const clicks: string[] = []
+  const visible = () => Boolean(window.document.querySelector('#meta:not([hidden])'))
+  const handle = {
+    waitForElementState: async () => { assert.equal(visible(), false, 'The actual Meta popup must close') },
+    dispose: async () => {},
+  }
+  const close = {
+    first() { return this }, filter() { return this }, isVisible: async () => visible(),
+    elementHandle: async () => ({ ...visibleActionGeometry,
+      hover: async () => { clicks.push('cursor-to-close') },
+      click: async () => {
+        clicks.push('meta-close')
+        if (!remainsOpen) window.document.querySelector('#meta')?.remove()
+      },
+      dispose: async () => {},
+    }),
+  }
+  const popup = {
+    first() { return this }, filter() { return this }, isVisible: async () => visible(),
+    elementHandle: async () => handle,
+    getByText: (title: string, options: { exact: boolean }) => {
+      assert.equal(title, 'Your Meta Account is here'); assert.equal(options.exact, true)
+      return { first: () => ({ isVisible: async () => visible() }) }
+    },
+    locator: (selector: string) => {
+      assert.match(selector, /aria-label="Close"/)
+      assert.equal(selector.includes("See what's new"), false)
+      return close
+    },
+  }
+  const page = {
+    url: () => 'https://www.instagram.com/',
+    locator: (selector: string) => {
+      if (selector.includes('Your Meta Account is here')) {
+        assert.match(selector, /Your updated account works across Meta apps and devices/)
+        assert.match(selector, /:not\(:has\(article, video\)\)/)
+        return popup
+      }
+      if (selector.includes('Not Now')) return { count: async () => 0 }
+      return { filter: () => ({ evaluateAll: async (fn: (boxes: Element[]) => unknown) => fn(
+        Array.from(window.document.querySelectorAll(selector)).filter(node => !node.closest('[hidden]')) as unknown as Element[],
+      ) }) }
+    },
+  } as unknown as Page
+  return { window, page, clicks }
+}
+
+test('Meta announcement is closed before automation actions and during feed popup handling', async () => {
+  for (const dismiss of [assertInstagramReady, dismissPopups]) {
+    const fixture = metaAccountFixture()
+    try {
+      await dismiss(fixture.page, new BrowseSession())
+      assert.deepEqual(fixture.clicks, ['cursor-to-close', 'meta-close'])
+      assert.ok(fixture.window.document.querySelector('#messages'), 'Other dialogs stay open')
+    } finally { await fixture.window.close() }
+  }
+})
+
+test('Meta text in content or hidden dialogs is ignored and checkpoints take priority', async () => {
+  for (const type of ['caption', 'hidden', 'checkpoint']) {
+    const fixture = metaAccountFixture()
+    try {
+      const box = fixture.window.document.querySelector('#meta')!
+      if (type === 'caption') box.innerHTML = `<article>${box.innerHTML}</article>`
+      if (type === 'hidden') box.setAttribute('hidden', '')
+      if (type === 'checkpoint') fixture.window.document.body.insertAdjacentHTML('beforeend', '<div role="alertdialog">Help us confirm it\'s you</div>')
+      if (type === 'checkpoint') await assert.rejects(assertInstagramReady(fixture.page), /checkpoint needs attention/)
+      else await assertInstagramReady(fixture.page)
+      assert.deepEqual(fixture.clicks, [])
+    } finally { await fixture.window.close() }
+  }
+})
+
+test('Meta dismissal reports failure if the clicked popup remains visible', async () => {
+  const fixture = metaAccountFixture(true)
+  try {
+    assert.equal(await dismissMetaAccountPopup(fixture.page), false)
+    assert.deepEqual(fixture.clicks, ['cursor-to-close', 'meta-close'])
+  } finally { await fixture.window.close() }
+})
+
+test('readiness fails when the Meta announcement cannot be dismissed', async () => {
+  const fixture = metaAccountFixture(true)
+  try {
+    await assert.rejects(assertInstagramReady(fixture.page), /Instagram Meta account popup needs attention/)
+    assert.deepEqual(fixture.clicks, ['cursor-to-close', 'meta-close'])
+    assert.ok(fixture.window.document.querySelector('#meta'))
+  } finally { await fixture.window.close() }
+})
 
 test('Instagram warnings ignore content and hidden alerts but stop on visible limits', async () => {
   const window = new Window()

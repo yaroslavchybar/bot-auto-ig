@@ -122,12 +122,12 @@ export async function runWarmup(
   let elapsed = 0
   try {
     if (!stopped()) {
-      await deps.check(page)
+      await deps.check(page, session)
       log({ event: 'automation.warmup.daily_plan', day: plan.day ?? 1, activityPlan: budget.plan, activityUsed: budget.used })
       await deps.notifications(page, log, session)
       if (!stopped()) await deps.inbox(page, log, session)
       if (!stopped()) await deps.home(page, log, session)
-      if (!stopped()) await deps.check(page)
+      if (!stopped()) await deps.check(page, session)
       if (!stopped() && config.warmup_topics && (engage || (day <= TOPIC_SEARCH_LAST_DAY && (config.browse_home_feed || config.scroll_reels))))
         topicState.searchTerms = await deps.searchTerms(config.warmup_topics, session, log)
       if (!stopped() && engage && (budget.remaining('likes') || budget.remaining('follows'))) {
