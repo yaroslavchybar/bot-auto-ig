@@ -80,7 +80,7 @@ export const overview = query({
       ctx.db.query('analyticsHistory').unique(),
     ])
     if (!history) throw new Error('Activity history is initializing. Please refresh shortly.')
-    let counts = addActivity(history.totals, {})
+    let counts = history.totals
     if (period !== 'all') {
       const days = period === '7days' ? 7 : period === '30days' ? 30 : 1
       const start = new Date(timestamp - (days - 1) * 86_400_000).toISOString().slice(0, 10)

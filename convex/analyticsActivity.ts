@@ -20,12 +20,7 @@ export function addActivity(
     dms: counts.dms + (delta.dms ?? 0),
     warmupMinutes: counts.warmupMinutes + (delta.warmupMinutes ?? 0),
     scraperUnits: counts.scraperUnits + (delta.scraperUnits ?? 0),
-    // Temporary until browserScrapingMigration finishes: preserve counters during concurrent writes.
-    scraperRequests:
-      (counts.scraperRequests ?? 0) +
-      (counts.mobileRequests ?? 0) +
-      (delta.scraperRequests ?? 0) +
-      (delta.mobileRequests ?? 0),
+    scraperRequests: (counts.scraperRequests ?? 0) + (delta.scraperRequests ?? 0),
     unlimitedScraperUnits: counts.unlimitedScraperUnits + (delta.unlimitedScraperUnits ?? 0),
   }
 }

@@ -361,11 +361,3 @@ in-memory buffers to Playwright (less than 50 MiB total, up to 20 files); the ap
 no upload files or temporary files. Nginx request buffering is disabled for this
 route. If browser permissions prevent opening the local picker automatically,
 the viewer shows a Choose files from this PC button.
-
-Temporary deployment cleanup: `browserScrapingMigration:run` runs once per minute,
-in bounded batches, until it removes old mobile session files and worker metadata,
-merges unexpired request usage into `scraperRequestUsage`, and renames historical
-request counters. Browser cookies, credentials, warmup, and leads remain intact.
-After it returns `removed: 0`, remove the migration module, its cron job, generated
-API entry, the temporary `activityCounts.mobileRequests` schema field, and the
-counter conversion in `analyticsActivity.addActivity`.

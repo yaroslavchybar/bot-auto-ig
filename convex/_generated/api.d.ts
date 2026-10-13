@@ -9,7 +9,6 @@
  */
 
 import type * as analytics from "../analytics.js";
-import type * as browserScrapingMigration from "../browserScrapingMigration.js";
 import type * as analyticsActivity from "../analyticsActivity.js";
 import type * as automations_helpers from "../automations/helpers.js";
 import type * as automations_mutations from "../automations/mutations.js";
@@ -66,7 +65,6 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
-  browserScrapingMigration: typeof browserScrapingMigration;
   analyticsActivity: typeof analyticsActivity;
   "automations/helpers": typeof automations_helpers;
   "automations/mutations": typeof automations_mutations;

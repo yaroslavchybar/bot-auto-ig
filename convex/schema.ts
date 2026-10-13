@@ -9,8 +9,6 @@ const activityCounts = v.object({
   warmupMinutes: v.number(),
   scraperUnits: v.number(),
   scraperRequests: v.optional(v.number()),
-  // Temporary: remove with browserScrapingMigration after its first deployment completes.
-  mobileRequests: v.optional(v.number()),
   unlimitedScraperUnits: v.number(),
 })
 
