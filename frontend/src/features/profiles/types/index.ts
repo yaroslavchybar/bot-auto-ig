@@ -2,6 +2,8 @@ export type Profile = {
   paused?: boolean
   igLoggedIn?: boolean
   outreachReady?: boolean
+  unreadChatCount?: number
+  unreadChatsCheckedAt?: number
   renameFrom?: string
   id: string
   name: string

@@ -22,7 +22,7 @@ Luna scores three categories from that screenshot alone: male, female, and busin
 
 A matching category receives a permanent sender assignment and one daily follow slot. Excluded categories and failed screening do not consume quota. A known excluded category is not repeatedly opened by the same category policy; another eligible automation can screen it. Provider failures preserve any saved decision, retry after five then ten minutes, and stop automatic screening after three consecutive failures. A successful decision resets the failure count; explicitly retrying failed enrichment also resets it. A two-minute lease expires after a crashed or interrupted worker. Stale results cannot overwrite a newer lease. Approval rechecks pause, list membership, category settings, day, and daily allowance.
 
-The existing lead pool has been reset for browser screening. Assignments and outreach history are preserved. Retired lead picture fields are removed; Chat avatar URLs are independent and retained. Worker metadata and proxy assignments are maintained by ordinary writes, with no migration jobs or startup backfills.
+The existing lead pool has been reset for browser screening. Assignments and outreach history are preserved. Retired lead picture fields are removed. Worker metadata and proxy assignments are maintained by ordinary writes, with no migration jobs or startup backfills.
 
 ## Outreach and cleanup
 
@@ -35,3 +35,5 @@ Notifications are checked daily. DMs begin on the next day only after a confirme
 Confirmed follows or requests are removed after the configured unfollow delay. Cleanup runs in the same automation sessions and preserves sender history. Browsing, screening, follows, DMs, pauses, and cleanup share the session deadline. Rest releases the browser slot.
 
 Deploy matching Convex, server, and frontend changes together. No new manual login or API key is needed.
+
+The Chats page and conversation APIs, message caches, archives, and attachment handlers are removed. Profiles show the last browser unread chat badge count next to their IG controls, with its check time in the tooltip. Every normal browser shutdown reads the message badge before closing and persists only the count and time. Missing UI, login/checkpoint pages, closed browsers, and failed checks keep the last known count. Unchecked profiles show a dash. This uses no mobile API requests.

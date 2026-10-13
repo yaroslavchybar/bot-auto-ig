@@ -138,7 +138,7 @@ fn allowed(name: &str) -> bool {
         name,
         "scraper:work"
             | "profiles/queries:maintenanceWork"
-            | "profiles/queries:chatWorkerContexts"
+            | "profiles/queries:mobileWorkerContexts"
             | "igAccounts:loginWork"
             | "automations/queries:runtimeSnapshot"
             | "routines:access"

@@ -35,12 +35,6 @@ async function setup() {
     })
     const storageId = await ctx.storage.store(new Blob(['saved-login']))
     await ctx.db.insert('chatSessions', { profileId, storageId, token: 'token' })
-    await ctx.db.insert('chatCounters', {
-      profileId,
-      token: 'token',
-      enabled: true,
-      unreadCount: 1,
-    })
     await ctx.db.insert('profileListAssignments', { profileId, listId: modelId })
     await syncWorkerProfile(ctx, (await ctx.db.get(profileId))!)
     const listId = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 })
@@ -121,9 +115,8 @@ test('pause blocks automation, scraping, warm-up, and mobile calls while preserv
     (await s.t.query(api.profiles.queries.listPage, { search: '', cursor: null, pageSize: 25 }))
       .page[0].paused,
   ).toBe(true)
-  expect(await s.t.query(api.profiles.queries.chatOptions, {})).toEqual([])
   expect(
-    await s.t.query(api.profiles.queries.chatWorkerContexts, {
+    await s.t.query(api.profiles.queries.mobileWorkerContexts, {
       bridgeToken: 'test',
       subscriptionId: 'test',
     }),
@@ -137,7 +130,7 @@ test('pause blocks automation, scraping, warm-up, and mobile calls while preserv
   await s.pause(false)
   expect(await s.t.query(api.routines.access, args)).toBe(true)
   expect(
-    await s.t.query(api.profiles.queries.chatWorkerContexts, {
+    await s.t.query(api.profiles.queries.mobileWorkerContexts, {
       bridgeToken: 'test',
       subscriptionId: 'test',
     }),

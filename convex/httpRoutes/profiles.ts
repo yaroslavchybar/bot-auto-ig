@@ -22,10 +22,21 @@ const profilePaths = [
   '/api/profiles/sync-status',
   '/api/profiles/create-for-model',
   '/api/profiles/ig-state',
+  '/api/profiles/unread-chats',
 ];
 
 export function registerProfileRoutes(http: HttpRouter): void {
   registerPreflight(http, profilePaths);
+  http.route({
+    path: '/api/profiles/unread-chats', method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      await ctx.runMutation(internal.profiles.mutations.saveUnreadChatsInternal, {
+        profileId: body.profileId, count: body.count, checkedAt: body.checkedAt,
+      });
+      return jsonResponse({ saved: true });
+    }),
+  });
   registerProfileQueryRoutes(http);
   registerProfileCrudRoutes(http);
   registerProfileStatusRoutes(http);

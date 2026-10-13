@@ -29,6 +29,7 @@ test('missing and pending profiles cannot recreate folders and always release th
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetByName: async () => row,
       profilesUpdateByName: async () => undefined,
+      profilesSaveUnreadChats: async () => undefined,
     }))
     mock.module('cloakbrowser', () => ({
       binaryInfo: () => ({}),
@@ -138,9 +139,11 @@ for (const scenario of [
     context.addCookies = async values => { jar.push(...values) }
     let loseBudget
     let closed = false
+    let unreadSaved = 0
     let launchOptions
     context.pages = () => [{
-      evaluate: async () => {},
+      isClosed: () => closed,
+      evaluate: async source => typeof source === 'string' ? 8 : undefined,
       url: () => ['startup failure', 'stop during navigation', 'cancel during navigation'].includes(scenario) ? 'about:blank' : 'https://www.instagram.com/',
       goto: async () => {
         if (['stop during navigation', 'cancel during navigation'].includes(scenario)) {
@@ -220,7 +223,13 @@ for (const scenario of [
     }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
     mock.module('./server/shared/convexClient.ts', () => ({
-      profilesGetByName: async () => ({ name: 'test', cookiesJson: scenario === 'replace cookies' ? JSON.stringify(cookies) : undefined }),
+      profilesGetByName: async () => ({ id: 'profile', name: 'test', cookiesJson: scenario === 'replace cookies' ? JSON.stringify(cookies) : undefined }),
+      profilesSaveUnreadChats: async (profileId, count) => {
+        assert.equal(closed, false, 'unread counts must save before the browser closes')
+        assert.equal(profileId, 'profile')
+        assert.equal(count, 8)
+        unreadSaved++
+      },
       profilesUpdateByName: async (name, update) => {
         if (typeof update.fingerprintSeed === 'number') {
           seedWrites.push(update.fingerprintSeed)
@@ -327,6 +336,7 @@ for (const scenario of [
           context.emit('close')
           await session.closed
           assert.deepEqual(events, ['read', 'saved', 'display', 'slot'])
+          assert.equal(unreadSaved, 0, 'a crashed browser keeps the last count')
         } else {
           process.emit('SIGTERM')
           assert.equal(session.close(), session.close())
@@ -339,6 +349,7 @@ for (const scenario of [
           assert.deepEqual(events, scenario === 'save failure' || scenario === 'replace cookies'
             ? ['read', 'read', 'close', 'display', 'slot']
             : ['read', 'saved', 'read', 'close', 'display', 'slot'])
+          assert.equal(unreadSaved, 1, 'normal shutdown saves the unread count exactly once')
         }
         assert.equal(fs.existsSync(inspectorPath), false, 'closing removes the DOM port file')
         assert.equal(fs.existsSync(devToolsPortFile), false, 'closing removes the DevTools port file')
@@ -385,6 +396,7 @@ test('cloak seed is stable per profile and platform', () => {
       mock.module('./server/shared/convexClient.ts', () => ({
         profilesGetByName: async () => undefined,
         profilesUpdateByName: async () => undefined,
+        profilesSaveUnreadChats: async () => undefined,
       }))
       const { cloakSeed, cloakPlatform, migrateFirefoxProfile } = await import('./server/browser/cloak.ts')
       assert.equal(cloakPlatform('mac'), 'macos')

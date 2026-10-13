@@ -46,13 +46,7 @@ async fn content_recovery_failure_does_not_block_periodic_account_setup() {
         super::super::processes::Processes::new(api.clone(), root.path().into()),
         root.path().into(),
     );
-    let mobile = Service::new(
-        api.clone(),
-        Arc::new(crate::uploads::Uploads {
-            entries: Default::default(),
-            slots: Arc::new(Semaphore::new(4)),
-        }),
-    );
+    let mobile = Service::new(api.clone());
     let mut accounts = Accounts::new(
         api.clone(),
         profiles,
@@ -132,13 +126,7 @@ async fn content_recovery_queues_only_orphans_and_cleanup_retries_failed_acknowl
         super::super::processes::Processes::new(api.clone(), root.path().into()),
         root.path().into(),
     );
-    let mobile = Service::new(
-        api.clone(),
-        Arc::new(crate::uploads::Uploads {
-            entries: Default::default(),
-            slots: Arc::new(Semaphore::new(4)),
-        }),
-    );
+    let mobile = Service::new(api.clone());
     let accounts = Accounts::new(
         api.clone(),
         profiles,
@@ -190,13 +178,7 @@ async fn native_shutdown_drains_inline_browser_logins_before_returning() {
         super::super::processes::Processes::new(api.clone(), root.path().into()),
         root.path().into(),
     );
-    let mobile = Service::new(
-        api.clone(),
-        Arc::new(crate::uploads::Uploads {
-            entries: Default::default(),
-            slots: Arc::new(Semaphore::new(4)),
-        }),
-    );
+    let mobile = Service::new(api.clone());
     let accounts = Accounts::new(
         api.clone(),
         profiles,
@@ -345,7 +327,7 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
                     "/api/profiles/by-id"=>Json(json!({"id":"p","name":"changed_name"})).into_response(),
                     "/api/lists"=>Json(json!([{"id":"model","usernames":["changed_name"]}])).into_response(),
                     "/api/routines/ready"=>Json(json!(true)).into_response(),
-                    "/api/chat/context"=>Json(json!({"connected":true,"token":"token","state":Service::fixture_session(),"profile":{"id":"p"}})).into_response(),
+                    "/api/mobile/context"=>Json(json!({"connected":true,"token":"token","state":Service::fixture_session(),"profile":{"id":"p"}})).into_response(),
                     "/api/ig-accounts-store"=> {
                         let body=crate::test_support::body(request).await;
                         let value=match profiles::text(&body,"operation") {
@@ -379,14 +361,7 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
         api.convex_url = fixture.url.clone();
         api.key = "fixture".into();
         let api = Arc::new(api);
-        let mut mobile = Service::fixture(
-            api.clone(),
-            Arc::new(crate::uploads::Uploads {
-                entries: Default::default(),
-                slots: Arc::new(Semaphore::new(4)),
-            }),
-            mobile.url.clone(),
-        );
+        let mut mobile = Service::fixture(api.clone(), mobile.url.clone());
         if ["paused during setup", "hourly request limit"].contains(&outcome) {
             Arc::get_mut(&mut mobile).unwrap().request_budget_enabled = true;
         }
@@ -592,13 +567,7 @@ async fn login_claims_wait_for_cleanup_and_distinct_rejections_invalidate_creden
             super::super::processes::Processes::new(api.clone(), root.path().into()),
             root.path().into(),
         );
-        let mobile = Service::new(
-            api.clone(),
-            Arc::new(crate::uploads::Uploads {
-                entries: Default::default(),
-                slots: Arc::new(Semaphore::new(4)),
-            }),
-        );
+        let mobile = Service::new(api.clone());
         let mut accounts = Accounts::new(
             api.clone(),
             profiles,
@@ -699,13 +668,7 @@ async fn enrollment_skips_an_unreadable_account_without_blocking_the_next_profil
         super::super::processes::Processes::new(api.clone(), root.path().into()),
         root.path().into(),
     );
-    let mobile = Service::new(
-        api.clone(),
-        Arc::new(crate::uploads::Uploads {
-            entries: Default::default(),
-            slots: Arc::new(Semaphore::new(4)),
-        }),
-    );
+    let mobile = Service::new(api.clone());
     let mut accounts = Accounts::new(
         api.clone(),
         profiles,

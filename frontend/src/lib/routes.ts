@@ -30,9 +30,6 @@ const AutomationsPage = lazy(() =>
 const LoginPage = lazy(() =>
   import('@/pages/LoginPage').then((module) => ({ default: module.LoginPage })),
 )
-const ChatPage = lazy(() =>
-  import('@/features/chat/ChatPage').then((module) => ({ default: module.ChatPage })),
-)
 const IgAccountsPage = lazy(() =>
   import('@/features/ig-accounts/IgAccountsPage').then((module) => ({
     default: module.IgAccountsPage,
@@ -53,7 +50,6 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   '/profiles': { Page: ProfilesPage, breadcrumb: 'Profiles Manager', navId: 'profiles' },
   '/automations': { Page: AutomationsPage, breadcrumb: 'Automations', navId: 'automations' },
   '/scraper': { Page: ScraperPage, breadcrumb: 'Scraper', navId: 'scraper' },
-  '/chat': { Page: ChatPage, breadcrumb: 'Chat', navId: 'chat' },
   '/ig-accounts': { Page: IgAccountsPage, breadcrumb: 'IG Accounts', navId: 'ig_accounts' },
   '/lists': { Page: ListsPage, breadcrumb: 'Models', navId: 'lists' },
   '/proxies': { Page: ProxiesPage, breadcrumb: 'Proxies', navId: 'proxies' },

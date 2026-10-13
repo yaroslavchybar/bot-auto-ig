@@ -14,7 +14,6 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { followAllowance, dayKey, routineLists, profileOutreachRoutes } from "./routinePolicy";
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
 import { leadAvailable, setLeadAvailability } from './leadMemberships';
-import { setChatCounterEnabled } from './chatCache';
 import { isRetryableRoutineIssue, isRoutineLoginIssue, ROUTINE_RETRY_MS, routineRetryState,
 } from './routineErrors';
 
@@ -283,7 +282,6 @@ export const recordSession = internalMutation({
     });
     if (isRoutineLoginIssue(args.issue)) {
       await patchProfile(ctx, args.profileId, { igLoggedIn: false });
-      await setChatCounterEnabled(ctx, args.profileId, false);
     }
   },
 })

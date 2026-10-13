@@ -19,14 +19,10 @@ use std::{
 pub(crate) struct RequestBudget {
     pub api: Arc<Api>,
     pub profile_id: String,
-    pub chat: bool,
 }
 impl RequestBudget {
     pub async fn reserve(&self) -> Result<()> {
-        let mut body = serde_json::json!({"profileId":self.profile_id,"requestId":uuid::Uuid::new_v4().to_string()});
-        if self.chat {
-            body["kind"] = serde_json::json!("chat");
-        }
+        let body = serde_json::json!({"profileId":self.profile_id,"requestId":uuid::Uuid::new_v4().to_string()});
         let result = self
             .api
             .convex_retry(Method::POST, "/api/mobile-requests/reserve", Some(&body))

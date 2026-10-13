@@ -1,7 +1,6 @@
 import type { Id } from './_generated/dataModel'
 import type { MutationCtx } from './_generated/server'
 import { patchProfile } from './workerMetadata'
-import { setChatCounterEnabled } from './chatCache'
 
 /** One pause switch covers browser automation, setup, scraping, and mobile calls. */
 export async function setProfilePaused(
@@ -19,7 +18,6 @@ export async function setProfilePaused(
     .unique()
   if (progress && progress.paused !== paused)
     await ctx.db.patch(progress._id, { paused, updatedAt: Date.now() })
-  await setChatCounterEnabled(ctx, profileId, !paused && profile.igLoggedIn === true)
   if (paused) {
     const sources = await ctx.db
       .query('scrapeSources')

@@ -13,7 +13,6 @@ import {
 import { useAppAuth, useAppUser } from '@/lib/auth'
 import { AUTH_ROUTES } from '@/lib/auth-routing'
 import { env } from '@/lib/env'
-import { clearUserChatCache } from '@/features/chat/cache'
 
 export function UserMenu() {
   const user = useAppUser()
@@ -30,7 +29,6 @@ export function UserMenu() {
 
   const handleSignOut = async () => {
     await signOut()
-    await clearUserChatCache(user.id)
     navigate(AUTH_ROUTES.login, { replace: true })
   }
 

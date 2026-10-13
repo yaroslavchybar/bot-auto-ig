@@ -31,7 +31,7 @@ async function setup(country = 'ua') {
   return { t, profileId, reserve }
 }
 
-test('non-Chat HTTP attempts share ten rolling-hour slots and retries do not double-charge', async () => {
+test('Mobile HTTP attempts share ten rolling-hour slots and retries do not double-charge', async () => {
   const s = await setup()
   const now = Date.now()
   for (let i = 0; i < 10; i++) expect((await s.reserve(`request-${i}`)).allowed).toBe(true)
@@ -44,30 +44,6 @@ test('non-Chat HTTP attempts share ten rolling-hour slots and retries do not dou
   expect((await s.reserve('next-hour')).allowed).toBe(true)
 })
 
-test('Chat ignores the hourly limit, sleep window and missing country without recording requests', async () => {
-  const s = await setup('us')
-  vi.setSystemTime(Date.parse('2026-10-12T16:00:00Z'))
-  for (let i = 0; i < 10; i++) await s.reserve(`mobile-${i}`)
-  const chat = () =>
-    s.t.mutation(internal.mobileRequests.reserve, {
-      profileId: s.profileId,
-      requestId: 'chat',
-      kind: 'chat',
-    })
-  expect((await chat()).allowed).toBe(true)
-  expect(
-    (await s.t.run((ctx) => ctx.db.query('mobileRequestUsage').unique()))?.requests,
-  ).toHaveLength(10)
-  vi.setSystemTime(Date.parse('2026-10-13T07:00:00Z'))
-  expect((await chat()).allowed).toBe(true)
-  await s.t.run(async (ctx) => {
-    const proxy = (await ctx.db.query('proxies').unique())!
-    await ctx.db.patch(proxy._id, { country: 'zz' })
-  })
-  expect((await chat()).allowed).toBe(true)
-  await s.t.run((ctx) => ctx.db.patch(s.profileId, { paused: true }))
-  expect(await chat()).toMatchObject({ allowed: false, reason: 'Profile is paused' })
-})
 
 test('proxy-country local sleep blocks calls without consuming slots', async () => {
   const s = await setup('us')

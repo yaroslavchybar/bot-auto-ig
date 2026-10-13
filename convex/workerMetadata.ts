@@ -31,12 +31,12 @@ export async function syncWorkerProfile(ctx: MutationCtx, profile: Doc<'profiles
   )
     await ctx.db.patch(scraper._id, fields)
 
-  const chat = await ctx.db
+  const mobile = await ctx.db
     .query('chatWorkerMetadata')
     .withIndex('by_profile', (q) => q.eq('profileId', profile._id))
     .unique()
   if (!session || profile.status === 'deleting') {
-    if (chat) await ctx.db.delete(chat._id)
+    if (mobile) await ctx.db.delete(mobile._id)
     return
   }
   const context = {
@@ -48,11 +48,11 @@ export async function syncWorkerProfile(ctx: MutationCtx, profile: Doc<'profiles
     proxy: profile.proxy ?? '',
     proxyType: profile.proxyType ?? '',
   }
-  if (!chat) await ctx.db.insert('chatWorkerMetadata', context)
+  if (!mobile) await ctx.db.insert('chatWorkerMetadata', context)
   else if (
-    Object.entries(context).some(([key, value]) => chat[key as keyof typeof context] !== value)
+    Object.entries(context).some(([key, value]) => mobile[key as keyof typeof context] !== value)
   )
-    await ctx.db.patch(chat._id, context)
+    await ctx.db.patch(mobile._id, context)
 }
 
 const workerFields = new Set([

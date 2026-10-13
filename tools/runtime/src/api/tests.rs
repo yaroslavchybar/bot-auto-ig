@@ -212,18 +212,6 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
                 )
                     .into_response();
             }
-            if path == "/commands/chat.get.archives" {
-                assert_eq!(params, json!({}));
-                return Json(json!([{"profileId":"profile", "threadId":"123"}])).into_response();
-            }
-            if path == "/commands/chat.post.profileId_archive" {
-                assert_eq!(params["profileId"], "profile");
-                assert_eq!(
-                    body(request).await,
-                    json!({"threadId":"123", "archived":true})
-                );
-                return Json(json!([{"profileId":"profile", "threadId":"123"}])).into_response();
-            }
             if path.contains("file-picker") {
                 assert_eq!(request.headers()["x-worker-method"], "POST");
                 let bytes = axum::body::to_bytes(request.into_body(), 100)
@@ -265,27 +253,6 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
         .unwrap();
     assert_eq!(reconnect.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(reconnect.headers()["retry-after"], "60");
-    for method in [Method::GET, Method::POST] {
-        let path = if method == Method::GET {
-            "/api/chat/archives"
-        } else {
-            "/api/chat/profile/archive"
-        };
-        let mut request = client
-            .request(method.clone(), format!("{}{path}", public.url))
-            .header("x-request-id", "fixture-request-123");
-        if method == Method::POST {
-            request = request.json(&json!({
-                "threadId":"123", "archived":true
-            }));
-        }
-        let response = request.send().await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.json::<Value>().await.unwrap(),
-            json!([{"profileId":"profile", "threadId":"123"}])
-        );
-    }
     let profiles: Value = client
         .get(format!("{}/api/profiles/", public.url))
         .send()
@@ -425,9 +392,9 @@ async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
     state.key = "fixture".into();
     let public = Fixture::router(router(Arc::new(state))).await;
     for (method, path) in [
-        (Method::GET, "/api/chat/archives"),
-        (Method::GET, "/api/chat/profile/avatars/42/image"),
-        (Method::POST, "/api/chat/profile/archive"),
+        (Method::GET, "/api/profiles/"),
+        (Method::GET, "/api/displays"),
+        (Method::POST, "/api/profiles/Profile/start"),
     ] {
         for token in [None, Some("invalid-session"), Some("fixture")] {
             let mut request = client.request(method.clone(), format!("{}{path}", public.url));
@@ -479,16 +446,13 @@ async fn public_events_are_native_and_filter_topics_without_a_bun_worker() {
     let state = Arc::new(state);
     let public = Fixture::router(router(state.clone())).await;
     let (mut socket, _) = tokio_tungstenite::connect_async(format!(
-        "{}/ws?topic=chat",
+        "{}/ws?topic=displays",
         public.url.replace("http://", "ws://")
     ))
     .await
     .unwrap();
-    state
-        .events
-        .send(json!({"type":"display_allocated"}))
-        .unwrap();
-    let payload = json!({"type":"chat_changed","profileId":"p"});
+    state.events.send(json!({"type":"task_started"})).unwrap();
+    let payload = json!({"type":"profile_completed","profileId":"p"});
     state.events.send(payload.clone()).unwrap();
     use futures_util::StreamExt;
     let received = tokio::time::timeout(Duration::from_secs(1), async {

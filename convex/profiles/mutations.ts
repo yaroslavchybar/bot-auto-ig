@@ -4,12 +4,23 @@ import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
 import { DomainError } from '../errors';
 import { proxyKey, proxyPurpose, resolveMaxProfiles } from '../proxies';
-import { clearChatCounter, setChatCounterEnabled } from '../chatCache'
 import { setProfilePaused } from '../profilePause'
 
 export const setPaused = mutation({
   args: { profileId: v.id('profiles'), paused: v.boolean() },
   handler: async (ctx, { profileId, paused }) => setProfilePaused(ctx, profileId, paused),
+})
+
+export const saveUnreadChatsInternal = internalMutation({
+  args: { profileId: v.id('profiles'), count: v.number(), checkedAt: v.number() },
+  handler: async (ctx, { profileId, count, checkedAt }) => {
+    if (!Number.isSafeInteger(count) || count < 0 || count > 1_000_000
+      || !Number.isSafeInteger(checkedAt) || checkedAt < 0 || checkedAt > Date.now() + 60_000)
+      throw new DomainError('VALIDATION', 'Invalid unread chat count')
+    const profile = await ctx.db.get(profileId)
+    if (!profile || profile.status === 'deleting' || (profile.unreadChatsCheckedAt ?? -1) > checkedAt) return
+    await ctx.db.patch(profileId, { unreadChatCount: count, unreadChatsCheckedAt: checkedAt })
+  },
 })
 
 export const setIgState = mutation({
@@ -27,8 +38,6 @@ export const setIgState = mutation({
       )
     )
       await patchProfile(ctx, profileId, state)
-    if (state.igLoggedIn !== undefined)
-      await setChatCounterEnabled(ctx, profileId, state.igLoggedIn)
   },
 })
 
@@ -52,11 +61,10 @@ export const setIgStateInternal = internalMutation({
       Object.entries(patch).some(([key, value]) => profile[key as keyof typeof profile] !== value)
     )
       await patchProfile(ctx, profileId, patch)
-    if (igLoggedIn !== undefined) await setChatCounterEnabled(ctx, profileId, igLoggedIn)
   },
 })
 
-export const saveChatSessionInternal = internalMutation({
+export const saveMobileSessionInternal = internalMutation({
   args: {
     profileId: v.id('profiles'),
     storageId: v.id('_storage'),
@@ -73,34 +81,23 @@ export const saveChatSessionInternal = internalMutation({
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .first()
     if (expectedToken !== undefined && existing?.token !== expectedToken)
-      throw new Error('Chat session changed')
-    if (!existing || existing.token !== token) await clearChatCounter(ctx, profileId)
+      throw new Error('Mobile session changed')
     if (existing) {
       await ctx.db.patch(existing._id, {
         storageId,
         token,
         sessionVersion,
         reconnectRequired,
-        viewerId: undefined,
-        inboxSyncedAt: undefined,
-        inboxThreadIds: undefined,
-        unreadCount: undefined,
       })
       if (existing.storageId !== storageId) await ctx.storage.delete(existing.storageId)
     } else await ctx.db.insert('chatSessions', { profileId, storageId, token, sessionVersion, reconnectRequired })
-    const membership = await ctx.db
-      .query('chatMemberships')
-      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-      .first()
-    if (!membership) await ctx.db.insert('chatMemberships', { profileId })
     await syncWorkerProfile(ctx, profile)
   },
 })
 
-export const deleteChatSessionInternal = internalMutation({
+export const deleteMobileSessionInternal = internalMutation({
   args: { profileId: v.id('profiles') },
   handler: async (ctx, { profileId }) => {
-    await clearChatCounter(ctx, profileId)
     const existing = await ctx.db
       .query('chatSessions')
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
@@ -109,11 +106,6 @@ export const deleteChatSessionInternal = internalMutation({
       await ctx.storage.delete(existing.storageId)
       await ctx.db.delete(existing._id)
     }
-    for (const row of await ctx.db
-      .query('chatMemberships')
-      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-      .collect())
-      await ctx.db.delete(row._id)
     const profile = await ctx.db.get(profileId)
     if (profile) await syncWorkerProfile(ctx, profile)
   },
@@ -128,7 +120,6 @@ export const beginDeleteInternal = internalMutation({
       .first()
     if (!profile) return null
     await patchProfile(ctx, profile._id, { status: 'deleting' })
-    await setChatCounterEnabled(ctx, profile._id, false)
     return { ...profile, status: 'deleting' }
   },
 })

@@ -7,6 +7,8 @@ export type ProfileRecord = {
   name: string
   igLoggedIn?: boolean
   outreachReady?: boolean
+  unreadChatCount?: number
+  unreadChatsCheckedAt?: number
   createdAt?: number
   proxy?: string
   proxyType?: string
@@ -35,7 +37,7 @@ export const ACTIVITY_IDS = [
 ] as const
 export type ActivityId = (typeof ACTIVITY_IDS)[number]
 
-export type SocketTopic = 'all' | 'displays' | 'chat'
+export type SocketTopic = 'all' | 'displays'
 
 export type WebSocketEventType =
   | 'status'
@@ -53,7 +55,6 @@ export type WebSocketEventType =
   | 'worker_waiting'
   | 'display_allocated'
   | 'display_released'
-  | 'chat_changed'
 
 type EventFields = {
   dueAt?: number

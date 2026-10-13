@@ -14,7 +14,7 @@ test('quota and cookies cannot change chat metadata, while proxy, login and sess
   const profileId = profile!._id
   await t.mutation(api.profiles.mutations.setIgState, { profileId, igLoggedIn: true })
   const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['session'])))
-  await t.mutation(internal.profiles.mutations.saveChatSessionInternal, {
+  await t.mutation(internal.profiles.mutations.saveMobileSessionInternal, {
     profileId,
     storageId,
     token: 'token',
@@ -31,7 +31,7 @@ test('quota and cookies cannot change chat metadata, while proxy, login and sess
     proxy: 'new:8080',
     enabled: false,
   })
-  await t.mutation(internal.profiles.mutations.deleteChatSessionInternal, { profileId })
+  await t.mutation(internal.profiles.mutations.deleteMobileSessionInternal, { profileId })
   expect(await t.run((ctx) => ctx.db.query('chatWorkerMetadata').unique())).toBeNull()
   expect(await t.run((ctx) => ctx.db.query('scraperProfiles').unique())).toMatchObject({
     scraperReady: false,

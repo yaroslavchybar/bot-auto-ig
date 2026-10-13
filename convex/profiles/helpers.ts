@@ -1,6 +1,4 @@
 import { DomainError } from '../errors';
-import { clearChatCounter } from '../chatCache'
-import { clearProfileChatArchives } from '../chatArchives'
 import { syncProxyUsage, clearProxyUsage } from '../proxyUsage'
 import { patchProfile, syncWorkerProfile, clearWorkerProfile } from '../workerMetadata'
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
@@ -348,21 +346,14 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
     .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
     .collect())
     await ctx.db.delete(assignment._id)
-  await clearChatCounter(ctx, existing._id)
-  await clearProfileChatArchives(ctx, existing._id)
-  const chat = await ctx.db
+  const session = await ctx.db
     .query('chatSessions')
     .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
     .first()
-  if (chat) {
-    await ctx.storage.delete(chat.storageId)
-    await ctx.db.delete(chat._id)
+  if (session) {
+    await ctx.storage.delete(session.storageId)
+    await ctx.db.delete(session._id)
   }
-  for (const membership of await ctx.db
-    .query('chatMemberships')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
-    .collect())
-    await ctx.db.delete(membership._id)
   await releaseIgAccount(ctx, existing._id)
   const setup = await ctx.db
     .query('modelSetupStates')
@@ -385,21 +376,14 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
     .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
     .collect())
     await ctx.db.delete(assignment._id)
-  await clearChatCounter(ctx, profileId)
-  await clearProfileChatArchives(ctx, profileId)
-  const chat = await ctx.db
+  const session = await ctx.db
     .query('chatSessions')
     .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
     .first()
-  if (chat) {
-    await ctx.storage.delete(chat.storageId)
-    await ctx.db.delete(chat._id)
+  if (session) {
+    await ctx.storage.delete(session.storageId)
+    await ctx.db.delete(session._id)
   }
-  for (const membership of await ctx.db
-    .query('chatMemberships')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
-    .collect())
-    await ctx.db.delete(membership._id)
   await releaseIgAccount(ctx, profileId)
   const setup = await ctx.db
     .query('modelSetupStates')

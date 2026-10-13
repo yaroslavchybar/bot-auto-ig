@@ -51,9 +51,6 @@ Image output is intentionally changed, so the two encoders are not bit-identical
   read buffers and awaited writes with timeouts.
 - Routine workers: at most `AUTOMATION_MAX_CONCURRENCY`, default three. Convex
   subscriptions and readiness calculations are native; Rust timers wake resting accounts.
-- Chat: Rust owns SQLite, inbox/thread handlers, reconciliation, background checks,
-  and events. Four chat commands run at once, with one lock per profile. Durable
-  cache bounds and freshness windows are described in [chat-caching.md](chat-caching.md).
 - Content: one native manifest owner serializes assignments from API and browser
   workers. Writes replace manifests atomically; repeated allocations reuse their
   existing assignment. Thumbnail decoding is serialized and cached on disk.
@@ -85,7 +82,7 @@ HTTP clients already reuse their connection pools, as recommended by
 [reqwest](https://docs.rs/reqwest/latest/reqwest/struct.Client.html).
 
 Mobile commands fetch the saved session and current proxy configuration together
-through the authenticated `/api/chat/context` endpoint. One Convex query reads both
+through the authenticated `/api/mobile/context` endpoint. One Convex query reads both
 records in the same snapshot, and the response includes only the proxy fields needed
 by the transport. Session load/status/logout keep their existing single-request paths.
 The existing deployment workflow updates Convex before starting the new runtime.
@@ -130,7 +127,7 @@ SOCKS connections and remote DNS, messaging, profile edits, streaming uploads,
 scraper fallbacks/checkpoints, Telegram sessions, and public HTTP/WebSocket routing.
 Live Instagram behavior and VPS memory have not been measured for this migration.
 React, Convex functions and Playwright browser actions remain TypeScript.
-Content, chat, worker supervision, desktop previews, profile/account services,
+Content, worker supervision, desktop previews, profile/account services,
 login/model coordination, proxy checks, clipboard and upload forwarding run in Rust.
 Portable tests and Linux
 cross-compilation cover the migration; live Linux desktop capture still requires

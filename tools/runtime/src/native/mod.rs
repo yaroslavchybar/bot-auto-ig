@@ -1,5 +1,4 @@
 pub mod accounts;
-pub mod chat;
 pub mod content;
 pub mod coordination;
 pub mod displays;
@@ -26,7 +25,6 @@ use std::{collections::HashMap, sync::Arc};
 pub struct Native {
     pub api: Arc<api::Api>,
     pub content: Arc<content::Content>,
-    pub chat: Arc<chat::Chat>,
     pub processes: Arc<processes::Processes>,
     pub displays: Arc<displays::Displays>,
     pub subscriptions: Arc<subscriptions::Subscriptions>,
@@ -46,11 +44,6 @@ impl Native {
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| root.join("data/model-content")),
         );
-        let chat = chat::Chat::new(
-            api.clone(),
-            mobile.clone(),
-            &root.join("data/chat-cache/cache.sqlite"),
-        )?;
         let processes = processes::Processes::new(api.clone(), root.clone());
         let displays = displays::Displays::new(api.clone(), processes.clone());
         let subscriptions = subscriptions::Subscriptions::new(api.clone());
@@ -58,7 +51,7 @@ impl Native {
         let accounts = accounts::Accounts::new(
             api.clone(),
             profiles.clone(),
-            mobile,
+            mobile.clone(),
             content.clone(),
             subscriptions.clone(),
         );
@@ -66,13 +59,12 @@ impl Native {
             api.clone(),
             subscriptions.clone(),
             processes.clone(),
-            chat.clone(),
+            mobile,
             scraper,
         );
         Ok(Arc::new(Self {
             api,
             content,
-            chat,
             processes,
             displays,
             subscriptions,
@@ -82,8 +74,7 @@ impl Native {
         }))
     }
     pub fn handles(operation: &str) -> bool {
-        operation.starts_with("chat.")
-            || operation.contains("models_modelId_content")
+        operation.contains("models_modelId_content")
             || operation.starts_with("automations.")
             || operation.starts_with("profiles.")
             || operation.starts_with("ig-accounts.")
@@ -121,9 +112,6 @@ impl Native {
         params: &HashMap<String, String>,
         request: Request,
     ) -> Response {
-        if operation.starts_with("chat.") {
-            return self.chat.public(operation, params, request).await;
-        }
         match self.handle(operation, params, request).await {
             Ok(response) => response,
             Err(error) => error.into_response(),
@@ -279,7 +267,6 @@ impl Native {
 pub fn router(state: Arc<Native>) -> Router {
     Router::new()
         .route("/content/{action}", post(content_command))
-        .route("/chat/clear", post(clear_chat))
         .route("/processes/{action}", post(process_command))
         .route("/coordination/start", post(start_coordination))
         .route("/profiles/{action}", post(profile_command))
@@ -339,16 +326,6 @@ async fn run_content_command(
         _ => return Err(Failure::missing("Unknown content operation")),
     };
     Ok(Json(value))
-}
-async fn clear_chat(
-    State(state): State<Arc<Native>>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>> {
-    state
-        .chat
-        .clear(body["profileId"].as_str().unwrap_or(""))
-        .await?;
-    Ok(Json(json!({"ok": true})))
 }
 async fn process_command(
     State(state): State<Arc<Native>>,
@@ -519,7 +496,7 @@ impl From<std::io::Error> for Failure {
 }
 impl From<rusqlite::Error> for Failure {
     fn from(_: rusqlite::Error) -> Self {
-        Self::unavailable("Chat storage unavailable")
+        Self::unavailable("Storage unavailable")
     }
 }
 impl From<serde_json::Error> for Failure {

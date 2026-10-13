@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -141,54 +141,6 @@ test('native spoofer preserves responses, EXIF, pixel uniqueness and safe correl
     await fs.rm(root, { recursive: true, force: true })
   }
 }, 60_000)
-
-test('native helper stages uploads and deletes their files', async () => {
-  const service = await start('ig-runtime', 'helper', { RUNTIME_PORT: String(await freePort()) })
-  const post = (route: string, body: BodyInit, json = false) =>
-    fetch(service.url + route, {
-      method: 'POST',
-      headers: { ...service.headers, ...(json ? { 'Content-Type': 'application/json' } : {}) },
-      body,
-    })
-  try {
-    const response = await post('/uploads?kind=photo', new Uint8Array([255, 216, 255, 217]))
-    const file = (await response.json()) as { id: string; path: string; size: number }
-    expect(response.status).toBe(200)
-    expect(file.size).toBe(4)
-    expect(await fs.readFile(file.path)).toEqual(Buffer.from([255, 216, 255, 217]))
-    await fetch(service.url + '/uploads/' + file.id, { method: 'DELETE', headers: service.headers })
-    expect(await fs.stat(file.path).catch(() => null)).toBeNull()
-    expect((await post('/uploads?kind=photo', 'invalid')).status).toBe(422)
-    expect((await post('/uploads?kind=video', new Uint8Array(25_000_001))).status).toBe(413)
-    if (spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0) {
-      const audio = spawnSync('ffmpeg', [
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-f',
-        'lavfi',
-        '-i',
-        'anullsrc=channel_layout=mono:sample_rate=44100',
-        '-t',
-        '0.1',
-        '-f',
-        'mp3',
-        'pipe:1',
-      ])
-      expect(audio.status).toBe(0)
-      const voice = (await (await post('/uploads?kind=voice', audio.stdout)).json()) as {
-        id: string
-        path: string
-        voiceConverted: boolean
-      }
-      expect(voice.voiceConverted).toBe(true)
-      expect((await fs.readFile(voice.path)).toString('ascii', 4, 8)).toBe('ftyp')
-      await fetch(service.url + '/uploads/' + voice.id, { method: 'DELETE', headers: service.headers })
-    }
-  } finally {
-    await service.stop()
-  }
-}, 30_000)
 
 test('Rust gateway relays binary RFB data in both directions and releases disconnected sockets', async () => {
   let port = 5901

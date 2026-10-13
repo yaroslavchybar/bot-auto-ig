@@ -33,6 +33,7 @@ import {
   Cpu,
   Globe,
   Link,
+  MessageSquare,
 } from 'lucide-react'
 import type { Profile } from '../types'
 import { cn } from '@/lib/utils'
@@ -193,6 +194,7 @@ function ProfileMobileCard({
           <h3 className="truncate text-base font-semibold text-ink">{profile.name}</h3>
         </div>
         <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+          <UnreadChatsBadge profile={profile} />
           <IgStateToggles profile={profile} />
           <ProfileActionsMenu
             profile={profile}
@@ -304,6 +306,7 @@ function ProfileDesktopRow({
       </TableCell>
       <TableCell className="pr-4 text-right">
         <div className="flex items-center justify-end gap-2">
+          <UnreadChatsBadge profile={profile} />
           <IgStateToggles profile={profile} />
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
             <Button
@@ -336,6 +339,19 @@ function ProfileDesktopRow({
         </div>
       </TableCell>
     </TableRow>
+  )
+}
+
+function UnreadChatsBadge({ profile }: { profile: Profile }) {
+  const checked = profile.unreadChatsCheckedAt
+  const label = profile.unreadChatCount === undefined ? 'Unread chats not checked yet' : `${profile.unreadChatCount} unread chats`
+  return (
+    <span className={cn('inline-flex items-center gap-1 text-xs tabular-nums',
+      profile.unreadChatCount ? 'text-status-success' : 'text-muted-copy')}
+      aria-label={label} title={`${label}${checked === undefined ? '' : ` · Checked ${new Date(checked).toLocaleString()}`}`}>
+      <MessageSquare className="h-4 w-4" aria-hidden="true" />
+      {profile.unreadChatCount ?? '—'}
+    </span>
   )
 }
 

@@ -24,7 +24,6 @@ export function registerScraperRoutes(http: HttpRouter): void {
         await ctx.runMutation(internal.mobileRequests.reserve, {
           profileId: body.profileId,
           requestId: body.requestId,
-          kind: body.kind,
         }),
       )
     }),

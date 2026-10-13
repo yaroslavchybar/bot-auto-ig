@@ -1,9 +1,9 @@
 import { createHmac } from 'node:crypto';
 
-export type ChatCredentials = { username: string; password: string; authenticatorKey: string };
+export type IgCredentials = { username: string; password: string; authenticatorKey: string };
 
 /** One pasted line: username:password:base32 authenticator key. */
-export function parseChatCredentials(line: unknown): ChatCredentials | null {
+export function parseIgCredentials(line: unknown): IgCredentials | null {
   if (typeof line !== 'string' || line.length > 1200) return null;
   const first = line.indexOf(':');
   const last = line.lastIndexOf(':');

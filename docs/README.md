@@ -2,7 +2,7 @@
 
 Account onboarding, model content, and warmup: [ig-accounts.md](ig-accounts.md).
 
-Chat storage, device sharing, polling, and retirement cleanup: [chat-caching.md](chat-caching.md).
+Profile unread chat counts come from Instagram’s browser badge at session close. Mobile login storage remains shared by scraping and setup.
 
 Browser caching, memory changes, and measurements: [frontend-performance.md](frontend-performance.md).
 Profiles, proxies, and account lists use 50-row pages with server-side search.
@@ -27,8 +27,8 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
   `vnc`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Axum handles the public API.
-- `tools/runtime/`: Rust/Axum public REST (`/api/profiles|automations|displays|lead-lists|chat|ig-accounts|health`), Telegram authentication, public WebSocket (`/ws`), VNC gateway, upload staging, custom Instagram mobile client, and scraper HTTP/batching/enrichment.
-  `src/native/` owns model content and assignments, chat SQLite caching and synchronization,
+- `tools/runtime/`: Rust/Axum public REST (`/api/profiles|automations|displays|lead-lists|ig-accounts|health`), Telegram authentication, public WebSocket (`/ws`), VNC gateway, custom Instagram mobile client, and scraper HTTP/batching/enrichment.
+  `src/native/` owns model content and assignments,
   worker supervision, browser slots, display lifecycles, native X11/JPEG previews,
   routine scheduling, profile locks and folder maintenance, account services, login/model
   setup coordination, proxy probing, clipboard ownership and file-picker forwarding.
@@ -277,7 +277,7 @@ dev-login button (`POST /api/auth/dev-login`, non-production only) or
 Secrets live in `.env.local`, never committed. Key vars: `VITE_CONVEX_URL`
 (convex dev manages it; server also accepts `CONVEX_URL`), `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_ADMIN_ID`,
 `INTERNAL_API_KEY` (server→Convex calls).
-The scraper uses an existing Instagram Chat mobile session to get recent posts.
+The scraper uses an existing Instagram mobile session to get recent posts.
 `APIFY_API_KEY` enables fallback when mobile post discovery is unavailable.
 The scraper calls Apify's HTTP endpoint directly with `reqwest`; it does not use
 `apify-client-rust`.
@@ -298,7 +298,7 @@ there is no periodic idle claim polling. Fenced leases recover interrupted work
 and reject stale writes after settings changes, pauses, or deletion. A local
 SQLite cache remembers acknowledged list memberships and skips repeated writes.
 Leads are stored once by Instagram ID, with indexed rows linking them to lists.
-Post likers use the saved mobile Chat session first, matching the local
+Post likers use the saved mobile session first, matching the local
 instagrapi `media_likers` request and full media ID normalization. Browser session
 cookies are loaded only as a fallback when mobile scraping fails or is unavailable.
 A mobile or browser 429 pauses the account without trying another session.
@@ -316,9 +316,8 @@ There is no background enrichment or separate profile-picture description call.
 Screening decisions must reach 80% confidence; errors retry after five minutes.
 Only accepted categories receive a sender assignment and consume a follow slot.
 Every mobile session shares a fixed rolling limit of 10 actual Instagram API
-requests per hour across automated login, setup, scraping, metadata, and uploads. User-operated
-Chat calls do not consume this limit or use the sleep window, but still respect profile pause. Failed
-dispatches count; bridge retries do not double-charge. Browser-cookie liker fallback
+requests per hour across automated login, setup, scraping, metadata, and uploads.
+Failed dispatches count; bridge retries do not double-charge. Browser-cookie liker fallback
 shares the same limit. Saving leads consumes no request slots. Usage survives runtime
 restarts and session reconnects. Each session has a stable randomized local wake time
 between 06:00 and 10:00, followed by 16 active hours. The saved proxy country selects

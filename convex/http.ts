@@ -8,7 +8,7 @@ import { registerWarmupRoutes } from './httpRoutes/warmup';
 import { registerRoutineRoutes } from './httpRoutes/routines';
 import { registerScraperRoutes } from './httpRoutes/scraper';
 import { registerLeadListRoutes } from './httpRoutes/leadLists';
-import { registerChatRoutes } from './httpRoutes/chat';
+import { registerMobileRoutes } from './httpRoutes/mobile';
 import { registerIgAccountRoutes } from './httpRoutes/igAccounts';
 
 const http = httpRouter();
@@ -22,7 +22,7 @@ registerWarmupRoutes(http);
 registerRoutineRoutes(http);
 registerScraperRoutes(http);
 registerLeadListRoutes(http);
-registerChatRoutes(http);
+registerMobileRoutes(http);
 registerIgAccountRoutes(http);
 
 export default http;

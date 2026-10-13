@@ -36,6 +36,20 @@ afterEach(async () => {
   mocks.pause.mockReset()
 })
 
+test.each([false, true])('profile unread chat badges show known counts and unknown state on mobile=%s', async mobile => {
+  mocks.mobile = mobile
+  view = mount()
+  await view.render(<ProfilesList profiles={[
+    { id: 'unread', name: 'Unread', unreadChatCount: 8, unreadChatsCheckedAt: 100 },
+    { id: 'read', name: 'Read', unreadChatCount: 0, unreadChatsCheckedAt: 200 },
+    { id: 'unknown', name: 'Unknown' },
+  ]} loading={false} onEdit={() => {}} onDelete={() => {}} onToggleStatus={() => {}} />)
+  expect(view.container.querySelector('[aria-label="8 unread chats"]')?.textContent).toBe('8')
+  expect(view.container.querySelector('[aria-label="0 unread chats"]')?.textContent).toBe('0')
+  expect(view.container.querySelector('[aria-label="Unread chats not checked yet"]')?.textContent).toBe('—')
+  expect(view.container.querySelector('[aria-label="8 unread chats"]')?.getAttribute('title')).toContain('Checked')
+})
+
 test.each([false, true])(
   'profile menus pause and resume on mobile=%s with a visible paused status',
   async (mobile) => {

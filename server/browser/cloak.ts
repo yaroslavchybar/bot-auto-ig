@@ -23,6 +23,7 @@ import {
 import { startFilePicker, pickerSocket } from './filePicker.js'
 import { DISK_CACHE_BYTES, pruneProfileCache } from './profileCache.js'
 import { startDomInspector } from './domInspector.js'
+import { saveUnreadChatsAtClose } from './unreadChats.js'
 import { acquireProfileLock, profileDirectory } from '../profiles/paths.js'
 
 export type BrowserSession = {
@@ -336,6 +337,7 @@ export async function openBrowserSession(
       }
       const errors: unknown[] = []
       const steps = [
+        () => ready && !browserClosed && profile && context ? saveUnreadChatsAtClose(context, profile.id) : undefined,
         () => stopDomInspector?.(),
         () => stopDesktopPointer?.(),
         () => stopFilePicker?.(),

@@ -10,7 +10,7 @@ The sidebar and header stay mounted during protected-page navigation. Hashed Jav
 - Profile lists omit cookies and browser sessions. Editing loads the full selected profile.
 - Images load near the viewport, use disk-cached 512px thumbnails, and release image blobs off screen or in hidden tabs. Original uploads are unchanged. Rust serializes thumbnail decoding and bounds decoder memory.
 - VNC header and page share their sessions request and poller. Off-screen previews release their images and stop polling.
-- Shared clocks and chat polling pause in hidden tabs. Database connections close when the protected UI unmounts.
+- Shared clocks pause in hidden tabs. Database connections close when the protected UI unmounts.
 - Model cards and dialogs share content metadata while the models page is open. Updates reload the affected model only. Detail tabs mount on first use and retain unsaved drafts; hidden profile tabs stop their query.
 - Login loads the protected shell separately. Monitoring loads only when configured. Tailwind scans the frontend sources explicitly, following its [source detection documentation](https://tailwindcss.com/docs/detecting-classes-in-source-files).
 

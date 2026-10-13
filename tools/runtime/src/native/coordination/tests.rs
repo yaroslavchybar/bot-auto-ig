@@ -92,23 +92,13 @@ async fn yielded_routines_reload_all_runtime_pages_without_subscription_changes(
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
     let api = Arc::new(api);
-    let uploads = Arc::new(crate::uploads::Uploads {
-        entries: Default::default(),
-        slots: Arc::new(tokio::sync::Semaphore::new(4)),
-    });
-    let mobile = crate::instagram::Service::new(api.clone(), uploads);
-    let chat = Chat::new(
-        api.clone(),
-        mobile.clone(),
-        &root.path().join("cache.sqlite"),
-    )
-    .unwrap();
+    let mobile = crate::instagram::Service::new(api.clone());
     let processes = Processes::new(api.clone(), root.path().into());
     let coordination = Coordination::new(
         api.clone(),
         Subscriptions::new(api.clone()),
         processes.clone(),
-        chat,
+        mobile.clone(),
         scraper::Scraper::start(api, mobile).unwrap(),
     );
     let run = coordination.clone();
@@ -205,23 +195,13 @@ async fn subscriptions_and_deadlines_start_routines_retry_capacity_and_stop_disa
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
     let api = Arc::new(api);
-    let uploads = Arc::new(crate::uploads::Uploads {
-        entries: Default::default(),
-        slots: Arc::new(tokio::sync::Semaphore::new(4)),
-    });
-    let mobile = crate::instagram::Service::new(api.clone(), uploads);
-    let chat = Chat::new(
-        api.clone(),
-        mobile.clone(),
-        &root.path().join("cache.sqlite"),
-    )
-    .unwrap();
+    let mobile = crate::instagram::Service::new(api.clone());
     let processes = Processes::new(api.clone(), root.path().into());
     let coordination = Coordination::new(
         api.clone(),
         Subscriptions::new(api.clone()),
         processes.clone(),
-        chat,
+        mobile.clone(),
         scraper::Scraper::start(api, mobile).unwrap(),
     );
     let run = coordination.clone();

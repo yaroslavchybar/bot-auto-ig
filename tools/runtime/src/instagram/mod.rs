@@ -9,10 +9,7 @@ mod session;
 mod tests;
 mod transport;
 
-use crate::{
-    api::{self, Api},
-    uploads::Uploads,
-};
+use crate::api::{self, Api};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, Method, StatusCode},
@@ -31,23 +28,6 @@ use tokio::sync::Mutex;
 pub use transport::client as transport_client;
 pub(crate) use transport::RequestBudget;
 
-/// Only public Instagram image hosts may be used for picture downloads.
-pub fn picture_url(raw: &str) -> Option<String> {
-    let url: reqwest::Url = raw.parse().ok()?;
-    let host = url.host_str()?;
-    if raw.len() > 8192
-        || url.scheme() != "https"
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.port_or_known_default() != Some(443)
-    {
-        return None;
-    }
-    ["fbcdn.net", "cdninstagram.com", "instagram.com"]
-        .iter()
-        .any(|base| host == *base || host.ends_with(&format!(".{base}")))
-        .then(|| url.to_string())
-}
 use transport::{Mobile, Session};
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -169,7 +149,6 @@ struct Entry {
 }
 pub struct Service {
     pub api: Arc<Api>,
-    pub uploads: Arc<Uploads>,
     locks: Mutex<HashMap<String, Arc<Mutex<Entry>>>>,
     contexts: std::sync::RwLock<Option<context::ContextSnapshot>>,
     scraper_blocked: std::sync::RwLock<HashSet<String>>,
@@ -180,8 +159,8 @@ pub struct Service {
 }
 impl Service {
     #[cfg(test)]
-    pub(crate) fn fixture(api: Arc<Api>, uploads: Arc<Uploads>, base: String) -> Arc<Self> {
-        let mut service = Self::new(api, uploads);
+    pub(crate) fn fixture(api: Arc<Api>, base: String) -> Arc<Self> {
+        let mut service = Self::new(api);
         let service_mut = Arc::get_mut(&mut service).unwrap();
         service_mut.base = Some(base);
         service
@@ -196,10 +175,9 @@ impl Service {
         state.authorization = "Bearer fixture".into();
         serde_json::to_string(&state).unwrap()
     }
-    pub fn new(api: Arc<Api>, uploads: Arc<Uploads>) -> Arc<Self> {
+    pub fn new(api: Arc<Api>) -> Arc<Self> {
         Arc::new(Self {
             api,
-            uploads,
             locks: Mutex::new(HashMap::new()),
             contexts: Default::default(),
             scraper_blocked: Default::default(),
@@ -259,12 +237,7 @@ impl Service {
         Ok(entry)
     }
     pub async fn invoke(&self, action: &str, request: &Command) -> Result<Value> {
-        self.invoke_serialized(action, request, false).await
-    }
-
-    /// User-operated Chat bypasses request quotas, but checks pause before every dispatch.
-    pub async fn invoke_chat(&self, action: &str, request: &Command) -> Result<Value> {
-        self.invoke_serialized(action, request, true).await
+        self.invoke_serialized(action, request).await
     }
 
     pub(crate) fn request_budget(&self, profile_id: &str) -> Option<RequestBudget> {
@@ -275,16 +248,10 @@ impl Service {
         Some(RequestBudget {
             api: self.api.clone(),
             profile_id: profile_id.into(),
-            chat: false,
         })
     }
 
-    async fn invoke_serialized(
-        &self,
-        action: &str,
-        request: &Command,
-        chat: bool,
-    ) -> Result<Value> {
+    async fn invoke_serialized(&self, action: &str, request: &Command) -> Result<Value> {
         if request.profile_id.trim().is_empty() || request.profile_id.len() > 128 {
             return Err(Error::new("Profile ID is required"));
         }
@@ -298,7 +265,7 @@ impl Service {
         let query =
             reqwest::Url::parse_with_params("http://local/", [("profileId", &request.profile_id)])
                 .unwrap();
-        let session_path = format!("/api/chat/session?{}", query.query().unwrap());
+        let session_path = format!("/api/mobile/session?{}", query.query().unwrap());
         if action == "logout" {
             let result = self
                 .api
@@ -328,7 +295,7 @@ impl Service {
                     .api
                     .convex(
                         Method::GET,
-                        &format!("/api/chat/context?{}", query.query().unwrap()),
+                        &format!("/api/mobile/context?{}", query.query().unwrap()),
                         None,
                     )
                     .await
@@ -338,7 +305,7 @@ impl Service {
             }
         };
         if action != "login" && (saved["connected"] != true || saved["reconnectRequired"] == true) {
-            return Err(Error::new("Connect this profile to Instagram Chat first"));
+            return Err(Error::new("Connect this profile to Instagram mobile first"));
         }
         let token = if action == "login" {
             uuid::Uuid::new_v4().to_string()
@@ -351,14 +318,14 @@ impl Service {
                 .as_ref()
                 .is_some_and(|expected| *expected != token)
         {
-            return Err(Error::new("Chat session was logged out"));
+            return Err(Error::new("Mobile session was logged out"));
         }
         let state = if saved["connected"] == true {
             Session::from_saved(saved["state"].as_str().unwrap_or(""))?
         } else if action == "login" {
             new_session(&request.profile_id, &string(&request.args["username"]))
         } else {
-            return Err(Error::new("Connect this profile to Instagram Chat first"));
+            return Err(Error::new("Connect this profile to Instagram mobile first"));
         };
         if action == "load" {
             let viewer = state.viewer_id()?;
@@ -369,7 +336,7 @@ impl Service {
                 let body = json!({"profileId":request.profile_id,"state":serde_json::to_string(&state).unwrap(),"token":token,"expectedToken":token});
                 let result = self
                     .api
-                    .convex(Method::POST, "/api/chat/session", Some(&body))
+                    .convex(Method::POST, "/api/mobile/session", Some(&body))
                     .await
                     .map_err(Error::new)?;
                 let state = serde_json::to_string(&state).unwrap();
@@ -400,10 +367,7 @@ impl Service {
         let mut mobile = Mobile {
             state,
             client: entry.client.clone().unwrap(),
-            budget: self.request_budget(&request.profile_id).map(|mut budget| {
-                budget.chat = chat;
-                budget
-            }),
+            budget: self.request_budget(&request.profile_id),
             #[cfg(test)]
             base: self.base.clone(),
         };
@@ -440,7 +404,7 @@ impl Service {
                         let body = json!({"profileId":request.profile_id,"state":previous,"token":token,"expectedToken":token,"reconnectRequired":true});
                         let _ = self
                             .api
-                            .convex(Method::POST, "/api/chat/session", Some(&body))
+                            .convex(Method::POST, "/api/mobile/session", Some(&body))
                             .await;
                         self.invalidate_saved_context(&request.profile_id, &mut entry);
                     }
@@ -460,7 +424,7 @@ impl Service {
             }
             let save = self
                 .api
-                .convex(Method::POST, "/api/chat/session", Some(&body))
+                .convex(Method::POST, "/api/mobile/session", Some(&body))
                 .await;
             if let Ok(result) = &save {
                 self.checkpoint(

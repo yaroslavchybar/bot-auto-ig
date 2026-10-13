@@ -53,7 +53,7 @@ async fn sessions_reuse_reads_and_observe_revisions_proxies_logout_and_disconnec
                         query_version = input["newVersion"].as_u64().unwrap();
                         let modification = &input["modifications"][0];
                         if modification["type"] != "Add" { break; }
-                        assert_eq!(modification["udfPath"],"profiles/queries:chatWorkerContexts");
+                        assert_eq!(modification["udfPath"],"profiles/queries:mobileWorkerContexts");
                         query = modification["queryId"].as_u64();
                         updates.borrow_and_update().clone()
                     }
@@ -112,18 +112,11 @@ async fn sessions_reuse_reads_and_observe_revisions_proxies_logout_and_disconnec
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
     let api = Arc::new(api);
-    let service = Service::fixture(
-        api.clone(),
-        Arc::new(Uploads {
-            entries: Default::default(),
-            slots: Arc::new(tokio::sync::Semaphore::new(4)),
-        }),
-        upstream.url.clone(),
-    );
+    let service = Service::fixture(api.clone(), upstream.url.clone());
     let connection = Subscriptions::new(api);
     let mut subscription = connection
         .subscribe(
-            "profiles/queries:chatWorkerContexts",
+            "profiles/queries:mobileWorkerContexts",
             json!({"subscriptionId":"test"}),
         )
         .await
@@ -132,11 +125,11 @@ async fn sessions_reuse_reads_and_observe_revisions_proxies_logout_and_disconnec
     let mut command = Command {
         profile_id: "p".into(),
         token: None,
-        args: json!({}),
+        args: json!({"mediaId":"4_123"}),
     };
     for _ in 0..5 {
         service.invoke("load", &command).await.unwrap();
-        service.invoke("inbox", &command).await.unwrap();
+        service.invoke("likers", &command).await.unwrap();
     }
     assert_eq!(
         reads.load(Ordering::Relaxed),
@@ -159,7 +152,7 @@ async fn sessions_reuse_reads_and_observe_revisions_proxies_logout_and_disconnec
     metadata.send_replace(json!([next]));
     update(&service, &connection, &mut subscription).await;
     assert!(
-        service.invoke("inbox", &command).await.is_err(),
+        service.invoke("likers", &command).await.is_err(),
         "the latest proxy must be used"
     );
     assert_eq!(
@@ -180,7 +173,7 @@ async fn sessions_reuse_reads_and_observe_revisions_proxies_logout_and_disconnec
     command.token = Some("a".into());
     assert_eq!(
         service.invoke("load", &command).await.unwrap_err().message,
-        "Chat session was logged out"
+        "Mobile session was logged out"
     );
     assert_eq!(reads.load(Ordering::Relaxed), 2);
     command.token = None;
@@ -213,9 +206,9 @@ async fn sessions_reuse_reads_and_observe_revisions_proxies_logout_and_disconnec
         "a checkpoint echo reuses the saved session"
     );
     change_cookie.store(true, Ordering::Relaxed);
-    service.invoke("inbox", &command).await.unwrap();
+    service.invoke("likers", &command).await.unwrap();
     service.invoke("load", &command).await.unwrap();
-    service.invoke("inbox", &command).await.unwrap();
+    service.invoke("likers", &command).await.unwrap();
     assert_eq!(
         writes.load(Ordering::Relaxed),
         1,

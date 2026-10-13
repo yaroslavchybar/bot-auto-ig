@@ -40,7 +40,7 @@ pub async fn upgrade(
     };
     let topic = query
         .get("topic")
-        .filter(|s| ["chat", "displays"].contains(&s.as_str()))
+        .filter(|s| ["displays"].contains(&s.as_str()))
         .cloned()
         .unwrap_or_else(|| "all".into());
     let mut events = state.events.subscribe();
@@ -73,7 +73,6 @@ pub async fn upgrade(
 fn matches_topic(value: &serde_json::Value, topic: &str) -> bool {
     let kind = value["type"].as_str().unwrap_or("");
     topic == "all"
-        || topic == "chat" && kind == "chat_changed"
         || topic == "displays"
             && matches!(
                 kind,
@@ -96,9 +95,7 @@ mod tests {
             "automation_status",
         ] {
             assert!(matches_topic(&json!({"type":kind}), "displays"));
-            assert!(!matches_topic(&json!({"type":kind}), "chat"));
         }
-        assert!(matches_topic(&json!({"type":"chat_changed"}), "chat"));
         assert!(!matches_topic(&json!({"type":"task_started"}), "displays"));
         assert!(matches_topic(&json!({"type":"task_started"}), "all"));
     }

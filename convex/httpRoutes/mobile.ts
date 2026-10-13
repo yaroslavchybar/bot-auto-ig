@@ -15,47 +15,23 @@ const profileIdFrom = (value: unknown): Id<'profiles'> => {
   return value as Id<'profiles'>
 }
 
-export function registerChatRoutes(http: HttpRouter): void {
+export function registerMobileRoutes(http: HttpRouter): void {
   registerPreflight(http, [
-    '/api/chat/session',
-    '/api/chat/context',
-    '/api/chat/count',
-    '/api/chat/archives',
+    '/api/mobile/session',
+    '/api/mobile/context',
   ])
   http.route({
-    path: '/api/chat/archives',
-    method: 'GET',
-    handler: withErrorHandling(async (ctx) =>
-      jsonResponse(await ctx.runQuery(internal.chatArchives.list, {})),
-    ),
-  })
-  http.route({
-    path: '/api/chat/archives',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request)
-      if (typeof body.threadId !== 'string' || typeof body.archived !== 'boolean')
-        throw new ValidationError('Invalid archive status')
-      await ctx.runMutation(internal.chatArchives.setArchived, {
-        profileId: profileIdFrom(body.profileId),
-        threadId: body.threadId,
-        archived: body.archived,
-      })
-      return jsonResponse(await ctx.runQuery(internal.chatArchives.list, {}))
-    }),
-  })
-  http.route({
-    path: '/api/chat/context',
+    path: '/api/mobile/context',
     method: 'GET',
     handler: withErrorHandling(async (ctx, request) => {
       const profileId = profileIdFrom(new URL(request.url).searchParams.get('profileId'))
       const { profile, session } = await ctx.runQuery(
-        internal.profiles.queries.getChatContextInternal,
+        internal.profiles.queries.getMobileContextInternal,
         { profileId },
       )
       if (!profile || !session) return jsonResponse({ connected: false, profile })
       const blob = await ctx.storage.get(session.storageId)
-      if (!blob) throw new Error('Chat session file is missing')
+      if (!blob) throw new Error('Mobile session file is missing')
       return jsonResponse({
         connected: true,
         state: await blob.text(),
@@ -67,35 +43,11 @@ export function registerChatRoutes(http: HttpRouter): void {
     }),
   })
   http.route({
-    path: '/api/chat/count',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request)
-      const profileId = profileIdFrom(body.profileId)
-      if (
-        typeof body.token !== 'string' ||
-        !Array.isArray(body.unreadThreadIds) ||
-        body.unreadThreadIds.length > 200 ||
-        body.unreadThreadIds.some(
-          (id: unknown) => typeof id !== 'string' || !/^\d{1,40}$/.test(id),
-        ) ||
-        new Set(body.unreadThreadIds).size !== body.unreadThreadIds.length
-      )
-        throw new ValidationError('Invalid unread conversation IDs')
-      await ctx.runMutation(internal.chatCache.saveUnreadCount, {
-        profileId,
-        token: body.token,
-        unreadThreadIds: body.unreadThreadIds,
-      })
-      return jsonResponse({ saved: true })
-    }),
-  })
-  http.route({
-    path: '/api/chat/session',
+    path: '/api/mobile/session',
     method: 'GET',
     handler: withErrorHandling(async (ctx, request) => {
       const profileId = profileIdFrom(new URL(request.url).searchParams.get('profileId'))
-      const row = await ctx.runQuery(internal.profiles.queries.getChatSessionInternal, {
+      const row = await ctx.runQuery(internal.profiles.queries.getMobileSessionInternal, {
         profileId,
       })
       if (!row) return jsonResponse({ connected: false })
@@ -105,13 +57,13 @@ export function registerChatRoutes(http: HttpRouter): void {
           reconnectRequired: row.reconnectRequired === true,
         })
       const blob = await ctx.storage.get(row.storageId)
-      if (!blob) throw new Error('Chat session file is missing')
+      if (!blob) throw new Error('Mobile session file is missing')
       return jsonResponse({ connected: true, state: await blob.text(), token: row.token })
     }),
   })
 
   http.route({
-    path: '/api/chat/session',
+    path: '/api/mobile/session',
     method: 'POST',
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request)
@@ -123,7 +75,7 @@ export function registerChatRoutes(http: HttpRouter): void {
         !/^[a-f\d-]{36}$/i.test(body.token) ||
         (body.expectedToken !== undefined && typeof body.expectedToken !== 'string')
       ) {
-        throw new ValidationError('Invalid Chat session')
+        throw new ValidationError('Invalid Mobile session')
       }
       let sessionVersion: 1 | undefined
       try {
@@ -135,7 +87,7 @@ export function registerChatRoutes(http: HttpRouter): void {
         new Blob([body.state], { type: 'application/json' }),
       )
       try {
-        await ctx.runMutation(internal.profiles.mutations.saveChatSessionInternal, {
+        await ctx.runMutation(internal.profiles.mutations.saveMobileSessionInternal, {
           profileId,
           storageId,
           token: body.token,
@@ -152,11 +104,11 @@ export function registerChatRoutes(http: HttpRouter): void {
   })
 
   http.route({
-    path: '/api/chat/session',
+    path: '/api/mobile/session',
     method: 'DELETE',
     handler: withErrorHandling(async (ctx, request) => {
       const profileId = profileIdFrom(new URL(request.url).searchParams.get('profileId'))
-      await ctx.runMutation(internal.profiles.mutations.deleteChatSessionInternal, { profileId })
+      await ctx.runMutation(internal.profiles.mutations.deleteMobileSessionInternal, { profileId })
       return jsonResponse({ connected: false })
     }),
   })

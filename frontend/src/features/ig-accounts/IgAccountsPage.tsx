@@ -340,7 +340,7 @@ export function IgAccountsPage() {
                 disabled={connecting || (!selected && !text.trim())}
                 className="brand-button font-medium"
               >
-                {connecting ? 'Connecting...' : 'Connect Chat'}
+                {connecting ? 'Connecting...' : 'Connect mobile session'}
               </Button>
             </div>
           </div>

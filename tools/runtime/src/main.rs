@@ -5,18 +5,12 @@ mod native;
 mod scraper;
 #[cfg(test)]
 mod test_support;
-mod uploads;
 mod vnc;
 
-use axum::{
-    extract::DefaultBodyLimit,
-    middleware,
-    routing::{get, post},
-    Json, Router,
-};
+use axum::{extract::DefaultBodyLimit, middleware, routing::get, Json, Router};
 use serde_json::json;
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::sync::{Mutex, Semaphore};
+use std::{sync::Arc, time::Duration};
+use tokio::sync::Semaphore;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
@@ -63,11 +57,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "helper".into());
     let api_state = Arc::new(api::Api::from_env()?);
     let app = if mode == "helper" || mode == "supervise" {
-        let uploads = Arc::new(uploads::Uploads {
-            entries: Mutex::new(HashMap::new()),
-            slots: Arc::new(Semaphore::new(4)),
-        });
-        let mobile = instagram::Service::new(api_state.clone(), uploads.clone());
+        let mobile = instagram::Service::new(api_state.clone());
         let scraper = scraper::Scraper::start(api_state.clone(), mobile.clone())?;
         let native = native::Native::new(api_state.clone(), mobile.clone(), scraper.clone())?;
         native.processes.cleanup_orphans().await?;
@@ -76,28 +66,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .set(native.clone())
             .ok()
             .expect("Native services initialize once");
-        let cleanup = uploads.clone();
-        tokio::spawn(async move {
-            let mut timer = tokio::time::interval(Duration::from_secs(60));
-            loop {
-                timer.tick().await;
-                cleanup
-                    .entries
-                    .lock()
-                    .await
-                    .retain(|_, upload| upload.is_live());
-            }
-        });
         Router::new()
             .merge(native::router(native))
             .merge(instagram::router(mobile))
             .merge(scraper::router(scraper))
-            .merge(
-                Router::new()
-                    .route("/uploads", post(uploads::stage))
-                    .route("/uploads/{id}", axum::routing::delete(uploads::remove))
-                    .with_state(uploads),
-            )
     } else {
         return Err("Use helper or supervise".into());
     };
@@ -149,7 +121,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep(Duration::from_secs(2)).await;
         auth.register_webhook().await;
     });
-    uploads::cleanup_orphans(&std::env::temp_dir(), Duration::from_secs(15 * 60)).await?;
     let (stop, mut stopped) = tokio::sync::watch::channel(false);
     let mut gateway_stopped = stopped.clone();
     let mut api_stopped = stopped.clone();

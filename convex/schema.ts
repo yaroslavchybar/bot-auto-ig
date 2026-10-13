@@ -41,7 +41,7 @@ export default defineSchema({
     scrapePostLimit: v.optional(v.number()),
     scrapeIncludePrivate: v.optional(v.boolean()),
   }),
-  // Keep changing counts separate from list metadata subscriptions used by Chat.
+  // Keep changing counts separate from list metadata subscriptions.
   leadListCounts: defineTable({
     listId: v.id('leadLists'),
     count: v.optional(v.number()),
@@ -218,6 +218,8 @@ export default defineSchema({
   }).index('by_model_group', ['modelId', 'group']),
 
   profiles: defineTable({
+    unreadChatCount: v.optional(v.number()),
+    unreadChatsCheckedAt: v.optional(v.number()),
     paused: v.optional(v.boolean()),
     igAccountId: v.optional(v.id('igAccounts')),
     igLoggedIn: v.optional(v.boolean()),
@@ -244,7 +246,6 @@ export default defineSchema({
   })
     .index('by_name', ['name'])
     .index('by_status', ['status'])
-    .index('by_chat', ['igLoggedIn', 'status'])
     .index('by_rename', ['renameFrom'])
     .index('by_created', ['createdAt'])
     .index('by_proxy', ['proxy', 'proxyType']),
@@ -269,6 +270,7 @@ export default defineSchema({
     requests: v.array(v.object({ id: v.string(), at: v.number() })),
     sleepUntil: v.optional(v.number()),
   }).index('by_profile', ['profileId']),
+  // Mobile session/proxy projection; contains no conversation data.
   chatWorkerMetadata: defineTable({
     profileId: v.id('profiles'),
     storageId: v.id('_storage'),
@@ -287,32 +289,14 @@ export default defineSchema({
   })
     .index('by_profile', ['profileId'])
     .index('by_proxy', ['proxy', 'proxyType']),
+  // Mobile credentials retain their existing storage table so connected accounts stay usable.
   chatSessions: defineTable({
     profileId: v.id('profiles'),
     storageId: v.id('_storage'),
     token: v.string(),
     sessionVersion: v.optional(v.literal(1)),
     reconnectRequired: v.optional(v.boolean()),
-    viewerId: v.optional(v.string()),
-    inboxSyncedAt: v.optional(v.number()),
-    inboxThreadIds: v.optional(v.array(v.string())),
-    unreadCount: v.optional(v.number()),
   }).index('by_profile', ['profileId']),
-  chatMemberships: defineTable({
-    profileId: v.id('profiles'),
-  }).index('by_profile', ['profileId']),
-  chatCounters: defineTable({
-    profileId: v.id('profiles'),
-    token: v.string(),
-    unreadCount: v.number(),
-    unreadThreadIds: v.optional(v.array(v.string())),
-    enabled: v.boolean(),
-  }).index('by_profile', ['profileId']),
-  chatArchives: defineTable({
-    profileId: v.id('profiles'),
-    threadId: v.string(),
-  }).index('by_profile_thread', ['profileId', 'threadId']),
-
   scrapeSources: defineTable({
     username: v.string(),
     listId: v.id('leadLists'),

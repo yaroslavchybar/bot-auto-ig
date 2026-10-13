@@ -18,6 +18,8 @@ export function mapProfileRecord(
     | 'renameFrom'
     | 'igLoggedIn'
     | 'outreachReady'
+    | 'unreadChatCount'
+    | 'unreadChatsCheckedAt'
     | 'cookiesJson'
   >,
   options?: { includeCookies?: boolean },
@@ -34,6 +36,8 @@ export function mapProfileRecord(
     renameFrom: record.renameFrom,
     igLoggedIn: record.igLoggedIn,
     outreachReady: record.outreachReady,
+    unreadChatCount: record.unreadChatCount,
+    unreadChatsCheckedAt: record.unreadChatsCheckedAt,
     ...(options?.includeCookies ? { cookiesJson: record.cookiesJson } : {}),
   }
 }

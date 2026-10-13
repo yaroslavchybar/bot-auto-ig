@@ -183,7 +183,7 @@ async fn non_json_errors_preserve_status_and_login_rate_limits_stop_repeated_req
     let convex = Fixture::start(move |request| {
         let observed = observed.clone();
         async move {
-            assert_eq!(request.uri().path(), "/api/chat/context");
+            assert_eq!(request.uri().path(), "/api/mobile/context");
             if request.method() == Method::POST {
                 observed.fetch_add(1, Ordering::SeqCst);
             }
@@ -194,7 +194,7 @@ async fn non_json_errors_preserve_status_and_login_rate_limits_stop_repeated_req
     let mut api = Api::from_env().unwrap();
     api.convex_url = convex.url.clone();
     api.key = "fixture".into();
-    let mut service = Service::new(Arc::new(api), uploads());
+    let mut service = Service::new(Arc::new(api));
     Arc::get_mut(&mut service).unwrap().base = Some(upstream.url.clone());
     let command = Command {
         profile_id: "profile".into(),
@@ -216,7 +216,7 @@ async fn non_json_errors_preserve_status_and_login_rate_limits_stop_repeated_req
 
 #[tokio::test]
 async fn cache_eviction_preserves_live_cooldowns_and_reclaims_expired_ones() {
-    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
+    let service = Service::new(Arc::new(Api::from_env().unwrap()));
     let cooling = service.entry("cooling").await.unwrap();
     cooling.lock().await.login_retry_at_ms = api::now_ms() + 60_000;
     let original = Arc::downgrade(&cooling);
@@ -263,7 +263,7 @@ async fn combined_context_uses_one_read_and_observes_proxy_token_and_profile_cha
         let state = state.clone();
         async move {
             assert_eq!(request.method(), Method::GET);
-            assert_eq!(request.uri().path(), "/api/chat/context");
+            assert_eq!(request.uri().path(), "/api/mobile/context");
             assert_eq!(request.uri().query(), Some("profileId=profile"));
             assert_eq!(request.headers()["authorization"], "Bearer fixture");
             reads.fetch_add(1, Ordering::SeqCst);
@@ -288,23 +288,27 @@ async fn combined_context_uses_one_read_and_observes_proxy_token_and_profile_cha
     let mut api = Api::from_env().unwrap();
     api.convex_url = convex.url.clone();
     api.key = "fixture".into();
-    let mut service = Service::new(Arc::new(api), uploads());
+    let mut service = Service::new(Arc::new(api));
     Arc::get_mut(&mut service).unwrap().base = Some(upstream.url.clone());
     let request = Command {
         profile_id: "profile".into(),
         token: Some("saved-token".into()),
-        args: json!({}),
+        args: json!({"mediaId":"4_123"}),
     };
-    service.invoke("inbox", &request).await.unwrap();
+    service.invoke("likers", &request).await.unwrap();
     assert_eq!(reads.load(Ordering::SeqCst), 1);
     for (next_mode, message) in [
         (1, "Invalid proxy protocol or URL"),
-        (2, "Chat session was logged out"),
+        (2, "Mobile session was logged out"),
         (3, "Profile not found"),
     ] {
         mode.store(next_mode, Ordering::SeqCst);
         assert_eq!(
-            service.invoke("inbox", &request).await.unwrap_err().message,
+            service
+                .invoke("likers", &request)
+                .await
+                .unwrap_err()
+                .message,
             message
         );
         assert_eq!(reads.load(Ordering::SeqCst), next_mode + 1);
@@ -371,7 +375,7 @@ async fn socks_proxy_authenticates_and_resolves_instagram_at_proxy() {
 }
 
 #[tokio::test]
-async fn profile_edits_avatar_and_signed_video_preserve_native_contracts() {
+async fn profile_edits_and_avatar_preserve_native_contracts() {
     let calls = Arc::new(Mutex::new(vec![]));
     let observed = calls.clone();
     let fixture = Fixture::start(move |request| {
@@ -381,12 +385,6 @@ async fn profile_edits_avatar_and_signed_video_preserve_native_contracts() {
             calls.lock().await.push(path.clone());
             if path.ends_with("current_user/") {
                 return Json(json!({"user":{"username":"old","full_name":"Name","email":"keep@example.test","biography":"keep bio"}})).into_response();
-            }
-            if path.contains("messenger_video") {
-                if request.method() == Method::GET { return Json(json!({"offset":0})).into_response(); }
-                assert_eq!(request.headers()["x-entity-type"], "video/mp4");
-                assert_eq!(axum::body::to_bytes(request.into_body(), 100).await.unwrap().as_ref(), b"0000ftyp1234");
-                return Json(json!({"media_id":"987654321"})).into_response();
             }
             if path.contains("rupload_igphoto") {
                 assert!(request.headers().contains_key("x_fb_photo_waterfall_id"));
@@ -411,32 +409,10 @@ async fn profile_edits_avatar_and_signed_video_preserve_native_contracts() {
                 assert_eq!(fields["_csrftoken"], "changed");
                 return Json(json!({"status":"ok"})).into_response();
             }
-            assert!(path.ends_with("raven_attachment/"));
-            let (_, payload) = fields["signed_body"].split_once('.').unwrap();
-            let data: Value = serde_json::from_str(payload).unwrap();
-            assert_eq!(data["thread_ids"], "[123]");
-            assert_eq!(data["attachment_fbid"], "987654321");
-            assert_eq!(data["extra"], json!({"source_width":720,"source_height":1280}));
-            assert_eq!(data["clips"][0]["length"], 2.5);
-            assert_eq!(data["length"], 2.5);
-            Json(json!({"status":"ok","payload":{"item_id":"456"}})).into_response()
+            panic!("Unexpected profile operation: {path}");
         }
     }).await;
-    let uploads = uploads();
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("video");
-    tokio::fs::write(&path, b"0000ftyp1234").await.unwrap();
-    uploads.entries.lock().await.insert(
-        "video".into(),
-        Arc::new(crate::uploads::Upload {
-            _directory: directory,
-            expires: std::time::Instant::now() + std::time::Duration::from_secs(60),
-            path,
-            size: 12,
-            kind: "video".into(),
-        }),
-    );
-    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads);
+    let service = Service::new(Arc::new(Api::from_env().unwrap()));
     let mut mobile = mobile(Some(fixture.url.clone()));
     operations::invoke(
         &service,
@@ -454,110 +430,6 @@ async fn profile_edits_avatar_and_signed_video_preserve_native_contracts() {
     )
     .await
     .unwrap();
-    let before = calls.lock().await.len();
-    assert!(operations::invoke(
-        &service,
-        &mut mobile,
-        "attachment",
-        &json!({"threadId":"123","kind":"video","uploadId":"video","video":{"width":0}})
-    )
-    .await
-    .is_err());
-    assert_eq!(calls.lock().await.len(), before);
-    operations::invoke(&service, &mut mobile, "attachment", &json!({"threadId":"123","kind":"video","uploadId":"video","video":{"width":720,"height":1280,"duration":2.5}})).await.unwrap();
-}
-
-#[tokio::test]
-async fn attachments_stream_native_owned_files_and_validate_resume_offsets() {
-    let calls = Arc::new(Mutex::new(vec![]));
-    let observed = calls.clone();
-    let fixture = Fixture::start(move |request| {
-        let calls = observed.clone();
-        async move {
-            let path = request.uri().path().to_string();
-            assert_eq!(request.headers()["authorization"], "Bearer test");
-            if request.method() == Method::GET {
-                return Json(json!({"offset":if path.contains("messenger_audio"){2}else{99}}))
-                    .into_response();
-            }
-            let offset = request.headers()["offset"]
-                .to_str()
-                .unwrap()
-                .parse::<usize>()
-                .unwrap();
-            let size = request.headers()["x-entity-length"]
-                .to_str()
-                .unwrap()
-                .parse::<usize>()
-                .unwrap();
-            let bytes = axum::body::to_bytes(request.into_body(), 100)
-                .await
-                .unwrap();
-            calls
-                .lock()
-                .await
-                .push((path, offset, size, bytes.to_vec()));
-            Json(json!({"media_id":9007199254740993u64})).into_response()
-        }
-    })
-    .await;
-    let uploads = uploads();
-    for kind in ["photo", "voice", "video"] {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("input");
-        let bytes = if kind == "photo" {
-            vec![255, 216, 255, 217]
-        } else {
-            b"0000ftyp1234".to_vec()
-        };
-        tokio::fs::write(&path, &bytes).await.unwrap();
-        uploads.entries.lock().await.insert(
-            kind.into(),
-            Arc::new(crate::uploads::Upload {
-                _directory: directory,
-                expires: std::time::Instant::now() + std::time::Duration::from_secs(60),
-                path,
-                size: bytes.len() as u64,
-                kind: kind.into(),
-            }),
-        );
-    }
-    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads);
-    let mobile = mobile(Some(fixture.url.clone()));
-    for kind in ["photo", "voice"] {
-        let result = attachments::upload(&service, &mobile, kind, &json!({"uploadId":kind}))
-            .await
-            .unwrap();
-        assert_eq!(result.media_id, "9007199254740993");
-    }
-    let calls = calls.lock().await;
-    assert_eq!(calls[0].1, 0);
-    assert_eq!(calls[0].2, 4);
-    assert_eq!(calls[0].3, vec![255, 216, 255, 217]);
-    assert_eq!(calls[1].1, 2);
-    assert_eq!(calls[1].2, 12);
-    assert_eq!(calls[1].3, b"00ftyp1234");
-    assert!(
-        attachments::upload(&service, &mobile, "video", &json!({"uploadId":"video"}))
-            .await
-            .err()
-            .unwrap()
-            .message
-            .contains("invalid offset")
-    );
-    assert!(
-        attachments::upload(&service, &mobile, "voice", &json!({"uploadId":"photo"}))
-            .await
-            .is_err()
-    );
-    assert!(attachments::upload(
-        &service,
-        &mobile,
-        "photo",
-        &json!({"uploadId":"missing","path":"/private/file"})
-    )
-    .await
-    .is_err());
 }
 
 #[tokio::test]
@@ -621,12 +493,6 @@ fn mobile(base: Option<String>) -> Mobile {
         budget: None,
         base,
     }
-}
-fn uploads() -> Arc<Uploads> {
-    Arc::new(Uploads {
-        entries: Mutex::new(HashMap::new()),
-        slots: Arc::new(tokio::sync::Semaphore::new(4)),
-    })
 }
 
 #[test]
@@ -862,31 +728,6 @@ async fn mobile_transport_persists_response_headers_and_sanitizes_errors() {
     assert_eq!(error.retry_after_ms, 3_600_000);
     assert!(!format!("{error:?}").contains("secret"));
 }
-#[tokio::test]
-async fn malformed_inboxes_return_errors_without_panicking() {
-    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
-    for response in [
-        Value::Null,
-        json!([]),
-        json!({}),
-        json!({"inbox":[]}),
-        json!({"inbox":{"threads":false}}),
-    ] {
-        let fixture = Fixture::start(move |_| {
-            let response = response.clone();
-            async move { Json(response).into_response() }
-        })
-        .await;
-        let mut mobile = mobile(Some(fixture.url.clone()));
-        assert_eq!(
-            operations::invoke(&service, &mut mobile, "inbox", &json!({}))
-                .await
-                .unwrap_err()
-                .message,
-            "Instagram returned no DM inbox"
-        );
-    }
-}
 
 #[tokio::test]
 async fn mobile_likers_follow_instagrapi_media_id_normalization() {
@@ -911,7 +752,7 @@ async fn mobile_likers_follow_instagrapi_media_id_normalization() {
     })
     .await;
     let mut mobile = mobile(Some(fixture.url.clone()));
-    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
+    let service = Service::new(Arc::new(Api::from_env().unwrap()));
     for media_id in ["9007199254740993", "9007199254740993_123"] {
         assert_eq!(
             operations::invoke(
@@ -947,7 +788,7 @@ async fn mobile_likers_follow_instagrapi_media_id_normalization() {
 }
 
 #[tokio::test]
-async fn request_budget_covers_automation_but_exempts_user_chat_and_survives_entry_eviction() {
+async fn request_budget_covers_every_call_and_survives_entry_eviction() {
     let counts = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::<
         String,
         usize,
@@ -960,15 +801,12 @@ async fn request_budget_covers_automation_but_exempts_user_chat_and_survives_ent
         let calls = calls.clone();
         async move {
             let path = request.uri().path().to_string();
-            if path == "/api/chat/context" {
+            if path == "/api/mobile/context" {
                 return Json(json!({"connected":true,"state":Service::fixture_session(),"token":"fixture","profile":{"proxy":"","proxyType":""}})).into_response();
             }
             if path == "/api/mobile-requests/reserve" {
                 let bytes = axum::body::to_bytes(request.into_body(), 4096).await.unwrap();
                 let body: Value = serde_json::from_slice(&bytes).unwrap();
-                if body["kind"] == "chat" {
-                    return Json(json!({"allowed":true})).into_response();
-                }
                 let mut counts = counts.lock().await;
                 let count = counts.entry(body["profileId"].as_str().unwrap().into()).or_default();
                 if *count >= 10 {
@@ -984,16 +822,13 @@ async fn request_budget_covers_automation_but_exempts_user_chat_and_survives_ent
             if path == "/api/v1/media/3_123/likers/" {
                 return (StatusCode::BAD_GATEWAY, Json(json!({"status":"fail"}))).into_response();
             }
-            if path == "/api/v1/direct_v2/inbox/" {
-                return Json(json!({"inbox":{"threads":[]}})).into_response();
-            }
             Json(json!({"status":"ok","users":[]})).into_response()
         }
     }).await;
     let mut api = Api::from_env().unwrap();
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
-    let mut service = Service::fixture(Arc::new(api), uploads(), fixture.url.clone());
+    let mut service = Service::fixture(Arc::new(api), fixture.url.clone());
     Arc::get_mut(&mut service).unwrap().request_budget_enabled = true;
     let request = |profile: &str, media: &str| Command {
         profile_id: profile.into(),
@@ -1014,41 +849,32 @@ async fn request_budget_covers_automation_but_exempts_user_chat_and_survives_ent
     );
     for _ in 0..7 {
         service
-            .invoke("inbox", &request("first", ""))
+            .invoke("likers", &request("first", "4_123"))
             .await
             .unwrap();
     }
     assert_eq!(instagram_calls.lock().await.len(), 10);
-    service
-        .invoke_chat("inbox", &request("first", ""))
-        .await
-        .unwrap();
-    assert_eq!(
-        counts.lock().await["first"],
-        10,
-        "Chat must not consume a slot"
-    );
     service.locks.lock().await.clear(); // A new in-memory session cannot reset persisted usage.
     assert_eq!(
         service
-            .invoke("inbox", &request("first", ""))
+            .invoke("likers", &request("first", "4_123"))
             .await
             .unwrap_err()
             .name,
         "MobileRequestBudget"
     );
-    assert_eq!(instagram_calls.lock().await.len(), 11);
+    assert_eq!(instagram_calls.lock().await.len(), 10);
     service
-        .invoke("inbox", &request("second", ""))
+        .invoke("likers", &request("second", "4_123"))
         .await
         .unwrap();
-    assert_eq!(instagram_calls.lock().await.len(), 12);
+    assert_eq!(instagram_calls.lock().await.len(), 11);
     assert_eq!(counts.lock().await["first"], 10);
     assert_eq!(counts.lock().await["second"], 1);
 }
 
 #[tokio::test]
-async fn native_inbox_and_post_pagination_preserve_limits_and_pinned_posts() {
+async fn native_post_pagination_preserves_limits_and_pinned_posts() {
     let fixture=Fixture::start(|request|async move{
         let query=reqwest::Url::parse(&format!("http://local{}",request.uri())).unwrap();let query:HashMap<_,_>=query.query_pairs().into_owned().collect();let path=request.uri().path();
         if path.ends_with("inbox/"){let start=if query.contains_key("cursor"){20}else{0};return Json(json!({"inbox":{"threads":(start..start+20).map(|id|json!({"thread_id":id.to_string(),"items":[{"timestamp":"1"},{"timestamp":"2"}]})).collect::<Vec<_>>(),"oldest_cursor":if start==0{"next"}else{""},"has_older":start==0}})).into_response();}
@@ -1056,17 +882,7 @@ async fn native_inbox_and_post_pagination_preserve_limits_and_pinned_posts() {
         let first=!query.contains_key("max_id");let items=if first{json!([{"pk":"1","code":"old_pinned","taken_at":10,"timeline_pinned_user_ids":["123"]},{"pk":"2","code":"two","taken_at":300}])}else{json!([{"pk":"2","code":"two","taken_at":300},{"pk":"3","code":"three","taken_at":200},{"pk":"4","code":"old","taken_at":10}])};Json(json!({"items":items,"next_max_id":"next","more_available":true})).into_response()
     }).await;
     let mut mobile = mobile(Some(fixture.url.clone()));
-    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
-    let inbox = operations::invoke(&service, &mut mobile, "inbox", &json!({}))
-        .await
-        .unwrap();
-    assert_eq!(inbox["threads"].as_array().unwrap().len(), 30);
-    assert_eq!(inbox["threads"][0]["items"].as_array().unwrap().len(), 1);
-    assert_eq!(inbox["threads"][0]["items"][0]["timestamp"], "2");
-    let unread = operations::invoke(&service, &mut mobile, "inbox", &json!({"onlyUnread":true}))
-        .await
-        .unwrap();
-    assert_eq!(unread["threads"].as_array().unwrap().len(), 40);
+    let service = Service::new(Arc::new(Api::from_env().unwrap()));
     let posts = operations::invoke(
         &service,
         &mut mobile,
@@ -1115,7 +931,7 @@ async fn latest_post_limit_uses_dates_instead_of_pinned_feed_order() {
         }
     }).await;
     let mut mobile = mobile(Some(fixture.url.clone()));
-    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
+    let service = Service::new(Arc::new(Api::from_env().unwrap()));
     let posts = operations::invoke(
         &service,
         &mut mobile,
@@ -1128,57 +944,6 @@ async fn latest_post_limit_uses_dates_instead_of_pinned_feed_order() {
     assert_eq!(posts[0]["code"], "newest");
     assert_eq!(posts[1]["code"], "second");
     assert_eq!(pages.load(Ordering::SeqCst), 2);
-}
-#[tokio::test]
-async fn native_replies_reactions_and_unsend_preserve_request_fields() {
-    let calls = Arc::new(Mutex::new(vec![]));
-    let observed = calls.clone();
-    let fixture = Fixture::start(move |request| {
-        let observed = observed.clone();
-        async move {
-            let path = request.uri().path().to_string();
-            let bytes = axum::body::to_bytes(request.into_body(), 1_000_000)
-                .await
-                .unwrap();
-            let url = reqwest::Url::parse(&format!(
-                "http://local/?{}",
-                String::from_utf8(bytes.to_vec()).unwrap()
-            ))
-            .unwrap();
-            let body: HashMap<_, _> = url.query_pairs().into_owned().collect();
-            observed.lock().await.push((path, body));
-            Json(json!({"status":"ok","payload":{"item_id":"456"}})).into_response()
-        }
-    })
-    .await;
-    let mut mobile = mobile(Some(fixture.url.clone()));
-    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
-    let context = uuid::Uuid::new_v4().to_string();
-    operations::invoke(
-        &service,
-        &mut mobile,
-        "reply",
-        &json!({"threadId":"123","text":"hello https://example.com/path","clientContext":context}),
-    )
-    .await
-    .unwrap();
-    operations::invoke(&service,&mut mobile,"reaction",&json!({"threadId":"123","itemId":"456","kind":"text","emoji":"❤️","remove":true,"clientContext":context})).await.unwrap();
-    operations::invoke(
-        &service,
-        &mut mobile,
-        "unsend",
-        &json!({"threadId":"123","itemId":"456"}),
-    )
-    .await
-    .unwrap();
-    let calls = calls.lock().await;
-    assert!(calls[0].0.ends_with("broadcast/link/"));
-    assert_eq!(calls[0].1["thread_ids"], "[123]");
-    assert_eq!(calls[0].1["client_context"], context);
-    assert_eq!(calls[0].1["link_urls"], "[\"https://example.com/path\"]");
-    assert_eq!(calls[1].1["reaction_status"], "deleted");
-    assert_eq!(calls[1].1["original_message_client_context"], context);
-    assert!(calls[2].0.ends_with("threads/123/items/456/delete/"));
 }
 #[tokio::test]
 async fn native_session_serialization_prevents_stale_saves_after_logout() {
@@ -1196,7 +961,7 @@ async fn native_session_serialization_prevents_stale_saves_after_logout() {
         async move {
             assert!(matches!(
                 request.uri().path(),
-                "/api/chat/session" | "/api/chat/context"
+                "/api/mobile/session" | "/api/mobile/context"
             ));
             match *request.method() {
                 Method::GET => Json(
@@ -1220,7 +985,7 @@ async fn native_session_serialization_prevents_stale_saves_after_logout() {
     let mut api = Api::from_env().unwrap();
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
-    let service = Service::new(Arc::new(api), uploads());
+    let service = Service::new(Arc::new(api));
     let request = Command {
         profile_id: "profile".into(),
         token: Some(token),
@@ -1294,8 +1059,8 @@ async fn typescript_session_is_reused_without_login_and_reconnect_preserves_its_
         let saved = observed.clone();
         let writes = writes.clone();
         async move {
-            let context = request.uri().path() == "/api/chat/context";
-            assert!(context || request.uri().path() == "/api/chat/session");
+            let context = request.uri().path() == "/api/mobile/context";
+            assert!(context || request.uri().path() == "/api/mobile/session");
             if request.method() == Method::POST {
                 let body = test_support::body(request).await;
                 let mut current = saved.lock().await;
@@ -1337,7 +1102,7 @@ async fn typescript_session_is_reused_without_login_and_reconnect_preserves_its_
     let mut api = Api::from_env().unwrap();
     api.convex_url = convex.url.clone();
     api.key = "fixture".into();
-    let mut service = Service::new(Arc::new(api), uploads());
+    let mut service = Service::new(Arc::new(api));
     Arc::get_mut(&mut service).unwrap().base = Some(upstream.url.clone());
     let command = Command {
         profile_id: "profile".into(),
@@ -1380,8 +1145,8 @@ async fn rejected_sessions_require_reconnect_without_discarding_the_saved_device
         let store = store.clone();
         let writes = observed.clone();
         async move {
-            let context = request.uri().path() == "/api/chat/context";
-            assert!(context || request.uri().path() == "/api/chat/session");
+            let context = request.uri().path() == "/api/mobile/context";
+            assert!(context || request.uri().path() == "/api/mobile/session");
             if request.method() == Method::POST {
                 let body = test_support::body(request).await;
                 let mut saved = store.lock().await;
@@ -1415,21 +1180,21 @@ async fn rejected_sessions_require_reconnect_without_discarding_the_saved_device
     let mut api = Api::from_env().unwrap();
     api.convex_url = convex.url.clone();
     api.key = "fixture".into();
-    let mut service = Service::new(Arc::new(api), uploads());
+    let mut service = Service::new(Arc::new(api));
     Arc::get_mut(&mut service).unwrap().base = Some(upstream.url.clone());
     let request = Command {
         profile_id: "profile".into(),
         token: Some("saved-token".into()),
-        args: json!({}),
+        args: json!({"mediaId":"4_123"}),
     };
     assert_eq!(
-        service.invoke("inbox", &request).await.unwrap_err().status,
+        service.invoke("likers", &request).await.unwrap_err().status,
         503
     );
     assert_eq!(writes.load(Ordering::SeqCst), 0);
     mode.store(1, Ordering::SeqCst);
     assert_eq!(
-        service.invoke("inbox", &request).await.unwrap_err().status,
+        service.invoke("likers", &request).await.unwrap_err().status,
         401
     );
     assert_eq!(writes.load(Ordering::SeqCst), 1);

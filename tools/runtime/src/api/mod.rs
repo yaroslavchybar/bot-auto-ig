@@ -312,8 +312,7 @@ async fn policy(State(state): State<Arc<Api>>, request: Request, next: Next) -> 
                 ("login", 10)
             } else if path == "/api/auth/tg-poll" {
                 ("poll", 120)
-            } else if (path.contains("/content/")
-                || (path.starts_with("/api/chat/") && path.contains("/avatars/")))
+            } else if (path.contains("/content/"))
                 && path.ends_with("/image")
                 && request.method() == Method::GET
             {

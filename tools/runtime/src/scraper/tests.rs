@@ -1,7 +1,6 @@
 use super::*;
 use crate::test_support::{body, Fixture};
 use axum::{http::StatusCode, response::IntoResponse, Json};
-use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Mutex,
@@ -12,11 +11,7 @@ fn scraper_fixture(fixture: &Fixture) -> Scraper {
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
     let api = Arc::new(api);
-    let uploads = Arc::new(crate::uploads::Uploads {
-        entries: tokio::sync::Mutex::new(HashMap::new()),
-        slots: Arc::new(tokio::sync::Semaphore::new(4)),
-    });
-    let mobile = Service::fixture(api.clone(), uploads, fixture.url.clone());
+    let mobile = Service::fixture(api.clone(), fixture.url.clone());
     let (work, _) = watch::channel((0, Work::default()));
     Scraper {
         api,
@@ -107,7 +102,7 @@ async fn source_discovery_preserves_range_counts_batches_and_rate_limits() {
         let m = m.clone(); let b = b.clone(); let a = a.clone();
         async move {
             let path = request.uri().path().to_string();
-            if path == "/api/chat/context" {
+            if path == "/api/mobile/context" {
                 return Json(json!({"connected":true,"state":Service::fixture_session(),"token":"11111111-1111-4111-8111-111111111111","profile":{"proxy":"","proxyType":""}})).into_response();
             }
             if path == "/api/scraper/heartbeat" { return Json(json!({})).into_response(); }
@@ -173,7 +168,7 @@ async fn liker_checks_cache_only_acknowledged_prefix_and_scope_dedupe_to_list() 
         let observed = observed.clone();
         async move {
             let path = request.uri().path().to_string();
-            if path == "/api/chat/context" {
+            if path == "/api/mobile/context" {
                 return Json(json!({"connected":true,"state":Service::fixture_session(),"token":"11111111-1111-4111-8111-111111111111","profile":{"proxy":"","proxyType":""}})).into_response();
             }
             if path == "/api/scraper/heartbeat" { return Json(json!({})).into_response(); }
@@ -303,7 +298,7 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
         let pr = pr.clone();
         async move {
             let path = request.uri().path();
-            if path == "/api/chat/context" {
+            if path == "/api/mobile/context" {
                 return Json(json!({"connected":mode != 5,"state":Service::fixture_session(),"token":"11111111-1111-4111-8111-111111111111","profile":{"proxy":"","proxyType":""}})).into_response();
             }
             if path == "/api/profiles/by-id" {
@@ -351,11 +346,7 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
     let api = Arc::new(api);
-    let uploads = Arc::new(crate::uploads::Uploads {
-        entries: tokio::sync::Mutex::new(HashMap::new()),
-        slots: Arc::new(tokio::sync::Semaphore::new(4)),
-    });
-    let mobile = Service::fixture(api.clone(), uploads, fixture.url.clone());
+    let mobile = Service::fixture(api.clone(), fixture.url.clone());
     let (work, _) = watch::channel((0, Work::default()));
     let scraper = Scraper {
         api,
@@ -467,19 +458,6 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
             .rows;
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[1]["igId"], "12");
-    }
-}
-
-#[test]
-fn picture_validation_keeps_existing_contract() {
-    assert!(crate::instagram::picture_url("https://scontent.cdninstagram.com/image").is_some());
-    for url in [
-        "http://cdninstagram.com/image",
-        "https://cdninstagram.com.attacker.test/image",
-        "https://attacker.test/image",
-        "https://user:pass@instagram.com/image",
-    ] {
-        assert!(crate::instagram::picture_url(url).is_none());
     }
 }
 

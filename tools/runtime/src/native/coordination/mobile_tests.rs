@@ -10,7 +10,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use std::sync::atomic::AtomicUsize;
 
 #[tokio::test]
-async fn chat_context_updates_never_fetch_inboxes_and_reconnect_safely() {
+async fn mobile_context_updates_never_fetch_inboxes_and_reconnect_safely() {
     let (accounts, initial_accounts) = watch::channel(json!([]));
     let (disconnect, disconnected) = watch::channel(false);
     let subscription_ids = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
@@ -67,10 +67,10 @@ async fn chat_context_updates_never_fetch_inboxes_and_reconnect_safely() {
     })).fallback(move |request:axum::extract::Request| {
         let count = count.clone(); let status_count = status_count.clone();
         async move {
-            if request.uri().path() == "/api/chat/session" {
+            if request.uri().path() == "/api/mobile/session" {
                 status_count.fetch_add(1, Ordering::Relaxed);
             } else {
-                assert_eq!(request.uri().path(),"/api/chat/context");
+                assert_eq!(request.uri().path(),"/api/mobile/context");
                 count.fetch_add(1,Ordering::Relaxed);
             }
             Json(json!({"connected":false})).into_response()
@@ -81,28 +81,18 @@ async fn chat_context_updates_never_fetch_inboxes_and_reconnect_safely() {
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
     let api = Arc::new(api);
-    let uploads = Arc::new(crate::uploads::Uploads {
-        entries: Default::default(),
-        slots: Arc::new(tokio::sync::Semaphore::new(4)),
-    });
-    let mobile = crate::instagram::Service::new(api.clone(), uploads);
-    let chat = Chat::new(
-        api.clone(),
-        mobile.clone(),
-        &root.path().join("cache.sqlite"),
-    )
-    .unwrap();
+    let mobile = crate::instagram::Service::new(api.clone());
     let processes = Processes::new(api.clone(), root.path().into());
     let subscriptions = Subscriptions::new(api.clone());
     let coordination = Coordination::new(
         api.clone(),
         subscriptions.clone(),
         processes,
-        chat.clone(),
+        mobile.clone(),
         scraper::Scraper::start(api, mobile.clone()).unwrap(),
     );
     let runner = coordination.clone();
-    let task = tokio::spawn(async move { runner.chat().await });
+    let task = tokio::spawn(async move { runner.mobile().await });
     tokio::time::sleep(Duration::from_millis(250)).await;
     assert_eq!(loads.load(Ordering::Relaxed), 0);
     accounts.send_replace(json!((0..6).map(|id| json!({"profileId":id.to_string(),"token":"token","storageId":"file","reconnectRequired":false,"enabled":true,"proxy":"","proxyType":""})).collect::<Vec<_>>()));
@@ -111,12 +101,6 @@ async fn chat_context_updates_never_fetch_inboxes_and_reconnect_safely() {
         loads.load(Ordering::Relaxed),
         0,
         "connecting accounts must not fetch inboxes"
-    );
-    chat.inbox("0", false).await.unwrap();
-    assert_eq!(
-        loads.load(Ordering::Relaxed),
-        1,
-        "an explicit Chat read still fetches"
     );
     let valid_contexts = accounts.borrow().clone();
     let probe = crate::instagram::Command {
@@ -144,7 +128,7 @@ async fn chat_context_updates_never_fetch_inboxes_and_reconnect_safely() {
         );
         assert_eq!(
             loads.load(Ordering::Relaxed),
-            1,
+            0,
             "invalid metadata must not trigger inbox sync"
         );
         accounts.send_replace(valid_contexts.clone());
@@ -159,7 +143,7 @@ async fn chat_context_updates_never_fetch_inboxes_and_reconnect_safely() {
     super::tests::wait_for(async || subscriptions.current_epoch().is_none()).await;
     assert_eq!(
         loads.load(Ordering::Relaxed),
-        1,
+        0,
         "disconnect must not trigger inbox sync"
     );
     accounts.send_replace(json!([]));

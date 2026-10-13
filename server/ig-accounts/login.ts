@@ -1,5 +1,5 @@
 import { BrowserLaunchTimeout, openBrowserSession } from '../browser/cloak.js'
-import { freshAuthenticatorCode, type ChatCredentials } from '../chat/totp.js'
+import { freshAuthenticatorCode, type IgCredentials } from './totp.js'
 import type { Page } from 'playwright-core'
 
 class LoginRejected extends Error {}
@@ -40,7 +40,7 @@ export async function cancelBrowserLogin(attemptId: string): Promise<void> {
 
 async function browserLogin(
   page: Page,
-  account: ChatCredentials,
+  account: IgCredentials,
   signal: AbortSignal,
 ): Promise<void> {
   signal.throwIfAborted()
@@ -101,7 +101,7 @@ export async function runBrowserLogin(
   attemptId: string,
   profileName: string,
   proxy: string,
-  account: ChatCredentials,
+  account: IgCredentials,
 ): Promise<{ ok: true } | { rejected: true }> {
   if (stopping) throw new Error('Browser login worker is stopping')
   if (active.has(attemptId) || (retired.get(attemptId)?.expires ?? 0) > Date.now())

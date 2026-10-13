@@ -265,6 +265,12 @@ export async function profilesGetById(profileId: string): Promise<DbProfileRow |
   )
 }
 
+export async function profilesSaveUnreadChats(profileId: string, count: number, checkedAt: number): Promise<void> {
+  await convexFetch('/api/profiles/unread-chats', {
+    method: 'POST', body: { profileId, count, checkedAt }, maxRetries: 0,
+  })
+}
+
 export async function profilesGetByName(name: string): Promise<DbProfileRow | null> {
   const cleaned = String(name || '').trim()
   if (!cleaned) throw new Error('name is required')

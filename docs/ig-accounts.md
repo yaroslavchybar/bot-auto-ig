@@ -18,7 +18,7 @@ The **IG Accounts** page imports one `username:password:base32-2FA-key` per line
 Rust encrypts each credential with `IG_CREDENTIALS_KEY` (64 hex characters)
 before saving it to the Convex `igAccounts` table. Convex stores ciphertext and a
 keyed username lookup hash; the key stays in the server environment. Keep that
-key stable: losing it makes imported credentials unreadable. Mobile Chat
+key stable: losing it makes imported credentials unreadable. Mobile
 sessions live in Convex; content and message caches use the persisted `data/` volume. Model setup progress
 and shared full-name variations live in Convex.
 Unreadable credentials appear as Invalid and are skipped for new profiles;
@@ -59,7 +59,7 @@ Proxies page shows when a Login proxy is available.
 Browser login runs headless. Its success time is stored in Convex and starts
 the model setup calendar. On the next Europe/Kyiv calendar day, the automation
 starts feed browsing through the saved Work proxy, using its daily time budget.
-On day 3, after a browser warmup session closes, the mobile Chat session logs in
+On day 3, after a browser warmup session closes, the mobile session logs in
 through the profile's saved Work proxy. Username and full name are separate
 updates; the full-name update waits until the model has a full name configured.
 Profiles already marked Logged in skip browser login and connect the mobile
@@ -117,14 +117,14 @@ image; if the bank is empty, posting waits for the next upload. A failed or unce
 action is shown for review rather than retried blindly. In the automation's
 Profiles tab, check Instagram and mark the action as successful, or confirm
 it failed to let the worker retry. Model moves reset outreach readiness.
-After Chat login and each confirmed username change, the profile name follows
+After Mobile login and each confirmed username change, the profile name follows
 the IG username. The existing profile maintenance flow moves its browser data
 directory; sync errors appear on the connected account and retry in the background.
 After the account's post target is reached, the automation marks the profile ready for outreach.
 
 The Rust spoofer runs in its own Docker container, using the shared `data/`
 volume. The server submits image jobs over the private Docker network. Warmup
-reuses the connected Chat session and its saved proxy.
+reuses the connected mobile session and its saved proxy.
 
 The spoofer handles one image at a time. Docker limits it to 0.45 CPU and
 768 MB memory. It decodes the source once, creates and verifies JPEG variants in Rust,

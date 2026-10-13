@@ -1,5 +1,4 @@
 import { patchProfile } from './workerMetadata'
-import { setChatCounterEnabled } from './chatCache'
 import { v } from 'convex/values'
 import {
   internalMutation,
@@ -485,7 +484,6 @@ export const recordBrowserLoginInternal = internalMutation({
     await ctx.db.patch(id, { browserLoggedInAt, error: undefined, retryAfter: undefined })
     if (!profile.igLoggedIn) {
       await patchProfile(ctx, profile._id, { igLoggedIn: true })
-      await setChatCounterEnabled(ctx, profile._id, true)
     }
     return { cooldownRecorded }
   },

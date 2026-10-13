@@ -26,6 +26,8 @@ export type ProfileListRow = Pick<
   | 'igLoggedIn'
   | 'outreachReady'
   | 'paused'
+  | 'unreadChatCount'
+  | 'unreadChatsCheckedAt'
 >
 
 export const listBatchInternal = internalQuery({
@@ -50,6 +52,8 @@ export const listBatchInternal = internalQuery({
           igLoggedIn,
           outreachReady,
           paused,
+          unreadChatCount,
+          unreadChatsCheckedAt,
         }) => ({
           _id,
           name,
@@ -62,6 +66,8 @@ export const listBatchInternal = internalQuery({
           igLoggedIn,
           outreachReady,
           paused,
+          unreadChatCount,
+          unreadChatsCheckedAt,
         }),
       ),
     }
@@ -118,12 +124,12 @@ export const maintenanceWork = query({
 })
 
 /** Server-only revisions: session bytes stay in storage and are fetched only after changes. */
-export const chatWorkerContexts = query({
+export const mobileWorkerContexts = query({
   args: { bridgeToken: v.string(), subscriptionId: v.string() },
   handler: async (ctx, { bridgeToken }) => {
     requireServerBridgeAuth(bridgeToken)
     const rows = await ctx.db.query('chatWorkerMetadata').take(1001)
-    if (rows.length > 1000) throw new Error('Too many connected Chat accounts')
+    if (rows.length > 1000) throw new Error('Too many connected mobile accounts')
     return rows
       .map(({ _id: _rowId, _creationTime: _created, ...context }) => context)
       .sort((a, b) => a.profileId.localeCompare(b.profileId))
@@ -179,7 +185,7 @@ export const getById = query({
   },
 })
 
-export const getChatSessionInternal = internalQuery({
+export const getMobileSessionInternal = internalQuery({
   args: { profileId: v.id('profiles') },
   handler: async (ctx, { profileId }) =>
     ctx.db
@@ -189,7 +195,7 @@ export const getChatSessionInternal = internalQuery({
 })
 
 /** Read session metadata and its proxy configuration in the same database snapshot. */
-export const getChatContextInternal = internalQuery({
+export const getMobileContextInternal = internalQuery({
   args: { profileId: v.id('profiles') },
   handler: async (ctx, { profileId }) => {
     const [profile, session] = await Promise.all([
@@ -246,20 +252,6 @@ export const modelOptions = query({
     (await ctx.db.query('profiles').collect()).map(
       ({ _id, name, status, igLoggedIn, listIds }) => ({ _id, name, status, igLoggedIn, listIds }),
     ),
-})
-
-// The Chat selector needs every eligible profile, without browser configuration or cookies.
-export const chatOptions = query({
-  args: {},
-  handler: async (ctx) =>
-    (
-      await ctx.db
-        .query('profiles')
-        .withIndex('by_chat', (q) => q.eq('igLoggedIn', true))
-        .collect()
-    )
-      .filter((profile) => profile.igLoggedIn && !profile.paused && profile.status !== 'deleting')
-      .map(({ _id, name, status }) => ({ _id, name, status })),
 })
 
 /** Live permission for graph workers; pausing closes their automated browser session. */

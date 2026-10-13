@@ -57,7 +57,6 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
   const showScraperTabs = pathname === '/scraper'
   const showProxyTabs = pathname === '/proxies'
   const pageHeaderSlotId = PAGE_HEADER_SLOT_IDS[pathname]
-  const showChatSlot = pathname === '/chat'
 
   if (appChrome === 'immersive') {
     return (
@@ -92,12 +91,6 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
                 </BreadcrumbList>
               </Breadcrumb>
             </div>
-            {showChatSlot ? (
-              <div
-                id="chat-header-slot"
-                className="flex min-w-0 flex-1 items-center justify-center md:justify-start"
-              />
-            ) : null}
             {showScraperTabs ? <ScraperHeaderTabs /> : null}
             {showProxyTabs ? <ProxyHeaderTabs /> : null}
             {pageHeaderSlotId ? (
