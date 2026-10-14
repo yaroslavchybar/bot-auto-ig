@@ -1,11 +1,13 @@
 import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
+import { isTemporaryUiError } from './ui-errors.js'
 import { focusPageContent } from '../../browser/focus.js'
 import { randomDelay, type ActionLogger, type StopCheck } from './shared.js'
 import { clickVisible } from './mouse.js'
 import { dismissPopups, isInstagramHome } from './navigation.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { actionLocator } from './action-locator.js'
+import { assertInstagramReady } from './instagram-state.js'
 
 export async function watchStories(
   page: Page,
@@ -53,7 +55,11 @@ export async function watchStories(
     }
   } catch (error) {
     // Optional stories own their deadline; chunk expiry must not finish warm-up.
-    if (!(error instanceof SessionEnded) && !(error instanceof errors.TimeoutError && session.stopped())) throw error
+    if (!(error instanceof SessionEnded) && !session.stopped()) {
+      if (!isTemporaryUiError(error)) throw error
+      await assertInstagramReady(page, session)
+      log({ event: 'automation.actions.stories.skipped', error })
+    }
   } finally {
     if (opened) await page.keyboard.press('Escape').catch(() => undefined)
   }

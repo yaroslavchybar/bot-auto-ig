@@ -4,7 +4,7 @@ Create one automation per model. Select browsing surfaces, daily time, and sessi
 
 Profile outreach readiness is automatic; it has no manual toggle. Setup confirms the three-post requirement, and the routine unlocks lead follows and DMs on day 8 when the automation's Outreach setting is enabled. The profile's Logged in toggle remains available.
 
-Warm-up days 1–7 gradually engage topic-related accounts. Maintenance mixes browsing with lead outreach. Each new follow is separated by browsing. The daily follow target starts small, grows after confirmed outreach days, and stays within the configured maximum. Paused profiles do not run.
+Warm-up days 1–7 gradually engage topic-related accounts. Maintenance mixes browsing with lead outreach in batches of 3–5 completed follows/DMs, limited by the remaining quota and session time. Each batch starts after browsing and a 10–20 second pause before opening the first lead profile. Accounts within a batch keep the existing randomized pauses; excluded candidates do not count toward batch completion. The daily follow target starts small, grows after confirmed outreach days, and stays within the configured maximum. Paused profiles do not run.
 
 Topic post searches run only on warm-up days 1–4. The worker opens Search, types a generated hashtag, presses Enter, and clicks its exact native result. It scrolls the grid, opens visible posts, and closes each post before continuing. From day 5, browsing uses the enabled Home feed/Reels surfaces with the same screenshot topic rule. Week-one topic account searches for likes/follows continue through day 7.
 
@@ -15,6 +15,10 @@ Feed, profiles, overlays, and notification scanning use eased wheel scrolling. C
 Visible automation sessions move the native desktop pointer along Cloak's mouse path before clicking. TigerVNC includes that remote cursor in the stream; no cursor is injected into the page. The viewer hides its local cursor while the agent controls the session. Manual sessions keep normal cursor control.
 
 In the Reels tab, a selected Like first double-clicks the current video player and checks for Unlike. If the web player does not accept double-tap liking, it uses that reel's Like button under the same single attempt. Home feed and Explore post dialogs keep button liking. Like actions allow up to 15 seconds for cursor movement and clicking, bounded by the session deadline. Temporary maintenance click or confirmation failures are logged and skipped; session expiry and Instagram account warnings still stop browsing.
+
+Temporary story controls, week-one search/profile/Like work, and notification scans skip locally. A notification panel that survives Close and Escape is cleared by bounded Home navigation. Feed navigation/reload failures return a stalled result for the existing browsing retry loop; detached reel context skips to Next. DM preparation failures skip that recipient for the current session without recording delivery, and unscreened follow leases are released for backoff. Scans stay incomplete after failure. Account warnings, lost access, backend failures, and uncertain Follow or Send input still stop the session.
+
+Reels browsing reuses an already-open viewer without clicking its sidebar link again. Opening has one 15-second budget and requires the current visible frame to settle. Verified Next transitions count as browsing progress even when skipping ads or off-topic reels, without counting them as watched reels. Failed opening logs its stage instead of waiting through repeated navigation attempts.
 
 ## Lead screening
 
@@ -31,6 +35,8 @@ The existing lead pool has been reset for browser screening. Assignments and out
 ## Outreach and cleanup
 
 An accepted recipient is followed if it is not already followed or requested. Confirmed follows are recorded for cleanup; public accounts may receive one like. Only confirmed follows advance the follow ramp. Approved claims remain permanent after an interrupted Instagram action, avoiding duplicate outreach.
+
+Optional post likes use a grid tile already on screen, with 15 seconds for the action and up to three seconds for dialog cleanup. Private profiles skip this step. Each recipient has its own `automation.recipient_session` event with navigation, screening, follow, and optional-like timings, so later browsing cannot overwrite the lead's diagnostic notes.
 
 After screening, roughly 30% of unfollowed public profiles with visible posts are revisited through Search by typing the lead's username and clicking its exact result before following. Unknown, empty, private, and already-followed profiles keep the direct route. Missing or temporarily unavailable results restore the exact lead URL; checkpoints and stop requests prevent following.
 

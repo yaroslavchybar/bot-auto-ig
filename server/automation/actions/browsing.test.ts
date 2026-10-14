@@ -245,6 +245,28 @@ test('unexpected story failures still propagate', async () => {
   await assert.rejects(watchStories(page, 1, () => {}, () => false), /Browser connection lost/)
 })
 
+for (const stage of ['open', 'next']) test(`temporary story ${stage} failure skips stories while browsing time remains`, async () => {
+  const failure = new errors.TimeoutError('Story control changed')
+  const notes: Record<string, unknown>[] = []
+  const control = { ...visibleActionGeometry, first() { return this }, waitFor: async () => {}, isVisible: async () => true,
+    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { if (stage === 'open') throw failure },
+      click: async () => {}, dispose: async () => {} }),
+  }
+  const next = { ...control, page: () => page,
+    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { throw failure }, dispose: async () => {} }),
+  }
+  const page = { url: () => 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
+    keyboard: { press: async () => {} },
+    locator: (selector: string) => selector.includes('Story by') ? control : selector.includes('Next')
+      ? { count: async () => 1, nth: () => next }
+      : { filter() { return this }, first() { return this }, count: async () => 0, isVisible: async () => false, evaluateAll: async () => null },
+  } as unknown as Page
+  const watched = await watchStories(page, 2, note => notes.push(note), () => false,
+    { minSeconds: 0, maxSeconds: 0, deadline: Date.now() + 60_000 })
+  assert.equal(watched, stage === 'open' ? 0 : 1)
+  assert.ok(notes.some(note => note.event === 'automation.actions.stories.skipped'))
+})
+
 test('stories skip a hidden first control in either tray layout', async () => {
   for (const visibleKind of ['button', 'link']) {
     const window = new Window()

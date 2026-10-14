@@ -1,4 +1,5 @@
 import type { Locator, Page } from 'playwright-core'
+import { isTemporaryUiError } from './ui-errors.js'
 import { BrowseSession } from './session.js'
 import { viewVideo } from './viewing.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
@@ -21,36 +22,35 @@ function reelId(url: string): string {
   return url.match(REEL_URL)?.[1] ?? ''
 }
 
-// Sidebar Reels button. UI only, no direct navigation.
+// Reuse an open viewer; otherwise navigate through the sidebar within one opening budget.
 export async function openReels(page: Page, log: ActionLogger, session = new BrowseSession()): Promise<boolean> {
-  const sleep = session.wait
   session.check()
+  const opening = new BrowseSession(Math.min(session.end, Date.now() + 15_000), () => session.stopped())
+  opening.wait = async ms => { await session.wait(opening.timeout(ms)); opening.check() }
+  const onReels = () => /\/reels\//.test(page.url())
+  let stage = 'sidebar'
   try {
-    const btn = page.locator('a:has(svg[aria-label="Reels"])').filter({ visible: true }).first()
-    if (!(await btn.isVisible().catch(() => false))) return false
-    await clickAction(btn, session.timeout(5_000)).catch(() => undefined)
-    await sleep(random(1500, 2500))
-    // Lands on /reels/ first; the first reel auto-opens right after.
-    await page
-      .waitForURL(/\/reels\//, { timeout: session.timeout(12_000) })
-      .catch(() => undefined)
-    if (!/\/reels\//.test(page.url())) {
-      // Sidebar shifts while the feed loads; one retry clicks the right spot.
-      await clickAction(btn, session.timeout(5_000)).catch(() => undefined)
-      await page
-        .waitForURL(/\/reels\//, { timeout: session.timeout(12_000) })
-        .catch(() => undefined)
+    const alreadyOpen = onReels()
+    if (!alreadyOpen) {
+      const btn = page.locator('a:has(svg[aria-label="Reels"])').filter({ visible: true }).first()
+      if (!await btn.isVisible()) {
+        log({ event: 'automation.actions.reels.open_failed', stage, reason: 'Reels button is unavailable' })
+        return false
+      }
+      await clickAction(btn, opening.timeout(5000))
+      stage = 'navigation'
+      await page.waitForURL(/\/reels\//, { timeout: opening.timeout(10_000) })
     }
-    await page
-      .locator('video')
-      .first()
-      .waitFor({ state: 'visible', timeout: session.timeout(15_000) })
-      .catch(() => undefined)
-    await sleep(random(1500, 2500))
-    if (!/\/reels\//.test(page.url())) return false
-    log({ event: 'automation.actions.reels.opened_reels', message: 'Opened reels' })
+    stage = 'settling'
+    if (!await waitForSettle(page, opening) || !onReels()) {
+      log({ event: 'automation.actions.reels.open_failed', stage, reason: 'Visible reel did not settle' })
+      return false
+    }
+    if (!alreadyOpen) log({ event: 'automation.actions.reels.opened_reels', message: 'Opened reels' })
     return true
-  } catch {
+  } catch (error) {
+    session.check()
+    log({ event: 'automation.actions.reels.open_failed', stage, error })
     return false
   }
 }
@@ -86,14 +86,14 @@ async function isAdReel(page: Page): Promise<boolean> {
   }
 }
 // Video filling the screen right now (current + preloaded share the DOM).
-async function inViewVideo(page: Page): Promise<Locator | null> {
+async function inViewVideo(page: Page, session: BrowseSession): Promise<Locator | null> {
   try {
     const vids = page.locator('video')
     const n = await vids.count().catch(() => 0)
     const viewport = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
     let best: Locator | null = null, bestArea = 0
     for (let i = 0; i < n; i++) {
-      const box = await vids.nth(i).boundingBox().catch(() => null)
+      const box = await vids.nth(i).boundingBox({ timeout: session.timeout(1000) }).catch(() => null)
       if (!box) continue
       const width = Math.max(0, Math.min(viewport.width, box.x + box.width) - Math.max(0, box.x))
       const height = Math.max(0, Math.min(viewport.height, box.y + box.height) - Math.max(0, box.y))
@@ -122,9 +122,9 @@ async function waitForSettle(page: Page, session: BrowseSession): Promise<boolea
   session.check()
   let previous: { x: number; y: number; width: number; height: number } | undefined
   for (let i = 0; i < 10; i++) {
-    const video = await inViewVideo(page)
-    const box = await video?.boundingBox()
-    const port = await video?.evaluate(reelViewBounds)
+    const video = await inViewVideo(page, session)
+    const box = await video?.boundingBox({ timeout: session.timeout(1000) })
+    const port = await video?.evaluate(reelViewBounds, undefined, { timeout: session.timeout(1000) })
     if (box && port && port.bottom > port.top) {
       const height = port.bottom - port.top
       const visible = Math.max(0, Math.min(box.y + box.height, port.bottom) - Math.max(box.y, port.top))
@@ -186,6 +186,12 @@ export async function watchReels(
   let watched = 0
   const target = Math.min(Math.max(0, Math.round(count)), budget?.remaining('reels') ?? Infinity)
   const topics = warmupTopics(config.warmup_topics)
+  const advance = async () => {
+    const moved = await advanceReel(page, session, log)
+    // Skipping an ad or off-topic reel is still real browsing progress.
+    if (moved && budget) budget.browsed++
+    return moved
+  }
   let inspected = 0
   while (watched < target && inspected++ < target + 15 && Date.now() < end && !shouldStop()) {
     await assertInstagramReady(page)
@@ -193,7 +199,7 @@ export async function watchReels(
     if (id) {
       if (seen.has(id)) {
         // Same reel stuck (advance failed): try Next once, then bail.
-        if (!(await advanceReel(page, session, log))) break
+        if (!await advance()) break
         continue
       }
       seen.add(id)
@@ -203,22 +209,31 @@ export async function watchReels(
       log({ event: 'automation.actions.reels.skipped_reel_ad', message: 'Skipped reel ad' })
       await sleep(random(400, 900))
       if (Date.now() >= end || shouldStop()) break
-      if (!(await advanceReel(page, session, log))) {
+      if (!await advance()) {
         log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
         break
       }
       await sleep(random(1200, 2200))
       continue
     }
-    const video = await inViewVideo(page)
+    const video = await inViewVideo(page, session)
     if (!video) break
-    const context = await video.evaluate(reelPostContext)
+    let context: ReturnType<typeof reelPostContext>
+    try { context = await video.evaluate(reelPostContext) }
+    catch (error) {
+      session.check()
+      if (!isTemporaryUiError(error)) throw error
+      await assertInstagramReady(page, session)
+      log({ event: 'automation.actions.reels.context_unavailable', error })
+      if (!await advance()) break
+      continue
+    }
     const preserveFollowed = context.relationship !== 'not-followed'
     // Inspect the current author before deciding whether to skip.
     if (!preserveFollowed && chance(config.reels_skip_chance ?? 25)) {
       await sleep(random(300, 800))
       if (Date.now() >= end || shouldStop()) break
-      if (!(await advanceReel(page, session, log))) {
+      if (!await advance()) {
         log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
         break
       }
@@ -231,7 +246,7 @@ export async function watchReels(
     if (!feedPostMatches(context, topics, related)) {
       log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })
       await sleep(random(300, 800))
-      if (!await advanceReel(page, session, log)) break
+      if (!await advance()) break
       continue
     }
     if (budget && !budget.take('reels')) break
@@ -260,7 +275,7 @@ export async function watchReels(
     if (Date.now() >= end || shouldStop()) break
     watched++
     if (watched >= target) break
-    if (!(await advanceReel(page, session, log))) {
+    if (!await advance()) {
       log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
       break
     }

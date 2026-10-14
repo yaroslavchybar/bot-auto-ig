@@ -2,6 +2,7 @@ import { visibleActionGeometry } from './action-locator.test-support.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
+import { errors } from 'playwright-core'
 import { engageWeekOne } from './week-one.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { BrowseSession } from './session.js'
@@ -50,8 +51,29 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
   session.wait = async () => { session.check() }
   const run = (topics = 'fitness', interlude?: () => Promise<boolean>) => engageWeekOne(page, topics, budget, session,
     { profileId: 'profile', runId: 'run', date: '2026-10-12' }, () => {}, deps, interlude, ['strength training'])
-  return { calls, budget, run }
+  return { calls, budget, run, deps, page }
 }
+
+for (const stage of ['profile', 'like'] as const) test(`week-one ${stage} timeout skips its candidate and continues`, async () => {
+  const s = setup('Fitness coach', 'Fitness workout', true, ['/trainer_one/', '/trainer_two/'])
+  let failures = 0
+  if (stage === 'profile') {
+    const goto = s.page.goto.bind(s.page)
+    s.page.goto = async (...args) => { if (++failures === 1) throw new errors.TimeoutError('Profile loading timed out'); return goto(...args) }
+  } else {
+    const like = s.deps.like
+    s.deps.like = async (...args) => { if (++failures === 1) throw new errors.TimeoutError('Optional Like timed out'); return like(...args) }
+  }
+  await s.run()
+  assert.ok(s.calls.includes('confirm-follow'), 'a later candidate can still be followed')
+  assert.equal(s.budget.used.profiles, 2)
+})
+
+test('week-one uncertain follow input is not treated as optional UI work', async () => {
+  const s = setup()
+  s.deps.follow = async () => { throw new errors.TimeoutError('Follow click timed out') }
+  await assert.rejects(s.run(), /Follow click timed out/)
+})
 
 test('week-one actions verify the profile and post topic and authorize before following', async () => {
   const s = setup(); await s.run()

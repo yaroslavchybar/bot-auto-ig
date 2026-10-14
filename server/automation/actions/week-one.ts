@@ -1,4 +1,5 @@
 import type { Page } from 'playwright-core'
+import { isTemporaryUiError } from './ui-errors.js'
 import { warmupBeginFollow, warmupConfirmFollow, warmupPauseFollows, type WarmupFollowRequest } from '../../shared/convexClient.js'
 import { warmupTopics } from '../../shared/warmupTopics.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
@@ -24,12 +25,21 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
   const matchesTopic = deps.topic ?? topicContentMatches
   if (!topics.length || !searchTerms.length || !budget.remaining('profiles') || (!budget.remaining('likes') && !budget.remaining('follows'))) return
   session.check()
-  const own = (await deps.ownUsername(page)).toLowerCase()
-  if (!await deps.search(page, searchTerms[Math.floor(Math.random() * searchTerms.length)], session)) return
-  await assertInstagramReady(page)
-  const hrefs = await page.locator('main a[href]').evaluateAll(links => [...new Set(links
-    .filter(link => link.textContent?.trim()).map(link => link.getAttribute('href')))].filter(href => href !== null))
-  const candidates = hrefs.filter(isUserHref).filter(href => href.split('/')[1].toLowerCase() !== own).slice(0, 20)
+  const recover = async (error: unknown, action: string) => {
+    session.check()
+    if (!isTemporaryUiError(error)) throw error
+    await assertInstagramReady(page, session)
+    log({ event: 'automation.warmup.engagement_skipped', action, error })
+  }
+  let candidates: string[]
+  try {
+    const own = (await deps.ownUsername(page)).toLowerCase()
+    if (!await deps.search(page, searchTerms[Math.floor(Math.random() * searchTerms.length)], session)) return
+    await assertInstagramReady(page)
+    const hrefs = await page.locator('main a[href]').evaluateAll(links => [...new Set(links
+      .filter(link => link.textContent?.trim()).map(link => link.getAttribute('href')))].filter(href => href !== null))
+    candidates = hrefs.filter(isUserHref).filter(href => href.split('/')[1].toLowerCase() !== own).slice(0, 20)
+  } catch (error) { await recover(error, 'search'); return }
   const allowed = async () => { session.check(); await assertInstagramReady(page); session.check(); return true }
   let needsInterlude = false
   while (candidates.length && !session.stopped() && budget.remaining('profiles') && (budget.remaining('likes') || budget.remaining('follows'))) {
@@ -37,27 +47,34 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
     needsInterlude = false
     if (!budget.take('profiles')) break
     const href = candidates.splice(Math.floor(Math.random() * candidates.length), 1)[0]
-    await page.goto(`https://www.instagram.com${href}`, { waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
-    const header = profileControls(page)
-    await header.waitFor({ state: 'visible', timeout: session.timeout(10_000) })
-    await allowed()
-    const text = await header.innerText()
-    if (!await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log, page.locator('main'))) {
-      log({ event: 'automation.warmup.account_off_topic', targetUsername: href.split('/')[1] })
-      continue
-    }
+    try {
+      await page.goto(`https://www.instagram.com${href}`, { waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
+      const header = profileControls(page)
+      await header.waitFor({ state: 'visible', timeout: session.timeout(10_000) })
+      await allowed()
+      const text = await header.innerText()
+      if (!await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log, page.locator('main'))) {
+        log({ event: 'automation.warmup.account_off_topic', targetUsername: href.split('/')[1] })
+        continue
+      }
+    } catch (error) { await recover(error, 'profile'); continue }
     await session.wait(random(2000, 4000))
     if (budget.remaining('likes')) {
-      const liked = await deps.like(page, allowed, async () => {
-        session.check()
-        const post = page.getByRole('dialog').getByRole('article')
-        const text = await post.innerText()
-        return await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log, post) && budget.take('likes')
-      })
-      if (liked) log({ event: 'automation.warmup.topic_like', targetUsername: href.split('/')[1] })
+      try {
+        const liked = await deps.like(page, allowed, async () => {
+          session.check()
+          const post = page.getByRole('dialog').getByRole('article')
+          const text = await post.innerText()
+          return await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log, post) && budget.take('likes')
+        })
+        if (liked) log({ event: 'automation.warmup.topic_like', targetUsername: href.split('/')[1] })
+      } catch (error) { await recover(error, 'like'); continue }
     }
-    if (!budget.remaining('follows') || !await followButton(page).isVisible()) continue
-    await allowed()
+    if (!budget.remaining('follows')) continue
+    try {
+      if (!await followButton(page).isVisible()) continue
+      await allowed()
+    } catch (error) { await recover(error, 'follow_control'); continue }
     const followRequest = { ...request, username: href.split('/')[1] }
     if (!await deps.beginFollow(followRequest)) continue
     budget.take('follows')

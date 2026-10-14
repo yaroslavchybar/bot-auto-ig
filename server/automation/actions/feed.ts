@@ -1,4 +1,5 @@
 import type { Locator, Page } from 'playwright-core'
+import { isTemporaryUiError } from './ui-errors.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { postChoices, detourDelay, viewContent } from './viewing.js'
 import { focusPageContent } from '../../browser/focus.js'
@@ -443,6 +444,12 @@ export async function browseFeed(
   } catch (error) {
     if (error instanceof SessionEnded || session.stopped())
       return shouldStop() ? 'stopped' : 'finished'
+    if (isTemporaryUiError(error)) {
+      await assertInstagramReady(page, session)
+      session.check()
+      log({ event: 'automation.actions.feed.browsing_unavailable', error, outcome: 'stalled' })
+      return 'stalled'
+    }
     throw error
   }
 }

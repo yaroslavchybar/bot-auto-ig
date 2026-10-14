@@ -29,6 +29,8 @@ import { BrowseSession, SessionEnded } from './actions/session.js'
 import { openProfileThroughSearch, publicProfileForSearch } from './actions/explore.js'
 import { errors } from 'playwright-core'
 import { isTransientDomIssue } from '../shared/domErrors.js'
+import { isTemporaryUiError } from './actions/ui-errors.js'
+import { logOperation } from '../shared/logger.js'
 
 const dependencies = {
   ready: routineReady,
@@ -98,7 +100,7 @@ export async function runRoutineSession(
   let deadline = Infinity;
   const timeout = (ms: number) => Math.max(1, Math.min(ms, deadline - deps.now()));
   const shouldStop = () => deps.now() >= deadline || stopped() || !allowed || Boolean(liveAccess && !liveAccess());
-  const followIfNeeded = async (leadId: string, date: string) => {
+  const followIfNeeded = async (leadId: string, date: string, markAttempted: () => void) => {
     // Wait for the profile relationship controls before deciding whether to follow.
     // Existing follows and requests are never claimed as automation-created follows.
     if (await isFollowing(page)) return false;
@@ -109,7 +111,7 @@ export async function runRoutineSession(
       throw new Error('Follow was not authorized');
     if (shouldStop()) throw new Error('Session stopped before following');
     return deps.follow(page, async () => { await check(); return !shouldStop(); },
-      () => clickAction(follow, timeout(10_000)),
+      () => { markAttempted(); return clickAction(follow, timeout(10_000)); },
       () => deps.recordFollow(profileId, leadId, true).then(() => {}), async (reason) => {
         log({ event: 'automation.follow_paused', reason });
         await deps.pauseFollows(profileId, date, reason);
@@ -154,7 +156,15 @@ export async function runRoutineSession(
           if (shouldStop()) return 'stopped';
           const scan = await deps.notifications(automation._id, profileId);
           if (scan) {
-            const names = await deps.readNotifications(page, shouldStop, scan.since);
+            let names: string[] | null = null;
+            try {
+              names = await deps.readNotifications(page, shouldStop, scan.since, new BrowseSession(deadline, shouldStop));
+            } catch (error) {
+              if (shouldStop()) return 'stopped';
+              if (!isTemporaryUiError(error)) throw error;
+              await check();
+              log({ event: 'automation.routine.follow_notifications_skipped', error });
+            }
             if (names && !shouldStop()) {
               await deps.recordNotifications(automation._id, profileId, scan.date, names);
               log({ event: 'automation.routine.follow_notifications', followerCount: names.length });
@@ -188,143 +198,174 @@ export async function runRoutineSession(
             if (!attempt) {
               return dms.length ? 'blocked' : 'unavailable';
             }
-            // Navigation and composer preparation happen before permission to press Send.
-            let sendAttempted = false;
-            try {
-              await page.goto(`https://www.instagram.com/${attempt.username}/`, {
-                waitUntil: "domcontentloaded",
-                timeout: timeout(30_000),
-              });
-              if (!isDm) {
-                const token = 'screeningToken' in attempt ? attempt.screeningToken : undefined
-                if (typeof token !== 'string' || !token) return 'blocked'
-                let decision
-                try {
-                  decision = await deps.screenLead(
-                    page,
-                    attempt.username,
-                    new BrowseSession(deadline, shouldStop),
-                  )
-                } catch (error) {
-                  log({
-                    event: 'automation.lead_screening_failed',
-                    leadId: attempt.leadId,
-                    error,
-                    outcome: 'skipped',
-                  })
-                  await deps.finishScreening(
+            return logOperation('automation.recipient_session', {
+              profileId, automationId: automation._id, leadId: attempt.leadId,
+              targetUsername: attempt.username, kind: isDm ? 'dm' : 'follow',
+            }, async (scope): Promise<'sent' | 'followed' | 'blocked' | 'unavailable'> => {
+              const timed = async <T>(stage: string, action: () => Promise<T>): Promise<T> => {
+                scope.add({ stage });
+                const started = deps.now();
+                try { return await action(); }
+                finally { scope.add({ [`${stage}Ms`]: Math.max(0, deps.now() - started) }); }
+              };
+              // Navigation and composer preparation happen before permission to press Send.
+              let sendAttempted = false;
+              let followAttempted = false, screeningFinished = false;
+              const token = 'screeningToken' in attempt ? attempt.screeningToken : undefined;
+              try {
+                await timed('navigation', () => page.goto(`https://www.instagram.com/${attempt.username}/`, {
+                  waitUntil: "domcontentloaded",
+                  timeout: timeout(30_000),
+                }));
+                if (!isDm) {
+                  if (typeof token !== 'string' || !token) return 'blocked'
+                  let decision
+                  try {
+                    decision = await timed('screening', () => deps.screenLead(
+                      page,
+                      attempt.username,
+                      new BrowseSession(deadline, shouldStop),
+                    ))
+                  } catch (error) {
+                    log({
+                      event: 'automation.lead_screening_failed',
+                      leadId: attempt.leadId,
+                      error,
+                      outcome: 'skipped',
+                    })
+                    await deps.finishScreening(
+                      automation._id,
+                      profileId,
+                      attempt.leadId,
+                      token,
+                      attempt.date,
+                    )
+                    screeningFinished = true
+                    scope.add({ result: 'screening_failed' })
+                    return shouldStop() ? 'unavailable' : 'blocked'
+                  }
+                  const accepted = await timed('screeningSave', () => deps.finishScreening(
                     automation._id,
                     profileId,
                     attempt.leadId,
                     token,
                     attempt.date,
-                  )
-                  return shouldStop() ? 'unavailable' : 'blocked'
-                }
-                const accepted = await deps.finishScreening(
-                  automation._id,
-                  profileId,
-                  attempt.leadId,
-                  token,
-                  attempt.date,
-                  decision,
-                )
-                log({
-                  event: 'automation.lead_screened',
-                  leadId: attempt.leadId,
-                  model: LEAD_SCREENING_MODEL,
-                  category: decision.category,
-                  confidence: decision.confidence,
-                  accepted,
-                })
-                if (!accepted || shouldStop()) return shouldStop() ? 'unavailable' : 'blocked'
-                // Privacy is known only once the profile opens. Some public leads
-                // are revisited through Search before the authorized follow.
-                if (deps.random(0, 1) < 0.3 && await deps.publicProfile(page)) {
-                  let searched = false
-                  try {
-                    searched = await deps.searchProfile(page, attempt.username,
-                      new BrowseSession(Math.min(deadline, Date.now() + 30_000), shouldStop))
-                  } catch (error) {
-                    if (shouldStop()) return 'unavailable'
-                    await deps.instagram(page)
-                    if (!(error instanceof SessionEnded) && !(error instanceof errors.TimeoutError) && !isTransientDomIssue(error)) throw error
-                  }
-                  if (shouldStop()) return 'unavailable'
-                  // Restore the exact lead on an empty/missing result; never follow a suggestion.
-                  if (!searched) await page.goto(`https://www.instagram.com/${attempt.username}/`, {
-                    waitUntil: 'domcontentloaded', timeout: timeout(30_000),
+                    decision,
+                  ))
+                  screeningFinished = true
+                  scope.add({ category: decision.category, confidence: decision.confidence, accepted });
+                  log({
+                    event: 'automation.lead_screened',
+                    leadId: attempt.leadId,
+                    model: LEAD_SCREENING_MODEL,
+                    category: decision.category,
+                    confidence: decision.confidence,
+                    accepted,
                   })
-                  await check()
-                  log({ event: 'automation.routine.profile_navigation', targetUsername: attempt.username,
-                    route: searched ? 'search' : 'direct', outcome: searched ? 'opened' : 'fallback' })
+                  if (!accepted || shouldStop()) return shouldStop() ? 'unavailable' : 'blocked'
+                  // Privacy is known only once the profile opens. Some public leads
+                  // are revisited through Search before the authorized follow.
+                  if (deps.random(0, 1) < 0.3 && await deps.publicProfile(page)) {
+                    let searched = false
+                    try {
+                      searched = await timed('search', () => deps.searchProfile(page, attempt.username,
+                        new BrowseSession(Math.min(deadline, Date.now() + 30_000), shouldStop)))
+                    } catch (error) {
+                      if (shouldStop()) return 'unavailable'
+                      await deps.instagram(page)
+                      if (!(error instanceof SessionEnded) && !(error instanceof errors.TimeoutError) && !isTransientDomIssue(error)) throw error
+                    }
+                    if (shouldStop()) return 'unavailable'
+                    // Restore the exact lead on an empty/missing result; never follow a suggestion.
+                    if (!searched) await timed('searchFallback', () => page.goto(`https://www.instagram.com/${attempt.username}/`, {
+                      waitUntil: 'domcontentloaded', timeout: timeout(30_000),
+                    }))
+                    await check()
+                    log({ event: 'automation.routine.profile_navigation', targetUsername: attempt.username,
+                      route: searched ? 'search' : 'direct', outcome: searched ? 'opened' : 'fallback' })
+                  }
+                  followsRemaining = Math.max(0, followsRemaining - 1)
+                  const followed = await timed('follow', () => followIfNeeded(attempt.leadId, attempt.date, () => { followAttempted = true; }));
+                  scope.add({ followed });
+                  if (followed && !shouldStop()) {
+                    await timed('optionalLike', () => deps.likeRecentPost(page, async () => { await check(); return !shouldStop(); },
+                      async () => session.takeLike?.() ?? true, new BrowseSession(Math.min(deadline, Date.now() + 15_000), shouldStop)))
+                      .then(liked => scope.add({ liked }))
+                      .catch(error => {
+                        scope.add({ optionalLikeError: error });
+                        log({ event: 'automation.routine.optional_like', error, outcome: 'skipped' });
+                      });
+                  }
+                  log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
+                  return followed ? 'followed' : 'blocked';
                 }
-                followsRemaining = Math.max(0, followsRemaining - 1)
-                const followed = await followIfNeeded(attempt.leadId, attempt.date);
-                if (followed && !shouldStop()) {
-                  await deps.likeRecentPost(page, async () => { await check(); return !shouldStop(); }, async () => session.takeLike?.() ?? true)
-                    .catch(error => log({ event: 'automation.routine.optional_like', error, outcome: 'skipped' }));
+                if (!(await isFollowing(page)) || !(await deps.followsUs(page, username))) {
+                  await deps.dismissDm(profileId, attempt.leadId);
+                  return 'blocked';
                 }
-                log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
-                return followed ? 'followed' : 'blocked';
-              }
-              if (!(await isFollowing(page)) || !(await deps.followsUs(page, username))) {
-                await deps.dismissDm(profileId, attempt.leadId);
-                return 'blocked';
-              }
-              await check();
-              if (shouldStop()) return 'unavailable';
-              let message: string;
-              try {
-                message = renderOutreachMessage(attempt.message, attempt, () => deps.random(0, 1));
-              } catch (error) {
-                log({ event: 'automation.routine.invalid_message', leadId: attempt.leadId, targetUsername: attempt.username, error, outcome: 'blocked',
-                });
-                await deps.dismissDm(profileId, attempt.leadId);
-                return 'blocked';
-              }
-              await clickAction(messageButton(page), 15_000);
-              // Current Instagram keeps the profile URL and opens the composer in
-              // an overlay, so the composer is the navigation-complete signal.
-              const composer = await messageComposer(page);
-              await composer.fill(message, { timeout: 15_000 });
-              await check(true);
-              if (shouldStop()) return 'unavailable';
-              if (!(await deps.begin(automation._id, profileId, attempt.leadId, attempt.date))) return 'unavailable';
-              if (shouldStop()) return 'unavailable';
-              let sent = false;
-              let blocked = false;
-              try {
-                sendAttempted = true;
-                await composer.press("Enter", { timeout: 10_000 });
-                // A cleared composer alone is insufficient: require the outgoing message in the thread.
-                await page
-                  .getByText(message, { exact: true })
-                  .last()
-                  .waitFor({ state: "visible", timeout: 15_000 });
-                if (await messageWasBlocked(page)) {
-                  await unsendMessage(page, message);
-                  blocked = true;
-                } else {
-                  sent = true;
-                }
-              } finally {
-                await deps.finish(profileId, attempt.leadId, attempt.date, sent, blocked);
-              }
-              log({ event: 'automation.dm_result', targetUsername: attempt.username, sent, blocked, message: blocked
-                ? `Message blocked for @${attempt.username}; unsent`
-                : `Message sent to @${attempt.username}`,
-              });
-              return sent ? 'sent' : 'blocked';
-            } catch (error) {
-              if (!sendAttempted) {
+                await check();
                 if (shouldStop()) return 'unavailable';
-                throw error;
+                let message: string;
+                try {
+                  message = renderOutreachMessage(attempt.message, attempt, () => deps.random(0, 1));
+                } catch (error) {
+                  log({ event: 'automation.routine.invalid_message', leadId: attempt.leadId, targetUsername: attempt.username, error, outcome: 'blocked',
+                  });
+                  await deps.dismissDm(profileId, attempt.leadId);
+                  return 'blocked';
+                }
+                await clickAction(messageButton(page), 15_000);
+                // Current Instagram keeps the profile URL and opens the composer in
+                // an overlay, so the composer is the navigation-complete signal.
+                const composer = await messageComposer(page);
+                await composer.fill(message, { timeout: 15_000 });
+                await check(true);
+                if (shouldStop()) return 'unavailable';
+                if (!(await deps.begin(automation._id, profileId, attempt.leadId, attempt.date))) return 'unavailable';
+                if (shouldStop()) return 'unavailable';
+                let sent = false;
+                let blocked = false;
+                try {
+                  sendAttempted = true;
+                  await composer.press("Enter", { timeout: 10_000 });
+                  // A cleared composer alone is insufficient: require the outgoing message in the thread.
+                  await page
+                    .getByText(message, { exact: true })
+                    .last()
+                    .waitFor({ state: "visible", timeout: 15_000 });
+                  if (await messageWasBlocked(page)) {
+                    await unsendMessage(page, message);
+                    blocked = true;
+                  } else {
+                    sent = true;
+                  }
+                } finally {
+                  await deps.finish(profileId, attempt.leadId, attempt.date, sent, blocked);
+                }
+                log({ event: 'automation.dm_result', targetUsername: attempt.username, sent, blocked, message: blocked
+                  ? `Message blocked for @${attempt.username}; unsent`
+                  : `Message sent to @${attempt.username}`,
+                });
+                scope.add({ sent, blocked });
+                return sent ? 'sent' : 'blocked';
+              } catch (error) {
+                if (!sendAttempted) {
+                  if (shouldStop()) return 'unavailable';
+                  if (!followAttempted && isTemporaryUiError(error)) {
+                    await check(true);
+                    if (shouldStop()) return 'unavailable';
+                    if (!isDm && typeof token === 'string' && token && !screeningFinished)
+                      await deps.finishScreening(automation._id, profileId, attempt.leadId, token, attempt.date);
+                    log({ event: 'automation.routine.recipient_skipped', targetUsername: attempt.username, error });
+                    return 'blocked';
+                  }
+                  throw error;
+                }
+                throw new Error(
+                  `Delivery needs review: ${error instanceof Error ? error.message : String(error)}`,
+                );
               }
-              throw new Error(
-                `Delivery needs review: ${error instanceof Error ? error.message : String(error)}`,
-              );
-            }
+            });
           },
         });
       },

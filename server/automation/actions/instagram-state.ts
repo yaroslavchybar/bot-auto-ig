@@ -2,6 +2,7 @@ import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { clickAction } from './action-locator.js'
 import { isTransientDomIssue } from '../../shared/domErrors.js'
+import { isTemporaryUiError } from './ui-errors.js'
 import { BrowseSession } from './session.js'
 import { random, type ActionLogger } from './shared.js'
 import { dismissMetaAccountPopup } from './navigation.js'
@@ -102,8 +103,17 @@ export async function closeNotifications(page: Page, session = new BrowseSession
     session.check()
     if (!isTransientDomIssue(error) && !(error instanceof errors.TimeoutError)) throw error
     if (!(await heading.isVisible())) return
-    await page.keyboard.press('Escape')
-    await heading.waitFor({ state: 'hidden', timeout: session.timeout(3_000) })
+    try {
+      await page.keyboard.press('Escape')
+      await heading.waitFor({ state: 'hidden', timeout: session.timeout(3_000) })
+    } catch (retryError) {
+      session.check()
+      if (!isTemporaryUiError(retryError)) throw retryError
+      await assertInstagramReady(page, session)
+      // A panel that survives Escape must be cleared before browsing underneath it.
+      await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
+      await heading.waitFor({ state: 'hidden', timeout: session.timeout(3_000) })
+    }
   }
 }
 
@@ -114,13 +124,21 @@ export async function checkNotifications(
   session: BrowseSession,
 ): Promise<boolean> {
   session.check()
-  if (!(await openNotifications(page, session))) return false
   try {
-    await assertInstagramReady(page)
-    await session.wait(random(2500, 5000))
-    log({ event: 'automation.warmup.notifications_checked', message: 'Checked notifications' })
+    if (!(await openNotifications(page, session))) return false
+    try {
+      await assertInstagramReady(page)
+      await session.wait(random(2500, 5000))
+      log({ event: 'automation.warmup.notifications_checked', message: 'Checked notifications' })
+    } finally {
+      await closeNotifications(page, session)
+    }
     return true
-  } finally {
-    await closeNotifications(page, session)
+  } catch (error) {
+    session.check()
+    if (!isTemporaryUiError(error)) throw error
+    await assertInstagramReady(page, session)
+    log({ event: 'automation.warmup.notifications_skipped', error })
+    return false
   }
 }

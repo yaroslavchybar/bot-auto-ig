@@ -5,14 +5,15 @@ import { Window } from 'happy-dom'
 import { errors } from 'playwright-core'
 import { visibleActionGeometry } from './action-locator.test-support.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
-import { advanceReel, watchReels } from './reels.js'
+import { advanceReel, openReels, watchReels } from './reels.js'
 import { BrowseSession, SessionEnded } from './session.js'
 
 test('disabled reels never access the browser', async () => {
   await watchReels({} as Page, 5, { scroll_reels: false }, () => {}, () => false, Date.now() + 60_000)
 })
 
-function reelAdvanceFixture(width: number, height: number, options: { nextVisible?: boolean; nextEnabled?: boolean; fixedViewport?: boolean; changeOnClick?: boolean } = {}) {
+function reelAdvanceFixture(width: number, height: number, options: { nextVisible?: boolean; nextEnabled?: boolean; fixedViewport?: boolean; changeOnClick?: boolean;
+  contextFailure?: Error; warningAfterFailure?: boolean; offTopic?: boolean } = {}) {
   const window = new Window({ width, height })
   window.document.body.innerHTML = '<main><div style="overflow-y:auto;scroll-snap-type:y mandatory"><video id="previous"></video><video id="current"></video></div></main>'
   const panel = window.document.querySelector('main > div')!
@@ -23,11 +24,14 @@ function reelAdvanceFixture(width: number, height: number, options: { nextVisibl
     { x: width * 0.25, y: -height * 0.65, width: width * 0.4, height },
     { x: width * 0.25, y: 16, width: width * 0.4, height: height - 32 },
   ]
+  let contextFailed = false
   const videos = [...window.document.querySelectorAll('video')].map((node, i) => {
     node.getBoundingClientRect = () => ({ ...boxes[i], top: boxes[i].y, bottom: boxes[i].y + boxes[i].height,
       left: boxes[i].x, right: boxes[i].x + boxes[i].width }) as DOMRect
-    return { boundingBox: async () => boxes[i], evaluate: async <R>(fn: (el: Element) => R) => {
+    return { boundingBox: async () => boxes[i], locator: () => ({}), evaluate: async <R>(fn: (el: Element) => R) => {
       assert.equal(node.id, 'current', 'the largest visible reel wins over the previous reel preview')
+      if (fn.name === 'reelPostContext' && options.contextFailure) { contextFailed = true; throw options.contextFailure }
+      if (fn.name === 'reelPostContext' && options.offTopic) return { text: 'An unrelated reel', relationship: 'not-followed' }
       return fn(node as unknown as Element)
     } }
   })
@@ -42,7 +46,8 @@ function reelAdvanceFixture(width: number, height: number, options: { nextVisibl
   }
   const page = { url: () => url, viewportSize: () => options.fixedViewport !== false ? { width, height } : null,
     evaluate: async (fn: () => unknown) => window.eval(`(${fn.toString()})()`),
-    locator: () => ({ count: async () => videos.length, nth: (i: number) => videos[i] }),
+    locator: (selector: string) => selector === 'video' ? { count: async () => videos.length, nth: (i: number) => videos[i] }
+      : { filter: () => ({ evaluateAll: async () => options.warningAfterFailure && contextFailed ? 'limit' : null }) },
     getByRole: (role: string, options: { name: string; exact: boolean }) => {
       assert.equal(role, 'button'); assert.deepEqual(options, { name: 'Navigate to next Reel', exact: true })
       return next
@@ -56,6 +61,94 @@ function reelAdvanceFixture(width: number, height: number, options: { nextVisibl
   session.wait = async () => { session.check() }
   return { window, page, session, boxes, stats: () => ({ wheels, clicks }) }
 }
+
+test('an already-open Reels viewer uses its visible frame without clicking the sidebar', async () => {
+  const f = reelAdvanceFixture(1024, 600)
+  const locator = f.page.locator.bind(f.page)
+  f.page.locator = ((selector: string) => {
+    assert.equal(selector, 'video', 'opening the current viewer must not select the sidebar')
+    return locator(selector)
+  }) as Page['locator']
+  try {
+    assert.equal(await openReels(f.page, () => {}, f.session), true)
+    assert.equal(f.stats().clicks, 0)
+  } finally { await f.window.happyDOM.close() }
+})
+
+test('a failed Reels sidebar click does not wait for navigation or retry the click', async () => {
+  let clicks = 0, waits = 0
+  const button = { filter() { return this }, first() { return this }, isVisible: async () => true,
+    elementHandle: async () => { clicks++; return null } }
+  const page = { url: () => 'https://www.instagram.com/alice/', locator: () => button,
+    waitForURL: async () => { waits++ } } as unknown as Page
+  const notes: Record<string, unknown>[] = []
+  assert.equal(await openReels(page, note => notes.push(note)), false)
+  assert.equal(clicks, 1)
+  assert.equal(waits, 0)
+  assert.equal(notes[0].stage, 'sidebar')
+})
+
+test('Reels opening shares a 15-second budget across navigation and settling', async () => {
+  const f = reelAdvanceFixture(1024, 600), originalNow = Date.now
+  let now = originalNow(), onReels = false
+  Date.now = () => now
+  const locator = f.page.locator.bind(f.page)
+  const button = { ...visibleActionGeometry, filter() { return this }, first() { return this }, isVisible: async () => true,
+    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => {}, dispose: async () => {} }) }
+  f.page.url = () => onReels ? 'https://www.instagram.com/reels/current/' : 'https://www.instagram.com/alice/'
+  f.page.locator = ((selector: string) => selector === 'video' ? locator(selector) : button) as Page['locator']
+  f.page.waitForURL = async (_url, options) => { now += options!.timeout!; onReels = true }
+  f.boxes[1].y = 330 // Navigation succeeds, but the frame never settles.
+  f.session.wait = async ms => { now += ms; f.session.check() }
+  const start = now, notes: Record<string, unknown>[] = []
+  try {
+    assert.equal(await openReels(f.page, note => notes.push(note), f.session), false)
+    assert.equal(now - start, 15_000)
+    assert.equal(notes[0].stage, 'settling')
+  } finally { Date.now = originalNow; await f.window.happyDOM.close() }
+})
+
+for (const moved of [true, false]) test(`skipping a changing reel counts browsing progress only after verified advancement (${moved})`, async () => {
+  const f = reelAdvanceFixture(1024, 600, { changeOnClick: moved, contextFailure: new Error('Element is not attached to the DOM') })
+  const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0 })
+  try {
+    await watchReels(f.page, 1, {}, () => {}, () => false, f.session.end, f.session, budget)
+    assert.equal(budget.browsed, moved ? 1 : 0)
+    assert.equal(budget.used.reels, 0, 'skipping is progress but does not claim a watched reel')
+  } finally { await f.window.happyDOM.close() }
+})
+
+test('off-topic reels can make browsing progress without any completed watches', async () => {
+  const f = reelAdvanceFixture(1024, 600, { offTopic: true })
+  const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0 })
+  const notes: Record<string, unknown>[] = []
+  try {
+    await watchReels(f.page, 1, { warmup_topics: 'fitness', reels_skip_chance: 0 }, note => notes.push(note),
+      () => false, f.session.end, f.session, budget, async () => false)
+    assert.equal(budget.browsed, 1)
+    assert.equal(budget.used.reels, 0)
+    assert.ok(notes.some(note => note.event === 'automation.warmup.reel_off_topic'))
+    assert.equal(notes.find(note => note.event === 'automation.reels_result')?.watchedCount, 0)
+  } finally { await f.window.happyDOM.close() }
+})
+
+test('a detached reel caption skips that reel instead of ending the session', async () => {
+  const f = reelAdvanceFixture(1024, 600, { changeOnClick: false, contextFailure: new Error('Element is not attached to the DOM') })
+  const notes: Record<string, unknown>[] = []
+  try {
+    await watchReels(f.page, 1, {}, note => notes.push(note), () => false, f.session.end, f.session)
+    assert.equal(f.stats().clicks, 1, 'try the next reel after losing caption context')
+    assert.ok(notes.some(note => note.event === 'automation.actions.reels.context_unavailable'))
+  } finally { await f.window.happyDOM.close() }
+})
+
+test('reel caption recovery still stops on visible Instagram limits', async () => {
+  const f = reelAdvanceFixture(1024, 600, { contextFailure: new errors.TimeoutError('Caption changed'), warningAfterFailure: true })
+  try {
+    await assert.rejects(watchReels(f.page, 1, {}, () => {}, () => false, f.session.end, f.session), /limit needs attention/)
+    assert.equal(f.stats().clicks, 0)
+  } finally { await f.window.happyDOM.close() }
+})
 
 for (const [width, height] of [[800, 480], [1024, 600], [1366, 768], [1920, 1080], [3840, 2160]])
   test(`Next-button reel advancement settles in a nested viewer at ${width}×${height}`, async () => {

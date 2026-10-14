@@ -10,7 +10,7 @@ function setup(target = 30, batch = 5) {
     target: async () => ({ target, remaining: target - sent, sent }),
     send: async () => { sendTimes.push(now); now += 10_000; sent++; events.push('send'); return 'sent' as const; },
     now: () => now, stopped: () => false,
-    random: (min: number, max: number) => min === 1 ? batch : max - 1,
+    random: (min: number, max: number) => min === 3 && max === 6 ? batch : max - 1,
     sleep: async (ms: number) => { now += ms; }, log: () => {},
   };
   const session = (minutes: number, remainingMinutes: number): Parameters<typeof scheduleRoutine>[0] => ({
@@ -20,7 +20,7 @@ function setup(target = 30, batch = 5) {
   return { controls, session, events, sendTimes, sent: () => sent };
 }
 
-for (const batch of [1, 5]) test(`completes 30 DMs in a 30-minute budget with batches of ${batch}`, async () => {
+for (const batch of [3, 5]) test(`completes 30 DMs in a 30-minute budget with batches of ${batch}`, async () => {
   const s = setup(30, batch);
   for (let remaining = 30; remaining > 0; remaining -= 5) {
     const session = s.session(5, remaining);
@@ -34,19 +34,64 @@ for (const batch of [1, 5]) test(`completes 30 DMs in a 30-minute budget with ba
 });
 
 test('a session alternates browsing with multiple DM batches', async () => {
-  const s = setup(6, 2);
+  const s = setup(6, 3);
   await scheduleRoutine(s.session(15, 15), s.controls);
   assert.equal(s.sent(), 6);
-  assert.deepEqual(s.events.slice(0, 9), ['browse', 'send', 'send', 'browse', 'send', 'send', 'browse', 'send', 'send']);
+  assert.deepEqual(s.events.slice(0, 8), ['browse', 'send', 'send', 'send', 'browse', 'send', 'send', 'send']);
 });
 
-test('every successful follow ends its batch and requires browsing before another action', async () => {
-  const s = setup(4, 5);
+for (const batch of [3, 4, 5]) test(`successful follows continue within a batch of ${batch} before browsing again`, async () => {
+  const s = setup(6, batch);
   const send = s.controls.send;
   await scheduleRoutine(s.session(15, 15), { ...s.controls, send: async () => { await send(); return 'followed'; } });
-  assert.equal(s.sent(), 4);
-  for (let i = 0; i < s.events.length - 1; i++)
-    if (s.events[i] === 'send') assert.equal(s.events[i + 1], 'browse');
+  assert.equal(s.sent(), 6);
+  assert.deepEqual(s.events.slice(0, batch + 2), ['browse', ...Array<string>(batch).fill('send'), 'browse']);
+});
+
+for (const batch of [3, 4, 5]) test(`session allocation allows a full ${batch}-account follow batch instead of reducing it to one`, async () => {
+  const s = setup(5, batch), send = s.controls.send;
+  await scheduleRoutine(s.session(5, 60), { ...s.controls, send: async () => { await send(); return 'followed'; } });
+  assert.equal(s.sent(), batch);
+});
+
+test('a batch stays below the remaining daily quota even when fewer than three accounts remain', async () => {
+  const s = setup(2, 5), send = s.controls.send;
+  await scheduleRoutine(s.session(5, 60), { ...s.controls, send: async () => { await send(); return 'followed'; } });
+  assert.equal(s.sent(), 2);
+});
+
+for (const delay of [10_000, 20_000]) test(`outreach waits ${delay / 1000} seconds after browsing before opening a profile`, async () => {
+  const s = setup(3, 3), session = s.session(10, 10);
+  let browseEnded = 0;
+  const browse = session.browse;
+  session.browse = async minutes => { const result = await browse(minutes); browseEnded = s.controls.now(); return result; };
+  const send = s.controls.send;
+  let checked = false;
+  await scheduleRoutine(session, { ...s.controls,
+    random: (min, max) => min === 10_000 && max === 20_000 ? delay : s.controls.random(min, max),
+    send: async () => {
+      if (!checked) { assert.equal(s.controls.now() - browseEnded, delay); checked = true; }
+      return send();
+    },
+  });
+  assert.ok(checked);
+});
+
+test('a stop during the transition pause prevents opening a recipient', async () => {
+  const s = setup(3), session = s.session(10, 10);
+  let stopped = false;
+  await scheduleRoutine(session, { ...s.controls, stopped: () => stopped,
+    sleep: async ms => { await s.controls.sleep(ms); stopped = true; },
+  });
+  assert.equal(s.sent(), 0);
+});
+
+test('the transition pause cannot overrun the session deadline', async () => {
+  const s = setup(3), session = s.session(1, 1);
+  session.browse = async () => { await s.controls.sleep(55_000); return 'finished'; };
+  await scheduleRoutine(session, s.controls);
+  assert.equal(s.sent(), 0);
+  assert.equal(s.controls.now(), session.deadline);
 });
 
 test('disabled or exhausted browsing does not permit an outreach batch', async () => {
@@ -118,15 +163,16 @@ test('browsing-only sessions continue after a short successful Explore phase', a
   assert.equal(s.sent(), 0);
 });
 
-test('blocked recipients are replaced without increasing the delivered count', async () => {
-  const s = setup(2, 2);
+test('blocked recipients are replaced within the same batch without increasing the delivered count', async () => {
+  const s = setup(3, 3);
   const send = s.controls.send;
   let blocked = true;
   await scheduleRoutine(s.session(10, 10), { ...s.controls, send: async () => {
     if (blocked) { blocked = false; return 'blocked'; }
     return send();
   } });
-  assert.equal(s.sent(), 2);
+  assert.equal(s.sent(), 3);
+  assert.deepEqual(s.events.slice(0, 4), ['browse', 'send', 'send', 'send']);
 });
 
 test('missing leads stop outreach without consuming extra active time', async () => {

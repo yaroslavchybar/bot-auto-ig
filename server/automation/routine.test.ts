@@ -5,6 +5,7 @@ import type { Page } from 'playwright-core';
 import { runRoutineSession } from './routine.js';
 import { errors } from 'playwright-core';
 import { SessionEnded } from './actions/session.js';
+import { currentLogScope, type LogScope } from '../shared/logger.js';
 
 function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following' | 'Requested' = mode === 'dm' ? 'Following' : 'Follow',
 ) {
@@ -97,6 +98,35 @@ test('follow-first outreach never opens or sends a DM in the follow action', asy
     ],
   );
   assert.equal(s.result().sent, false);
+});
+
+test('each lead retains navigation, screening, follow and optional-like timings in its own completed event', async () => {
+  const s = setup('follow');
+  let scope: LogScope | undefined;
+  const navigate = s.page.goto.bind(s.page), screen = s.deps.screenLead, follow = s.deps.follow;
+  s.page.goto = async (url, options) => { await s.deps.sleep(400); return navigate(url, options); };
+  s.deps.screenLead = async (...args) => {
+    scope = currentLogScope();
+    await s.deps.sleep(1250);
+    return screen(...args);
+  };
+  s.deps.follow = async (...args) => { await s.deps.sleep(250); return follow(...args); };
+  s.deps.likeRecentPost = async (_page, _allowed, _before, session) => {
+    assert.ok(session);
+    assert.ok(session.end <= Date.now() + 15_000);
+    await s.deps.sleep(600);
+    return false;
+  };
+  await s.run();
+  assert.ok(scope?.completed);
+  assert.equal(scope.event, 'automation.recipient_session');
+  assert.equal(scope.fields.targetUsername, 'alice');
+  assert.equal(scope.fields.navigationMs, 400);
+  assert.equal(scope.fields.screeningMs, 1250);
+  assert.equal(scope.fields.followMs, 250);
+  assert.equal(scope.fields.optionalLikeMs, 600);
+  assert.equal(scope.fields.followed, true);
+  assert.equal(scope.fields.liked, false);
 });
 
 test('selected public leads use username Search after screening and before follow authorization', async () => {
@@ -323,6 +353,61 @@ test('an interrupted notification scan is never marked complete', async () => {
   const s = setup(); s.deps.notifications = async () => ({ date: '2026-09-21', since: 0 }); s.deps.readNotifications = async () => null;
   await s.run(); assert.ok(!s.calls.includes('record-notifications'));
 });
+
+test('a notification UI timeout skips the scan and continues the profile routine', async () => {
+  const s = setup('follow')
+  s.deps.notifications = async () => ({ date: '2026-09-21', since: 0 })
+  s.deps.readNotifications = async (_page, _stop, _since, session) => {
+    assert.ok(session && Number.isFinite(session.end), 'notification scans share the routine deadline')
+    throw new errors.TimeoutError('Follows filter timed out')
+  }
+  await s.run()
+  assert.equal(s.result().issue, undefined)
+  assert.ok(!s.calls.includes('record-notifications'))
+  assert.ok(s.calls.includes('record-follow'))
+})
+
+for (const mode of ['dm', 'follow'] as const) test(`temporary ${mode} navigation failure keeps browsing and releases unscreened leases`, async () => {
+  const s = setup(mode)
+  s.page.goto = async () => { throw new errors.TimeoutError('Recipient navigation timed out') }
+  const reserve = s.deps.reserve
+  let reserved = false
+  s.deps.reserve = async (...args) => { if (reserved) return null; reserved = true; return reserve(...args) }
+  let released = 0
+  s.deps.finishScreening = async (_automation, _profile, _lead, _token, _date, decision) => {
+    assert.equal(decision, undefined); released++; return false
+  }
+  await s.run()
+  assert.equal(s.result().issue, undefined)
+  assert.ok(s.calls.filter(call => call === 'browse').length > 1)
+  assert.ok(!s.calls.includes('send') && !s.calls.includes('follow'))
+  assert.equal(released, mode === 'follow' ? 1 : 0)
+})
+
+test('a DM composer failure before Send skips the recipient without claiming delivery', async () => {
+  const s = setup()
+  s.locator.fill = async () => { throw new errors.TimeoutError('Composer changed') }
+  await s.run()
+  assert.equal(s.result().issue, undefined)
+  assert.ok(!s.calls.includes('send') && !s.calls.includes('sent') && !s.calls.includes('uncertain'))
+})
+
+test('recipient navigation recovery still stops at an Instagram checkpoint', async () => {
+  const s = setup()
+  let failed = false
+  s.page.goto = async () => { failed = true; throw new errors.TimeoutError('Navigation timed out') }
+  s.deps.instagram = async () => { if (failed) throw new Error('Instagram checkpoint needs attention') }
+  await s.run()
+  assert.match(s.result().issue ?? '', /checkpoint needs attention/)
+  assert.ok(!s.calls.includes('send'))
+})
+
+test('a follow click timeout still requires review after input was attempted', async () => {
+  const s = setup('follow')
+  s.deps.follow = async (_page, allowed, click) => { await allowed(); await click(); throw new errors.TimeoutError('Follow confirmation timed out') }
+  await s.run()
+  assert.match(s.result().issue ?? '', /Follow confirmation timed out/)
+})
 
 test('removed membership prevents all outreach and browsing', async () => {
   const s = setup(); s.deps.ready = async () => false; await s.run(); assert.deepEqual(s.calls, ['record-incomplete']);

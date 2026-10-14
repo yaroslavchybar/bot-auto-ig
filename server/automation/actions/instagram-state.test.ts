@@ -1,4 +1,5 @@
 import { visibleActionGeometry } from './action-locator.test-support.js'
+import { errors } from 'playwright-core'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Window } from 'happy-dom'
@@ -158,6 +159,8 @@ function notificationFixture(
     closeFailure?: boolean
     closedBeforeError?: boolean
     checkpoint?: boolean
+    stubbornPanel?: boolean
+    resetFailure?: boolean
   } = {},
 ) {
   const clicks: string[] = []
@@ -191,6 +194,7 @@ function notificationFixture(
     },
     isVisible: async () => opened,
     waitFor: async ({ state }: { state: string }) => {
+      if (options.stubbornPanel && state === 'hidden' && opened) throw new errors.TimeoutError('Panel stayed open')
       assert.equal(opened, state === 'visible')
     },
     locator: (selector: string) => {
@@ -204,8 +208,13 @@ function notificationFixture(
       press: async (key: string) => {
         assert.equal(key, 'Escape')
         clicks.push('escape')
-        opened = false
+        if (!options.stubbornPanel) opened = false
       },
+    },
+    goto: async () => {
+      if (options.resetFailure) throw new errors.TimeoutError('Home reset timed out')
+      clicks.push('notification-reset'); opened = false
+      return null
     },
     locator: (selector: string) => {
       if (selector.includes('svg[aria-label="Notifications"]'))
@@ -278,6 +287,19 @@ test('a notification close control that disappears falls back to Escape', async 
   const f = notificationFixture({ closeFailure: true })
   assert.equal(await checkNotifications(f.page, () => {}, f.session), true)
   assert.deepEqual(f.clicks, ['notifications', 'escape'])
+})
+
+test('a notification panel that survives Escape is cleared by bounded Home navigation', async () => {
+  const f = notificationFixture({ closeFailure: true, stubbornPanel: true })
+  assert.equal(await checkNotifications(f.page, () => {}, f.session), true)
+  assert.deepEqual(f.clicks, ['notifications', 'escape', 'notification-reset'])
+})
+
+test('a temporary notification cleanup failure skips the check instead of ending warm-up', async () => {
+  const f = notificationFixture({ closeFailure: true, stubbornPanel: true, resetFailure: true })
+  const notes: Record<string, unknown>[] = []
+  assert.equal(await checkNotifications(f.page, note => notes.push(note), f.session), false)
+  assert.equal(notes.at(-1)?.event, 'automation.warmup.notifications_skipped')
 })
 
 test('visibility recovery never ignores an Instagram checkpoint', async () => {

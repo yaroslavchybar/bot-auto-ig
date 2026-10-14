@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import type { Page } from 'playwright-core'
+import { errors } from 'playwright-core'
 import { browseFeed, visibleFeedPost } from './feed.js'
 
 function pageWithPosts(tops: number[]) {
@@ -35,6 +36,26 @@ test('zero budget never navigates the browser', async () => {
 test('disabled home feed never navigates even with reels detours configured', async () => {
   const page = { goto: async () => { throw new Error('Must not navigate') } } as unknown as Page
   assert.equal(await browseFeed(page, 10, { browse_home_feed: false, reels_chance: 100 }, () => {}, () => false), 'finished')
+})
+
+test('temporary Home navigation failure stalls browsing without ending the reservation', async () => {
+  const notes: Record<string, unknown>[] = []
+  const page = { url: () => 'https://www.instagram.com/reels/current/',
+    goto: async () => { throw new errors.TimeoutError('Home navigation timed out') },
+    locator: () => ({ filter: () => ({ evaluateAll: async () => null }) }),
+  } as unknown as Page
+  assert.equal(await browseFeed(page, 1, {}, note => notes.push(note), () => false), 'stalled')
+  assert.equal(notes[0]?.event, 'automation.actions.feed.browsing_unavailable')
+})
+
+test('Home navigation recovery still propagates checkpoints and lost browser connections', async () => {
+  for (const checkpoint of [false, true]) {
+    let navigated = false
+    const page = { url: () => navigated && checkpoint ? 'https://www.instagram.com/challenge/' : 'https://www.instagram.com/reels/current/',
+      goto: async () => { navigated = true; throw checkpoint ? new errors.TimeoutError('Navigation timed out') : new Error('Browser disconnected') },
+    } as unknown as Page
+    await assert.rejects(browseFeed(page, 1, {}, () => {}, () => false), checkpoint ? /checkpoint needs attention/ : /Browser disconnected/)
+  }
 })
 
 test('feed skips avoid topic requests and both reel paths receive the supplied matcher', () => {
