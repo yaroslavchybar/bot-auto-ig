@@ -63,7 +63,7 @@ test('feed skips avoid topic requests and both reel paths receive the supplied m
   execFileSync('bun', ['--eval', `
     import assert from 'node:assert/strict'
     import { mock } from 'bun:test'
-    let now, stopped, mode, decisions, reads, reels, config
+    let now = 0, stopped, mode, decisions, reads, reels, config
     Date.now = () => now
     Math.random = () => 0.5
     const session = await import('./server/automation/actions/session.ts')

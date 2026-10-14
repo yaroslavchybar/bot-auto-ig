@@ -26,7 +26,7 @@ import { performProfileFollow } from './actions/follow-safety.js';
 import { clickAction } from './actions/action-locator.js'
 import { screenLead, LEAD_SCREENING_MODEL } from './actions/lead-screening.js'
 import { BrowseSession, SessionEnded } from './actions/session.js'
-import { openProfileThroughSearch, publicProfileForSearch } from './actions/explore.js'
+import { openProfileThroughSearch } from './actions/explore.js'
 import { errors } from 'playwright-core'
 import { isTransientDomIssue } from '../shared/domErrors.js'
 import { isTemporaryUiError } from './actions/ui-errors.js'
@@ -60,7 +60,6 @@ const dependencies = {
   screenLead,
   finishScreening: routineFinishScreening,
   searchProfile: openProfileThroughSearch,
-  publicProfile: publicProfileForSearch,
 };
 
 /** Check membership at action boundaries; live subscriptions stop active work. */
@@ -213,10 +212,27 @@ export async function runRoutineSession(
               let followAttempted = false, screeningFinished = false;
               const token = 'screeningToken' in attempt ? attempt.screeningToken : undefined;
               try {
-                await timed('navigation', () => page.goto(`https://www.instagram.com/${attempt.username}/`, {
-                  waitUntil: "domcontentloaded",
-                  timeout: timeout(30_000),
+                const useSearch = !isDm && 'isPrivate' in attempt && attempt.isPrivate === false && deps.random(0, 1) < 0.3;
+                let searched = false;
+                if (useSearch) {
+                  try {
+                    searched = await timed('search', () => deps.searchProfile(page, attempt.username,
+                      new BrowseSession(Math.min(deadline, Date.now() + 30_000), shouldStop)));
+                  } catch (error) {
+                    if (shouldStop()) return 'unavailable';
+                    await deps.instagram(page);
+                    if (!(error instanceof SessionEnded) && !(error instanceof errors.TimeoutError) && !isTransientDomIssue(error)) throw error;
+                  }
+                }
+                if (shouldStop()) return 'unavailable';
+                if (!searched) await timed('navigation', () => page.goto(`https://www.instagram.com/${attempt.username}/`, {
+                  waitUntil: 'domcontentloaded', timeout: timeout(30_000),
                 }));
+                await check();
+                if (shouldStop()) return 'unavailable';
+                scope.add({ route: searched ? 'search' : 'direct' });
+                if (!isDm) log({ event: 'automation.routine.profile_navigation', targetUsername: attempt.username,
+                  route: searched ? 'search' : 'direct', outcome: searched ? 'opened' : useSearch ? 'fallback' : 'opened' });
                 if (!isDm) {
                   if (typeof token !== 'string' || !token) return 'blocked'
                   let decision
@@ -263,27 +279,6 @@ export async function runRoutineSession(
                     accepted,
                   })
                   if (!accepted || shouldStop()) return shouldStop() ? 'unavailable' : 'blocked'
-                  // Privacy is known only once the profile opens. Some public leads
-                  // are revisited through Search before the authorized follow.
-                  if (deps.random(0, 1) < 0.3 && await deps.publicProfile(page)) {
-                    let searched = false
-                    try {
-                      searched = await timed('search', () => deps.searchProfile(page, attempt.username,
-                        new BrowseSession(Math.min(deadline, Date.now() + 30_000), shouldStop)))
-                    } catch (error) {
-                      if (shouldStop()) return 'unavailable'
-                      await deps.instagram(page)
-                      if (!(error instanceof SessionEnded) && !(error instanceof errors.TimeoutError) && !isTransientDomIssue(error)) throw error
-                    }
-                    if (shouldStop()) return 'unavailable'
-                    // Restore the exact lead on an empty/missing result; never follow a suggestion.
-                    if (!searched) await timed('searchFallback', () => page.goto(`https://www.instagram.com/${attempt.username}/`, {
-                      waitUntil: 'domcontentloaded', timeout: timeout(30_000),
-                    }))
-                    await check()
-                    log({ event: 'automation.routine.profile_navigation', targetUsername: attempt.username,
-                      route: searched ? 'search' : 'direct', outcome: searched ? 'opened' : 'fallback' })
-                  }
                   followsRemaining = Math.max(0, followsRemaining - 1)
                   const followed = await timed('follow', () => followIfNeeded(attempt.leadId, attempt.date, () => { followAttempted = true; }));
                   scope.add({ followed });

@@ -74,6 +74,7 @@ const liker = v.object({
   igId: v.string(),
   username: v.string(),
   fullName: v.optional(v.string()),
+  isPrivate: v.optional(v.boolean()),
 })
 
 /** Saving leads is independent of request quotas; each HTTP dispatch is charged separately. */
@@ -131,16 +132,19 @@ export const saveBatch = internalMutation({
       if (existing) {
         claimedExisting.add(existing._id)
         const fullName = p.fullName || existing.fullName
+        const isPrivate = p.isPrivate ?? existing.isPrivate
         if (
           existing.igId !== p.igId ||
           existing.username !== p.username ||
           existing.fullName !== fullName ||
+          existing.isPrivate !== isPrivate ||
           !existing.enrichmentStatus
         ) {
           await ctx.db.patch(existing._id, {
             igId: p.igId,
             username: p.username,
             fullName,
+            isPrivate,
             enrichmentStatus: existing.enrichmentStatus ?? 'pending',
           })
           stats.add(existing, {
@@ -162,6 +166,7 @@ export const saveBatch = internalMutation({
           igId: p.igId,
           username: p.username,
           fullName: p.fullName,
+          isPrivate: p.isPrivate,
           enrichmentStatus: 'pending' as const,
           dmSent: false,
           followed: false,

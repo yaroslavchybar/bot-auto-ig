@@ -3,6 +3,11 @@ import { execFileSync } from 'node:child_process'
 import test from 'node:test'
 import { sanitizeLogValue } from './loggingSanitize.js'
 
+test('inline image data is redacted even when a provider echoes a truncated image URL', () => {
+  const clean = sanitizeLogValue({ detail: 'Rejected data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ', count: 1 })
+  assert.deepEqual(clean, { detail: 'Rejected [redacted image]', count: 1 })
+})
+
 function events(code: string) {
   const raw = execFileSync('bun', ['--eval', code], { cwd: process.cwd(), encoding: 'utf8',
     env: { ...process.env, LOG_SERVICE: 'logging-test', INTERNAL_API_KEY: 'test-private-secret', COMMIT_SHA: 'test-commit' } })

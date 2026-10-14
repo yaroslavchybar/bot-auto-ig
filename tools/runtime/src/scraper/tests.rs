@@ -312,6 +312,9 @@ fn apify_and_likers_keep_lossless_ids_dates_and_private_accounts() {
     let likers=instagram::parse_likers(&json!({"users":[{"pk":9007199254740993u64,"username":"public","is_private":false},{"pk":"2","username":"private","is_private":true},{"pk":"3","username":"unknown"}]})).unwrap();
     assert_eq!(likers.len(), 3);
     assert_eq!(likers[0]["igId"], "9007199254740993");
+    assert_eq!(likers[0]["isPrivate"], false);
+    assert_eq!(likers[1]["isPrivate"], true);
+    assert!(likers[2].get("isPrivate").is_none());
     assert!(instagram::parse_likers(&json!({})).is_err());
     let all = instagram::parse_likers(&json!({"users":[
         {"pk":"1","username":"public","is_private":false},

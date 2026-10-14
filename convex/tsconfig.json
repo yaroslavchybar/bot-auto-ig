@@ -5,7 +5,7 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "rootDir": "..",
-    "types": ["node"]
+    "types": ["node", "vite/client"]
   },
   "include": [
     "./**/*.ts"

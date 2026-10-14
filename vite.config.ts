@@ -117,7 +117,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['tests/convex/**/*.test.ts'],
+    include: ['tests/convex/**/*.test.ts', 'convex/tests/**/*.test.ts'],
     setupFiles: ['tests/convex/setup.ts'],
     restoreMocks: true,
     clearMocks: true,

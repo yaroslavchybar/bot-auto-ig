@@ -203,8 +203,21 @@ pub fn parse_likers(data: &Value) -> Result<Vec<Value>> {
     let rows = data["users"]
         .as_array()
         .ok_or_else(|| Error::failed("Instagram returned an incomplete likers response"))?;
-    Ok(rows.iter().take(100).filter_map(|row|{
-        let id=instagram::string(row.get("pk").unwrap_or(&row["id"]));let username=instagram::string(&row["username"]);
-        if !instagram::digits(&id)||username.is_empty(){return None;}Some(json!({"igId":id,"username":username,"fullName":instagram::string(&row["full_name"])}))
-    }).collect())
+    Ok(rows
+        .iter()
+        .take(100)
+        .filter_map(|row| {
+            let id = instagram::string(row.get("pk").unwrap_or(&row["id"]));
+            let username = instagram::string(&row["username"]);
+            if !instagram::digits(&id) || username.is_empty() {
+                return None;
+            }
+            let mut lead = json!({"igId":id,"username":username,"fullName":instagram::string(&row["full_name"])});
+            // Missing privacy data stays unknown; never default it to public.
+            if let Some(is_private) = row["is_private"].as_bool() {
+                lead["isPrivate"] = json!(is_private);
+            }
+            Some(lead)
+        })
+        .collect())
 }

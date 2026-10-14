@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { errors, type Page } from 'playwright-core'
 import { visibleActionGeometry } from './action-locator.test-support.js'
-import { openProfileThroughSearch, openTopicResults, publicProfileForSearch } from './explore.js'
+import { openProfileThroughSearch, openTopicResults } from './explore.js'
 import { BrowseSession, SessionEnded } from './session.js'
 
 function fixture(options: { missing?: boolean; wrongTarget?: boolean; checkpoint?: boolean } = {}) {
@@ -79,17 +79,4 @@ test('checkpoint and stop conditions prevent result clicks', async () => {
   const stopped = fixture()
   await assert.rejects(openProfileThroughSearch(stopped.page, 'alice', new BrowseSession(0)), SessionEnded)
   assert.deepEqual(stopped.calls, [])
-})
-
-test('public navigation requires visible posts, an unfollowed control, and no private notice', async () => {
-  for (const [followable, privateNotice, posts, expected] of [
-    [true, false, 3, true], [true, true, 3, false], [true, false, 0, false], [false, false, 3, false],
-  ] as const) {
-    const page = { locator: (selector: string) => selector.startsWith('xpath=')
-      ? { filter() { return this }, first() { return this }, isVisible: async () => followable }
-      : { filter: () => ({ count: async () => posts }) },
-      getByText: () => ({ first: () => ({ isVisible: async () => privateNotice }) }),
-    } as unknown as Page
-    assert.equal(await publicProfileForSearch(page), expected)
-  }
 })

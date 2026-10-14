@@ -1,6 +1,5 @@
 import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
-import { followButton } from '../follow.js'
 import { actionLocator, clickAction } from './action-locator.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { BrowseSession } from './session.js'
@@ -60,11 +59,4 @@ export async function openProfileThroughSearch(page: Page, username: string, ses
   await page.locator('main header').waitFor({ state: 'visible', timeout: session.timeout(8000) })
   await assertInstagramReady(page)
   return true
-}
-
-/** Visible posts on an unfollowed profile prove it is public; unknown or empty layouts use the normal route. */
-export async function publicProfileForSearch(page: Page): Promise<boolean> {
-  if (!await followButton(page).isVisible()) return false
-  if (await page.getByText(/This (?:account|profile) is private/i, { exact: true }).first().isVisible()) return false
-  return await page.locator('main a[href*="/p/"], main a[href*="/reel/"]').filter({ visible: true }).count() > 0
 }

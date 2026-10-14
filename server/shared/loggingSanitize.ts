@@ -4,6 +4,7 @@ const PRIVATE_KEYS = /^(password|passwd|secret|token|accessToken|refreshToken|se
 export function sanitizeLogValue(value: unknown, secrets: readonly string[] = [], depth = 0, seen = new Set<object>()): unknown {
   if (typeof value === 'string') {
     let text = value
+      .replace(/data:image\/[^;,\s]+;base64,[a-z0-9+/=_-]+/gi, '[redacted image]')
       .replace(/(https?:\/\/|socks5h?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[redacted]@')
       .replace(/\bBearer\s+[^\s,;"']+/gi, 'Bearer [redacted]')
       .replace(/\b(sessionid|csrftoken|password|token|api_key|access_token)=([^\s&;,"']+)/gi, '$1=[redacted]')

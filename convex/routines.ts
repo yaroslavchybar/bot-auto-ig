@@ -340,6 +340,7 @@ export const reserve = internalMutation({
     await ctx.db.patch(state._id, { lastLeadListId: selected.leadListId });
     return { leadId: lead._id, username: lead.username,
       fullName: lead.fullName,
+      isPrivate: lead.isPrivate,
       message: selected.message,
       date,
       screeningToken,

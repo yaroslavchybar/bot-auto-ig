@@ -52,6 +52,7 @@ export default defineSchema({
     igId: v.optional(v.string()),
     username: v.string(),
     fullName: v.optional(v.string()),
+    isPrivate: v.optional(v.boolean()),
     classification: v.optional(
       v.union(v.literal('male'), v.literal('female'), v.literal('business')),
     ),

@@ -7,6 +7,7 @@ import schema from '../../convex/schema'
 export const modules = import.meta.glob([
   '../../convex/**/*.ts',
   '../../convex/_generated/*.js',
+  '!../../convex/tests/**',
 ])
 
 const TEST_IDENTITY: Partial<UserIdentity> = {

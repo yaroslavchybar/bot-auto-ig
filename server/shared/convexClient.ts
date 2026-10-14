@@ -527,7 +527,7 @@ export const routineFinishScreening = (
     maxRetries: 0,
   })
 export const routineReserve = (automationId: string, profileId: string) =>
-  convexFetch<{ leadId: string; username: string; fullName?: string; message: string; date: string
+  convexFetch<{ leadId: string; username: string; fullName?: string; isPrivate?: boolean; message: string; date: string
     screeningToken: string
   } | null>(
     '/api/routines/reserve',

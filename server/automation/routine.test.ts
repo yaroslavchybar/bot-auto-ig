@@ -12,7 +12,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
   const calls: string[] = [];
   let now = 0, sent = false, issue: string | undefined;
   const attempt = { leadId: 'lead', date: '2026-09-21', username: 'alice', message: 'Hello alice',
-    screeningToken: 'screen',
+    screeningToken: 'screen', isPrivate: undefined as boolean | undefined,
   };
   const locator = {
     first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; }, filter() { return this; },
@@ -43,7 +43,6 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
           } : locator,
   } as unknown as Page;
   const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
-    publicProfile: async () => false,
     searchProfile: async () => true,
     screenLead: async () => {
       calls.push('screen')
@@ -85,7 +84,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
   const automation = { _id: 'automation', name: 'Daily', nodes: [], edges: [], routine: { headless: true, activity: {} },
   };
   const run = (stopped = () => false) => runRoutineSession(automation, 'profile', page, () => {}, stopped, deps);
-  return { calls, deps, page, locator, run, result: () => ({ sent, issue }) };
+  return { calls, deps, page, locator, attempt, run, result: () => ({ sent, issue }) };
 }
 
 test('follow-first outreach never opens or sends a DM in the follow action', async () => {
@@ -129,58 +128,63 @@ test('each lead retains navigation, screening, follow and optional-like timings 
   assert.equal(scope.fields.liked, false);
 });
 
-test('selected public leads use username Search after screening and before follow authorization', async () => {
+test('selected known public leads open through Search once before screening and following', async () => {
   const s = setup('follow')
-  s.deps.publicProfile = async () => true
+  s.attempt.isPrivate = false
   s.deps.searchProfile = async (_page, username) => { assert.equal(username, 'alice'); s.calls.push('search'); return true }
   await s.run()
-  assert.ok(s.calls.indexOf('search') > s.calls.indexOf('screen-saved'))
+  assert.ok(s.calls.indexOf('search') < s.calls.indexOf('screen'))
   assert.ok(s.calls.indexOf('search') < s.calls.indexOf('authorize-follow'))
   assert.ok(s.calls.includes('follow'))
-  assert.equal(s.calls.filter(c => c === 'navigate').length, 1)
+  assert.equal(s.calls.filter(c => c === 'navigate').length, 0)
+  assert.equal(s.calls.filter(c => c === 'search').length, 1)
 })
 
-for (const publicProfile of [false, true]) test(`private/unknown or unselected public leads keep the direct route (${publicProfile})`, async () => {
+for (const isPrivate of [undefined, true, false]) test(`private/unknown or unselected public leads keep the direct route (${isPrivate})`, async () => {
   const s = setup('follow')
-  s.deps.publicProfile = async () => publicProfile
-  if (publicProfile) s.deps.random = (min, max) => min === 0 && max === 1 ? 0.9 : min
+  s.attempt.isPrivate = isPrivate
+  if (isPrivate === false) s.deps.random = (min, max) => min === 0 && max === 1 ? 0.9 : min
   s.deps.searchProfile = async () => { throw new Error('Should not search this profile') }
   await s.run()
   assert.ok(s.calls.includes('follow'))
+  assert.equal(s.calls.filter(c => c === 'navigate').length, 1)
   assert.equal(s.result().issue, undefined)
 })
 
 for (const failure of [false, new errors.TimeoutError('Search result missing'), new SessionEnded('Search time ended')])
   test(`failed optional Search restores the exact profile before following (${String(failure)})`, async () => {
     const s = setup('follow')
-    s.deps.publicProfile = async () => true
+    s.attempt.isPrivate = false
     s.deps.searchProfile = async () => { s.calls.push('search'); if (failure) throw failure; return false }
     const goto = s.page.goto
     s.page.goto = async (url, options) => { assert.equal(url, 'https://www.instagram.com/alice/'); return goto(url, options) }
     await s.run()
-    assert.deepEqual(s.calls.slice(s.calls.indexOf('search'), s.calls.indexOf('follow') + 1), ['search', 'navigate', 'authorize-follow', 'follow'])
+    assert.deepEqual(s.calls.slice(s.calls.indexOf('search'), s.calls.indexOf('follow') + 1), ['search', 'navigate', 'screen', 'screen-saved', 'authorize-follow', 'follow'])
+    assert.equal(s.calls.filter(c => c === 'navigate').length, 1)
     assert.equal(s.result().issue, undefined)
   })
 
 test('a stop during Search prevents fallback navigation and following', async () => {
   const s = setup('follow')
   let stopped = false
-  s.deps.publicProfile = async () => true
+  s.attempt.isPrivate = false
   s.deps.searchProfile = async () => { stopped = true; throw new errors.TimeoutError('Interrupted') }
   await s.run(() => stopped)
-  assert.equal(s.calls.filter(c => c === 'navigate').length, 1)
+  assert.equal(s.calls.filter(c => c === 'navigate').length, 0)
+  assert.ok(!s.calls.includes('screen'))
   assert.ok(!s.calls.includes('authorize-follow'))
 })
 
 test('a checkpoint during optional Search stops before fallback or follow authorization', async () => {
   const s = setup('follow')
-  s.deps.publicProfile = async () => true
+  s.attempt.isPrivate = false
   s.deps.searchProfile = async () => {
     s.deps.instagram = async () => { throw new Error('Instagram checkpoint needs attention') }
     throw new errors.TimeoutError('Search timed out')
   }
   await s.run()
-  assert.equal(s.calls.filter(c => c === 'navigate').length, 1)
+  assert.equal(s.calls.filter(c => c === 'navigate').length, 0)
+  assert.ok(!s.calls.includes('screen'))
   assert.ok(!s.calls.includes('authorize-follow'))
   assert.match(s.result().issue!, /checkpoint/)
 })
