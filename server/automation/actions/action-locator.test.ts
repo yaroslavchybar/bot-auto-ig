@@ -6,7 +6,7 @@ import type { Locator } from 'playwright-core'
 import { actionLocator, clickAction } from './action-locator.js'
 import { ElementNotVisibleError, resolveConfig } from 'cloakbrowser/human'
 
-for (const method of ['click', 'fill', 'hover'] as const) {
+for (const method of ['click', 'dblclick', 'fill', 'hover'] as const) {
   test(`${method} remains bound after siblings shift and fails when its element is replaced`, async () => {
     const window = new Window()
     try {
@@ -16,6 +16,7 @@ for (const method of ['click', 'fill', 'hover'] as const) {
       let disposed = 0
       const handle = {
         click: async () => { assert.ok(selected.isConnected, 'detached'); events.push('click') },
+        dblclick: async () => { assert.ok(selected.isConnected, 'detached'); events.push('dblclick') },
         fill: async (value: string) => { assert.ok(selected.isConnected, 'detached'); events.push(value) },
         ...visibleActionGeometry, hover: async () => { assert.ok(selected.isConnected, 'detached'); events.push('hover') },
         dispose: async () => { disposed++ },
@@ -32,7 +33,7 @@ for (const method of ['click', 'fill', 'hover'] as const) {
       const action = await actionLocator(target, 3210)
       selected.previousElementSibling!.remove()
       await act(action)
-      const expected = method === 'click' ? ['hover', 'click'] : [method === 'fill' ? 'Hello' : method]
+      const expected = method === 'click' || method === 'dblclick' ? ['hover', method] : [method === 'fill' ? 'Hello' : method]
       assert.deepEqual(events, expected)
       assert.equal(disposed, 1)
 

@@ -253,7 +253,8 @@ export async function watchReels(
     const viewed = await viewVideo(video, dwell, session)
     if (viewed && budget) budget.browsed++
     if (viewed && numeric(config.warmup_day, 1) >= 8 && budget) {
-      await maintainPost(page, post, context, topics, budget, session, log, matchesTopic)
+      const surface = video.locator('xpath=ancestor::*[@role="group" and @aria-label="Video player"][1]')
+      await maintainPost(page, post, context, topics, budget, session, log, matchesTopic, surface)
     }
     await assertInstagramReady(page)
     if (Date.now() >= end || shouldStop()) break

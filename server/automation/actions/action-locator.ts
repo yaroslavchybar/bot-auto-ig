@@ -5,7 +5,7 @@ import { revealForClick } from './scroll.js'
 import { BrowseSession, SessionEnded } from './session.js'
 
 /** Pin actions to one element and move Cloak's cursor onto it before clicking. */
-export async function actionLocator(target: Locator, timeout = 10_000): Promise<Pick<ElementHandle, 'click' | 'fill' | 'hover'>> {
+export async function actionLocator(target: Locator, timeout = 10_000): Promise<Pick<ElementHandle, 'click' | 'dblclick' | 'fill' | 'hover'>> {
   const selectionDeadline = timeout > 0 ? Date.now() + timeout : Infinity
   const element = await target.elementHandle({ timeout })
   if (!element) throw new Error('Action target is detached or missing')
@@ -32,21 +32,23 @@ export async function actionLocator(target: Locator, timeout = 10_000): Promise<
     if (remaining <= 0) throw new errors.TimeoutError('Action timed out while revealing its target')
     return Number.isFinite(remaining) ? remaining : 0
   }
+  const click = (method: 'click' | 'dblclick', options?: Parameters<ElementHandle['click']>[0]) => run(async () => {
+    // A caller may pass its remaining session time after selection. Cap that
+    // fresh action budget at the original deadline without subtracting selection twice.
+    const deadline = deadlineFor(options?.timeout)
+    if (deadline <= Date.now()) throw new errors.TimeoutError('Click timed out while selecting its target')
+    await prepare(deadline)
+    const hoverTimeout = deadline - Date.now()
+    if (hoverTimeout <= 0) throw new errors.TimeoutError('Click timed out while selecting its target')
+    await element.hover({ ...humanOptions, timeout: Number.isFinite(hoverTimeout) ? hoverTimeout : 0, position: options?.position,
+      force: options?.force, modifiers: options?.modifiers, trial: options?.trial })
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) throw new errors.TimeoutError('Click timed out while moving to its target')
+    await element[method]({ ...humanOptions, ...options, timeout: Number.isFinite(deadline) ? remaining : 0 })
+  })
   return {
-    click: options => run(async () => {
-      // A caller may pass its remaining session time after selection. Cap that
-      // fresh action budget at the original deadline without subtracting selection twice.
-      const deadline = deadlineFor(options?.timeout)
-      if (deadline <= Date.now()) throw new errors.TimeoutError('Click timed out while selecting its target')
-      await prepare(deadline)
-      const hoverTimeout = deadline - Date.now()
-      if (hoverTimeout <= 0) throw new errors.TimeoutError('Click timed out while selecting its target')
-      await element.hover({ ...humanOptions, timeout: Number.isFinite(hoverTimeout) ? hoverTimeout : 0, position: options?.position,
-        force: options?.force, modifiers: options?.modifiers, trial: options?.trial })
-      const remaining = deadline - Date.now()
-      if (remaining <= 0) throw new errors.TimeoutError('Click timed out while moving to its target')
-      await element.click({ ...humanOptions, ...options, timeout: Number.isFinite(deadline) ? remaining : 0 })
-    }),
+    click: options => click('click', options),
+    dblclick: options => click('dblclick', options),
     fill: (value, options) => run(async () => {
       const deadline = deadlineFor(options?.timeout)
       await prepare(deadline)

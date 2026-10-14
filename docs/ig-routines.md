@@ -14,6 +14,8 @@ Feed, profiles, overlays, and notification scanning use eased wheel scrolling. C
 
 Visible automation sessions move the native desktop pointer along Cloak's mouse path before clicking. TigerVNC includes that remote cursor in the stream; no cursor is injected into the page. The viewer hides its local cursor while the agent controls the session. Manual sessions keep normal cursor control.
 
+In the Reels tab, a selected Like first double-clicks the current video player and checks for Unlike. If the web player does not accept double-tap liking, it uses that reel's Like button under the same single attempt. Home feed and Explore post dialogs keep button liking. Like actions allow up to 15 seconds for cursor movement and clicking, bounded by the session deadline. Temporary maintenance click or confirmation failures are logged and skipped; session expiry and Instagram account warnings still stop browsing.
+
 ## Lead screening
 
 Choose a scraped list, participating profiles, message, and allowed lead categories in Outreach. Male is the default; female and business can be selected independently. At least one category must be selected.
