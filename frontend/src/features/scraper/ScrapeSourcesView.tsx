@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
@@ -99,34 +98,28 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
     days: list.scrapeLookbackDays ?? 90,
     monitor: list.scrapeMonitor ?? true,
     postLimit: list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT,
-    includePrivate: list.scrapeIncludePrivate ?? false,
   })
   const [daysText, setDaysText] = useState(String(list.scrapeLookbackDays ?? 90))
   const [monitor, setMonitor] = useState(list.scrapeMonitor ?? true)
   const [postLimitText, setPostLimitText] = useState(
     String(list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT),
   )
-  const [includePrivate, setIncludePrivate] = useState(list.scrapeIncludePrivate ?? false)
   const serverDays = list.scrapeLookbackDays ?? 90
   const serverMonitor = list.scrapeMonitor ?? true
   const serverPostLimit = list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT
-  const serverIncludePrivate = list.scrapeIncludePrivate ?? false
   if (
     baseline.days !== serverDays ||
     baseline.monitor !== serverMonitor ||
-    baseline.postLimit !== serverPostLimit ||
-    baseline.includePrivate !== serverIncludePrivate
+    baseline.postLimit !== serverPostLimit
   ) {
     setBaseline({
       days: serverDays,
       monitor: serverMonitor,
       postLimit: serverPostLimit,
-      includePrivate: serverIncludePrivate,
     })
     setDaysText(String(serverDays))
     setMonitor(serverMonitor)
     setPostLimitText(String(serverPostLimit))
-    setIncludePrivate(serverIncludePrivate)
   }
   const leads = counts?.leads
   const days = Number(daysText)
@@ -140,15 +133,12 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
     postLimit <= 5000
   const changed =
     valid &&
-    (days !== baseline.days ||
-      monitor !== baseline.monitor ||
-      postLimit !== baseline.postLimit ||
-      includePrivate !== baseline.includePrivate)
+    (days !== baseline.days || monitor !== baseline.monitor || postLimit !== baseline.postLimit)
   const saveSettings = async () => {
     if (busy || !valid || !changed) return
     setBusy(true)
     try {
-      await settings({ listId: list._id, days, monitor, postLimit, includePrivate })
+      await settings({ listId: list._id, days, monitor, postLimit })
       toast.success('Scanning settings saved')
     } catch (e) {
       toast.error(String(e))
@@ -243,21 +233,6 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
               className="h-6 w-14 rounded-full bg-field text-center tabular-nums"
             />
             <span className="text-muted-copy">day · every 1–3 hours</span>
-          </div>
-          <span className="h-4 w-px bg-line" aria-hidden />
-          <div className="flex items-center gap-1.5 pr-1">
-            <Checkbox
-              id="source-private-profiles"
-              checked={includePrivate}
-              onCheckedChange={(checked) => setIncludePrivate(checked === true)}
-              disabled={busy}
-            />
-            <Label
-              htmlFor="source-private-profiles"
-              className="cursor-pointer whitespace-nowrap text-copy"
-            >
-              Include private profiles
-            </Label>
           </div>
           {changed && (
             <Button disabled={busy} onClick={() => void saveSettings()}>

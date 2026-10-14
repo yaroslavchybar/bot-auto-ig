@@ -39,7 +39,7 @@ export default defineSchema({
     scrapeMonitor: v.optional(v.boolean()),
     scrapeMonitorDays: v.optional(v.number()),
     scrapePostLimit: v.optional(v.number()),
-    scrapeIncludePrivate: v.optional(v.boolean()),
+    scrapeIncludePrivate: v.optional(v.boolean()), // Retired setting; existing saved values are ignored.
   }),
   // Keep changing counts separate from list metadata subscriptions.
   leadListCounts: defineTable({

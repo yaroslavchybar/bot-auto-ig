@@ -91,7 +91,7 @@ test('an unavailable Next button fails without wheel input or clicking', async (
   } finally { await fixture.window.happyDOM.close() }
 })
 
-test('a changed reel URL waits for the visible video to finish centering', async () => {
+test('a changed reel URL waits for the visible video to stop moving', async () => {
   const fixture = reelAdvanceFixture(1024, 600)
   fixture.boxes[1].y = 330
   let settlingWaits = 0
@@ -101,7 +101,7 @@ test('a changed reel URL waits for the visible video to finish centering', async
   }
   try {
     assert.equal(await advanceReel(fixture.page, fixture.session), true)
-    assert.equal(settlingWaits, 2)
+    assert.equal(settlingWaits, 3)
     assert.equal(fixture.stats().clicks, 1)
   } finally { await fixture.window.happyDOM.close() }
 })
@@ -112,6 +112,54 @@ test('a changed reel URL alone is not successful advancement when the viewer nev
   try {
     assert.equal(await advanceReel(fixture.page, fixture.session), false)
     assert.equal(fixture.stats().clicks, 1)
+  } finally { await fixture.window.happyDOM.close() }
+})
+
+test('a fully visible stable reel does not have to be centered in the viewport', async () => {
+  const fixture = reelAdvanceFixture(1024, 600)
+  fixture.boxes[0].y = -600
+  fixture.boxes[1].height = 200
+  fixture.boxes[1].y = 48
+  try {
+    assert.equal(await advanceReel(fixture.page, fixture.session), true)
+    assert.equal(fixture.stats().clicks, 1)
+  } finally { await fixture.window.happyDOM.close() }
+})
+
+test('a fully visible frame still waits for its motion to stop', async () => {
+  const fixture = reelAdvanceFixture(1024, 600)
+  fixture.boxes[0].y = -600
+  fixture.boxes[1].height = 200
+  fixture.boxes[1].y = 48
+  let waits = 0
+  fixture.session.wait = async () => { if (++waits < 3) fixture.boxes[1].y += 10 }
+  try {
+    assert.equal(await advanceReel(fixture.page, fixture.session), true)
+    assert.equal(waits, 3)
+  } finally { await fixture.window.happyDOM.close() }
+})
+
+test('advancement logs whether navigation failed instead of swallowing the error', async () => {
+  const fixture = reelAdvanceFixture(1024, 600, { changeOnClick: false })
+  const notes: Record<string, unknown>[] = []
+  try {
+    assert.equal(await advanceReel(fixture.page, fixture.session, note => notes.push(note)), false)
+    assert.equal(notes.length, 1)
+    assert.equal(notes[0].event, 'automation.actions.reels.advance_failed')
+    assert.equal(notes[0].stage, 'navigation')
+    assert.ok(notes[0].error instanceof errors.TimeoutError)
+  } finally { await fixture.window.happyDOM.close() }
+})
+
+test('expiry while a reel is settling propagates instead of reporting stuck navigation', async () => {
+  const fixture = reelAdvanceFixture(1024, 600)
+  const notes: Record<string, unknown>[] = []
+  let expired = false
+  fixture.session.wait = async () => { expired = true; throw new SessionEnded('Browsing session ended') }
+  fixture.session.stopped = () => expired
+  try {
+    await assert.rejects(advanceReel(fixture.page, fixture.session, note => notes.push(note)), SessionEnded)
+    assert.equal(notes.length, 0)
   } finally { await fixture.window.happyDOM.close() }
 })
 

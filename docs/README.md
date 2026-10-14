@@ -301,7 +301,7 @@ in commit `761af570`, using its Rust implementation from `53f9b3f7`.
 Cookies refresh on browser open and close. Each HTTP dispatch verifies the source
 lease, browser ownership, pause state, request capacity, and proxy-country sleep window.
 A 429 cools down the profile; no other session can bypass it.
-Private accounts are included only when enabled in the source settings.
+Liker collection always saves private accounts, including when older lists disabled them.
 Scraped likers wait for browser screening during outreach. The worker opens the
 lead profile, captures the viewport, and sends it to `openai/gpt-6-luna-decisions`.
 Each automation selects its allowed categories: male, female, or business.

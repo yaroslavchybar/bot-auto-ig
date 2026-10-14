@@ -1,4 +1,3 @@
-import { act } from 'react'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { getFunctionName } from 'convex/server'
 import { ScrapeSourcesView } from '@/features/scraper/ScrapeSourcesView'
@@ -52,32 +51,17 @@ test('detail counts retained leads after the last source is removed', async () =
   expect(mocks.ensure).not.toHaveBeenCalled()
 })
 
-test('private-profile checkbox saves only on Save and restores the list preference', async () => {
-  view = mount()
-  await view.render(<ScrapeSourcesView />)
-  const checkbox = view.container.querySelector<HTMLButtonElement>('#source-private-profiles')!
-  expect(checkbox.getAttribute('aria-checked')).toBe('false')
-  await act(async () => checkbox.click())
-  expect(mocks.ensure).not.toHaveBeenCalled()
-  const save = [...view.container.querySelectorAll('button')].find(
-    (button) => button.textContent === 'Save',
-  )!
-  await act(async () => save.click())
-  expect(mocks.ensure).toHaveBeenCalledExactlyOnceWith({
-    listId: 'list',
-    days: 90,
-    monitor: true,
-    postLimit: 10,
-    includePrivate: true,
-  })
-  mocks.includePrivate = true
-  await view.unmount()
-  view = mount()
-  await view.render(<ScrapeSourcesView />)
-  expect(
-    view.container.querySelector('#source-private-profiles')?.getAttribute('aria-checked'),
-  ).toBe('true')
-})
+test.each([false, true])(
+  'private-profile option is removed even with an old saved preference of %s',
+  async (value) => {
+    mocks.includePrivate = value
+    view = mount()
+    await view.render(<ScrapeSourcesView />)
+    expect(view.container.querySelector('#source-private-profiles')).toBeNull()
+    expect(view.container.textContent).not.toContain('Include private profiles')
+    expect(mocks.ensure).not.toHaveBeenCalled()
+  },
+)
 
 test('existing lists backfill once and replace the loading count with the saved total', async () => {
   mocks.count = null

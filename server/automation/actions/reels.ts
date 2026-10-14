@@ -116,10 +116,11 @@ function reelViewBounds(video: Element) {
   return { top: 0, bottom: view.innerHeight }
 }
 
-// A changed URL or a video center anywhere onscreen does not mean snapping has finished.
+// Instagram can offset media within a reel. Wait for a visible, stable frame, not viewport centering.
 async function waitForSettle(page: Page, session: BrowseSession): Promise<boolean> {
   const sleep = session.wait
   session.check()
+  let previous: { x: number; y: number; width: number; height: number } | undefined
   for (let i = 0; i < 10; i++) {
     const video = await inViewVideo(page)
     const box = await video?.boundingBox()
@@ -127,27 +128,40 @@ async function waitForSettle(page: Page, session: BrowseSession): Promise<boolea
     if (box && port && port.bottom > port.top) {
       const height = port.bottom - port.top
       const visible = Math.max(0, Math.min(box.y + box.height, port.bottom) - Math.max(box.y, port.top))
-      if (visible >= Math.min(box.height, height) * 0.9 &&
-        Math.abs(box.y + box.height / 2 - (port.top + port.bottom) / 2) <= height * 0.15) return true
-    }
+      if (visible >= Math.min(box.height, height) * 0.9) {
+        if (previous && Math.abs(box.y - previous.y) <= 1 && Math.abs(box.x - previous.x) <= 1 &&
+          Math.abs(box.width - previous.width) <= 1 && Math.abs(box.height - previous.height) <= 1) return true
+        previous = { ...box }
+      } else previous = undefined
+    } else previous = undefined
     await sleep(500)
   }
   return false
 }
 
 // Use the named Next control with cursor movement, then verify navigation and settling.
-export async function advanceReel(page: Page, session: BrowseSession): Promise<boolean> {
+export async function advanceReel(page: Page, session: BrowseSession, log: ActionLogger = () => {}): Promise<boolean> {
   session.check()
   const before = reelId(page.url())
   const changed = () => { const id = reelId(page.url()); return !!id && id !== before }
+  let stage = 'next_button'
+  const failed = (reason: string, error?: unknown) => {
+    session.check()
+    log({ event: 'automation.actions.reels.advance_failed', stage, reason, error })
+    return false
+  }
   try {
     const next = page.getByRole('button', { name: 'Navigate to next Reel', exact: true }).filter({ visible: true }).first()
-    if (!await next.isVisible() || !await next.isEnabled()) return false
+    if (!await next.isVisible() || !await next.isEnabled()) return failed('Next button is unavailable')
+    stage = 'click'
     await clickAction(next, session.timeout(5000))
+    stage = 'navigation'
     await page.waitForURL(url => !!reelId(url.href) && reelId(url.href) !== before, { timeout: session.timeout(5000) })
-    return await waitForSettle(page, session) && changed()
-  } catch {
-    return false
+    stage = 'settling'
+    if (await waitForSettle(page, session) && changed()) return true
+    return failed('Next reel did not settle')
+  } catch (error) {
+    return failed('Reel advancement failed', error)
   }
 }
 
@@ -179,7 +193,7 @@ export async function watchReels(
     if (id) {
       if (seen.has(id)) {
         // Same reel stuck (advance failed): try Next once, then bail.
-        if (!(await advanceReel(page, session).catch(() => false))) break
+        if (!(await advanceReel(page, session, log))) break
         continue
       }
       seen.add(id)
@@ -189,7 +203,7 @@ export async function watchReels(
       log({ event: 'automation.actions.reels.skipped_reel_ad', message: 'Skipped reel ad' })
       await sleep(random(400, 900))
       if (Date.now() >= end || shouldStop()) break
-      if (!(await advanceReel(page, session).catch(() => false))) {
+      if (!(await advanceReel(page, session, log))) {
         log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
         break
       }
@@ -204,7 +218,7 @@ export async function watchReels(
     if (!preserveFollowed && chance(config.reels_skip_chance ?? 25)) {
       await sleep(random(300, 800))
       if (Date.now() >= end || shouldStop()) break
-      if (!(await advanceReel(page, session).catch(() => false))) {
+      if (!(await advanceReel(page, session, log))) {
         log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
         break
       }
@@ -217,7 +231,7 @@ export async function watchReels(
     if (!feedPostMatches(context, topics, related)) {
       log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })
       await sleep(random(300, 800))
-      if (!await advanceReel(page, session)) break
+      if (!await advanceReel(page, session, log)) break
       continue
     }
     if (budget && !budget.take('reels')) break
@@ -245,7 +259,7 @@ export async function watchReels(
     if (Date.now() >= end || shouldStop()) break
     watched++
     if (watched >= target) break
-    if (!(await advanceReel(page, session).catch(() => false))) {
+    if (!(await advanceReel(page, session, log))) {
       log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
       break
     }

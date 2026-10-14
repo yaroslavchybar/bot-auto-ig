@@ -52,8 +52,8 @@ test('standalone warm-up retries a short stall within the original reservation',
   const result = await s.run({ watch_stories: false })
   assert.equal(tries, 2)
   assert.equal(result.reason, 'finished')
-  assert.equal(result.minutes, 9.8)
-  assert.deepEqual(s.recorded, [9.8])
+  assert.equal(result.minutes, 10)
+  assert.deepEqual(s.recorded, [10])
 })
 
 test('a story opening chunk expiry retries browsing instead of completing the whole session', async () => {
@@ -84,22 +84,22 @@ test('a story opening chunk expiry retries browsing instead of completing the wh
       })
     assert.equal(browses, 1)
     assert.equal(result.reason, 'finished')
-    assert.equal(result.minutes, 9.8)
+    assert.equal(result.minutes, 10)
   } finally { Date.now = originalNow }
 })
 
-test('mixed activity shares one reservation and counts DM time up to midnight', async () => {
+test('mixed activity checks notifications only at startup and shares one reservation up to midnight', async () => {
   let now = Date.parse('2026-09-19T23:59:00Z');
   const s = setup();
   s.deps.now = () => now;
   s.deps.begin = async () => ({ date: '2026-09-19', minutes: 5, remainingMinutes: 10 });
   s.deps.feed = async (_page, minutes) => { now += minutes * 60_000; return 'finished'; };
   let notificationChecks = 0;
-  s.deps.notifications = async () => { if (++notificationChecks === 2) now += 12_000; return true; };
+  s.deps.notifications = async () => { notificationChecks++; return true; };
   const result = await runWarmup('profile', 'automation', {}, {} as Page, () => {}, () => false, s.deps,
     async session => {
       assert.equal(session.remainingMinutes, 1);
-      assert.equal(session.deadline, Date.parse('2026-09-20T00:00:00Z') - 12_000);
+      assert.equal(session.deadline, Date.parse('2026-09-20T00:00:00Z'));
       await session.browse(0.25);
       now += 30_000; // DM preparation, pause and sending are inside the same reservation.
       await session.browse(5);
@@ -107,7 +107,7 @@ test('mixed activity shares one reservation and counts DM time up to midnight', 
     });
   assert.deepEqual(result, { minutes: 1, reason: 'finished' });
   assert.deepEqual(s.recorded, [1]);
-  assert.equal(notificationChecks, 2);
+  assert.equal(notificationChecks, 1);
 });
 
 test('exhausted budget performs no browsing or recording', async () => {
@@ -352,7 +352,7 @@ test('passes story timing settings and subtracts story time from the feed budget
     return originalStories(...args)
   }
   deps.feed = async (_page, minutes) => {
-    assert.equal(minutes, 8.8)
+    assert.equal(minutes, 9)
     return 'stopped'
   }
   await run({ watch_stories: true, stories_min_view_seconds: 3, stories_max_view_seconds: 7 })
@@ -381,7 +381,7 @@ test('limits a session to the UTC day it reserved', async () => {
   const { deps, run } = setup(40)
   deps.now = () => Date.parse('2026-09-19T23:59:00Z')
   deps.feed = async (_page, minutes) => {
-    assert.equal(minutes, 0.8)
+    assert.equal(minutes, 1)
     return 'stopped'
   }
   await run()

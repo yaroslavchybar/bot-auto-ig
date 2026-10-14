@@ -63,8 +63,6 @@ struct Task {
     run_id: String,
     since_date: u64,
     post_limit: u64,
-    #[serde(default)]
-    include_private: bool,
     list_id: String,
     kind: TaskKind,
     post: Option<Value>,
@@ -359,9 +357,7 @@ impl Scraper {
         }
         web.as_ref()
             .unwrap()
-            .likers(post, job.include_private, &|| {
-                self.check_available(&job.profile_id)
-            })
+            .likers(post, &|| self.check_available(&job.profile_id))
             .await
     }
 }

@@ -159,11 +159,10 @@ export const settings = mutation({
     days: v.number(),
     monitor: v.boolean(),
     postLimit: v.optional(v.number()),
-    includePrivate: v.optional(v.boolean()),
   },
   handler: async (
     ctx,
-    { listId, days, monitor, postLimit: requestedPostLimit, includePrivate },
+    { listId, days, monitor, postLimit: requestedPostLimit },
   ) => {
     if (!Number.isSafeInteger(days) || days < 1 || days > 3650)
       throw new Error('Days must be from 1 to 3650')
@@ -173,26 +172,23 @@ export const settings = mutation({
     const latestPosts = requestedPostLimit ?? postLimit(list)
     if (!Number.isSafeInteger(latestPosts) || latestPosts < 1 || latestPosts > 5000)
       throw new Error('Post limit must be from 1 to 5000')
-    const privateProfiles = includePrivate ?? list.scrapeIncludePrivate ?? false
     if (
       lookbackDays(list) === days &&
       (list.scrapeMonitor ?? true) === monitor &&
       monitorDays(list) === monitoringDays &&
-      postLimit(list) === latestPosts &&
-      (list.scrapeIncludePrivate ?? false) === privateProfiles
+      postLimit(list) === latestPosts
     )
       return
     const monitorAgeOnly =
       lookbackDays(list) === days &&
       (list.scrapeMonitor ?? true) === monitor &&
-      postLimit(list) === latestPosts &&
-      (list.scrapeIncludePrivate ?? false) === privateProfiles
+      postLimit(list) === latestPosts
     await ctx.db.patch(listId, {
       scrapeLookbackDays: days,
       scrapeMonitor: monitor,
       scrapeMonitorDays: monitoringDays,
       scrapePostLimit: latestPosts,
-      scrapeIncludePrivate: privateProfiles,
+      scrapeIncludePrivate: undefined,
     })
     const sources = await ctx.db
       .query('scrapeSources')
@@ -626,7 +622,6 @@ export const claim = internalMutation({
       runId,
       sinceDate: Math.max(0, now - lookbackDays(list) * DAY),
       postLimit: postLimit(list),
-      includePrivate: list.scrapeIncludePrivate ?? false,
       post: post ? { id: post.mediaId, code: post.code } : undefined,
     }
   },

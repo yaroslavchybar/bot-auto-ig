@@ -274,7 +274,6 @@ test('source settings save only explicit changes and posts load only when opened
     days: 7,
     monitor: true,
     postLimit: 10,
-    includePrivate: false,
   })
   expect(usePaginatedQuery).not.toHaveBeenCalled()
   await act(async () => button('View posts').click())
@@ -410,7 +409,6 @@ test('latest-post count defaults to ten and saves only on explicit Save', async 
     days: 90,
     monitor: true,
     postLimit: 6,
-    includePrivate: false,
   })
   mocks.lists = [{ ...mocks.lists[0], scrapePostLimit: 6 }]
   await view.render(<ScrapeSourcesView />)

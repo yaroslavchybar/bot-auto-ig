@@ -81,8 +81,7 @@ export async function runWarmup(
     return { minutes: 0, reason: 'skipped' }
   }
   const startedAt = deps.now()
-  const closingDeadline = Math.min(startedAt + plan.minutes * 60_000, Date.parse(`${plan.date}T00:00:00Z`) + 86_400_000)
-  const deadline = Math.max(startedAt, closingDeadline - Math.min(12_000, plan.minutes * 6000))
+  const deadline = Math.min(startedAt + plan.minutes * 60_000, Date.parse(`${plan.date}T00:00:00Z`) + 86_400_000)
   const stopped = () => shouldStop() || deps.now() >= deadline
   const day = plan.day ?? 1
   config.warmup_day = day
@@ -156,10 +155,6 @@ export async function runWarmup(
       })
     }
     if (!shouldStop() && deps.now() >= deadline) reason = 'finished'
-    if (!shouldStop() && deps.now() < closingDeadline) {
-      await deps.check(page)
-      await deps.notifications(page, log, new BrowseSession(closingDeadline, shouldStop))
-    }
   } catch (error) {
     if (!(error instanceof SessionEnded)) throw error
     reason = shouldStop() ? 'stopped' : 'finished'

@@ -485,13 +485,15 @@ test('sources awaiting deletion still count toward list capacity', async () => {
 })
 
 test('scraping requires a browser cookie and resumes when it is refreshed', async () => {
-  vi.stubEnv('INTERNAL_API_KEY','test-bridge')
-  const s=await setup({noCookie:true})
-  expect((await s.t.query(api.scraper.accounts,{}))[0].ready).toBe(false)
+  vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
+  const s = await setup({ noCookie: true })
+  expect((await s.t.query(api.scraper.accounts, {}))[0].ready).toBe(false)
   await discover(s)
-  expect(await s.t.mutation(internal.scrapeSources.claim,{})).toBeNull()
-  await s.t.run(ctx=>patchProfile(ctx,s.profileId,{sessionId:'browser-cookie'}))
-  expect(await s.t.mutation(internal.scrapeSources.claim,{})).toMatchObject({profileId:s.profileId})
+  expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
+  await s.t.run((ctx) => patchProfile(ctx, s.profileId, { sessionId: 'browser-cookie' }))
+  expect(await s.t.mutation(internal.scrapeSources.claim, {})).toMatchObject({
+    profileId: s.profileId,
+  })
 })
 
 test('daily discovery uses a rolling range and durable due times without sending worker state to UI', async () => {
@@ -686,34 +688,20 @@ test('repeated accounts and lost-response retries do not duplicate memberships o
   expect((await s.t.run((ctx) => ctx.db.get(s.sourceId)))?.discovered).toBe(1)
 })
 
-test('private-profile setting persists, reaches workers, and fences old runs without extra writes', async () => {
+test('private leads are saved even when an older list disabled their inclusion', async () => {
   const s = await setup()
+  await s.t.run((ctx) => ctx.db.patch(s.listId, { scrapeIncludePrivate: false }))
   await discover(s, { average: 200 })
-  const old = (await s.t.mutation(internal.scrapeSources.claim, {}))!
-  expect(old.includePrivate).toBe(false)
-  const settings = { listId: s.listId, days: 90, monitor: true, includePrivate: true }
-  await s.t.mutation(api.scrapeSources.settings, settings)
-  expect((await s.t.query(api.leads.getList, { listId: s.listId }))?.scrapeIncludePrivate).toBe(
-    true,
-  )
-  await expect(
-    s.t.mutation(internal.scraper.saveBatch, {
-      sourceId: s.sourceId,
-      runId: old.runId,
-      likers: [],
+  const run = await claimLikers(s)
+  expect(
+    await s.t.mutation(internal.scraper.saveBatch, {
+      ...run,
+      likers: [{ igId: '123', username: 'private_account' }],
     }),
-  ).rejects.toThrow('no longer active')
-  const next = (await s.t.mutation(internal.scrapeSources.claim, {}))!
-  expect(next.includePrivate).toBe(true)
-  await s.t.mutation(api.scrapeSources.settings, settings)
-  expect((await s.t.run((ctx) => ctx.db.get(s.sourceId)))?.runId).toBe(next.runId)
-  // Saving other settings does not accidentally reset this preference.
-  await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 30, monitor: true })
-  expect((await s.t.query(api.leads.getList, { listId: s.listId }))?.scrapeIncludePrivate).toBe(
-    true,
-  )
-  await s.t.mutation(api.scrapeSources.settings, { ...settings, includePrivate: false })
-  expect((await s.t.mutation(internal.scrapeSources.claim, {}))?.includePrivate).toBe(false)
+  ).toMatchObject({ added: 1, processed: 1 })
+  expect(await s.t.run((ctx) => ctx.db.query('leads').unique())).toMatchObject({
+    username: 'private_account',
+  })
 })
 
 test('range changes and pause fence workers; resume discovers posts again', async () => {
