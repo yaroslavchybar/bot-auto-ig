@@ -19,6 +19,32 @@ struct Position {
     height: f64,
 }
 
+#[cfg(any(target_os = "linux", test))]
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum WheelDirection {
+    Up,
+    Down,
+}
+
+#[cfg(any(target_os = "linux", test))]
+impl WheelDirection {
+    fn button(&self) -> u8 {
+        match self {
+            Self::Up => 4,
+            Self::Down => 5,
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", test))]
+#[derive(Deserialize)]
+struct PointerInput {
+    #[serde(flatten)]
+    position: Position,
+    wheel: Option<WheelDirection>,
+}
+
 // Chrome's client area contains the toolbar above the viewport. Use real X11
 // geometry, not fingerprint-spoofed screen coordinates or a fixed toolbar inset.
 #[cfg(any(target_os = "linux", test))]
@@ -97,9 +123,12 @@ pub async fn upgrade(
                     };
                     // Never redirect an old connection to a newly reused display port.
                     state.check_session(&session, false).await?;
-                    let position: Position = serde_json::from_str(&input)?;
+                    let input: PointerInput = serde_json::from_str(&input)?;
                     pointer = tokio::task::spawn_blocking(move || {
-                        pointer.move_to(position)?;
+                        pointer.move_to(input.position)?;
+                        if let Some(direction) = input.wheel {
+                            pointer.wheel_notch(direction)?;
+                        }
                         Ok::<_, Failure>(pointer)
                     })
                     .await
@@ -204,6 +233,27 @@ impl Pointer {
         connection.flush().map_err(unavailable)?;
         Ok(())
     }
+
+    // A discrete wheel step uses one X11 button press/release, never a pixel delta.
+    fn wheel_notch(&mut self, direction: WheelDirection) -> Result<()> {
+        use x11rb::{
+            connection::Connection,
+            protocol::{xproto, xtest::ConnectionExt},
+        };
+        let connection = &self.connection;
+        let button = direction.button();
+        let press = connection
+            .xtest_fake_input(xproto::BUTTON_PRESS_EVENT, button, 0, self.root, 0, 0, 0)
+            .map_err(unavailable)?;
+        let release = connection
+            .xtest_fake_input(xproto::BUTTON_RELEASE_EVENT, button, 0, self.root, 0, 0, 0)
+            .map_err(unavailable)?;
+        // Queue release before waiting for acknowledgements, including a rejected press.
+        press.check().map_err(unavailable)?;
+        release.check().map_err(unavailable)?;
+        connection.flush().map_err(unavailable)?;
+        Ok(())
+    }
 }
 #[cfg(target_os = "linux")]
 fn unavailable(_: impl std::fmt::Display) -> Failure {
@@ -213,6 +263,29 @@ fn unavailable(_: impl std::fmt::Display) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn wheel_input_accepts_only_discrete_directions() {
+        for (direction, button) in [("up", 4), ("down", 5)] {
+            let input: PointerInput = serde_json::from_value(json!({
+                "x": 120, "y": 250, "width": 1366, "height": 768, "wheel": direction
+            }))
+            .unwrap();
+            assert_eq!(input.wheel.unwrap().button(), button);
+            assert_eq!(coordinates(&input.position, 1366, 855).unwrap(), (120, 337));
+        }
+        for wheel in [json!("left"), json!(120), json!("down,down")] {
+            assert!(serde_json::from_value::<PointerInput>(json!({
+                "x": 120, "y": 250, "width": 1366, "height": 768, "wheel": wheel
+            }))
+            .is_err());
+        }
+        let input: PointerInput = serde_json::from_value(json!({
+            "x": 120, "y": 250, "width": 1366, "height": 768
+        }))
+        .unwrap();
+        assert!(input.wheel.is_none());
+    }
+
     #[test]
     fn maps_viewport_to_client_area_with_real_toolbar_height() {
         let mut position = Position {

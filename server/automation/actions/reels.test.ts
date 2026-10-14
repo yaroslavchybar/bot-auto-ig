@@ -87,7 +87,7 @@ function reelAdvanceFixture(width: number, height: number, options: { nextVisibl
   } as unknown as Page
   const session = new BrowseSession(Date.now() + 60_000)
   session.wait = async () => { session.check() }
-  return { window, page, session, boxes, stats: () => ({ wheels, clicks }) }
+  return { window, page, session, boxes, navigate: (nextUrl: string) => { url = nextUrl }, stats: () => ({ wheels, clicks }) }
 }
 
 test('an already-open Reels viewer uses its visible frame without clicking the sidebar', async () => {
@@ -238,13 +238,68 @@ test('reel advancement reads the real window size when Playwright has no fixed v
   finally { await fixture.window.happyDOM.close() }
 })
 
-test('reels advance directly through the named Next button with cursor movement and no wheel input', async () => {
+test('viewers without a native bridge retain the named Next button with cursor movement', async () => {
   const fixture = reelAdvanceFixture(1024, 600)
   try {
     assert.equal(await advanceReel(fixture.page, fixture.session), true)
     assert.equal(fixture.stats().clicks, 1)
     assert.equal(fixture.stats().wheels, 0)
   } finally { await fixture.window.happyDOM.close() }
+})
+
+for (const [width, height] of [[800, 480], [1024, 600], [1366, 768], [1920, 1080], [3840, 2160]])
+  test(`native Reels advance with exactly one notch over visible media at ${width}×${height}`, async () => {
+    const f = reelAdvanceFixture(width, height), before = f.page.url()
+    let moved = false, notches = 0
+    f.page.getByRole = (() => { throw new Error('Native wheel must not click Next') }) as Page['getByRole']
+    f.page.mouse.move = async (x, y) => {
+      assert.ok(x > f.boxes[1].x && x < f.boxes[1].x + f.boxes[1].width)
+      assert.ok(y > 48 && y < height - 48, 'cursor stays inside the nested viewer')
+      moved = true
+    }
+    try {
+      assert.equal(await advanceReel(f.page, f.session, () => {}, async (_x, _y, direction, timeout) => {
+        assert.ok(moved, 'move the cursor before emitting the notch')
+        assert.equal(direction, 'down'); assert.ok(timeout > 0 && timeout <= 5000)
+        notches++
+        f.navigate('https://www.instagram.com/reels/native-next/')
+      }), true)
+      assert.notEqual(f.page.url(), before)
+      assert.equal(notches, 1)
+      assert.deepEqual(f.stats(), { wheels: 0, clicks: 0 }, 'no pixel wheel events or clicks')
+    } finally { await f.window.happyDOM.close() }
+  })
+
+for (const failure of ['unchanged', 'transport', 'unsettled'])
+  test(`native notch failure does not click Next or send another notch (${failure})`, async () => {
+    const f = reelAdvanceFixture(1024, 600), notes: Record<string, unknown>[] = []
+    let notches = 0
+    f.page.mouse.move = async () => {}
+    try {
+      assert.equal(await advanceReel(f.page, f.session, note => notes.push(note), async () => {
+        notches++
+        if (failure === 'transport') throw new Error('Display session ended')
+        if (failure === 'unsettled') {
+          f.navigate('https://www.instagram.com/reels/native-next/')
+          f.boxes[1].y = 330
+        }
+      }), false)
+      assert.equal(notches, 1)
+      assert.deepEqual(f.stats(), { wheels: 0, clicks: 0 })
+      assert.equal(notes[0].stage, failure === 'transport' ? 'wheel' : failure === 'unsettled' ? 'settling' : 'navigation')
+    } finally { await f.window.happyDOM.close() }
+  })
+
+test('session expiry during cursor movement prevents a native notch', async () => {
+  const f = reelAdvanceFixture(1024, 600)
+  let stopped = false, notches = 0
+  f.session.stopped = () => stopped
+  f.page.mouse.move = async () => { stopped = true }
+  try {
+    await assert.rejects(advanceReel(f.page, f.session, () => {}, async () => { notches++ }), SessionEnded)
+    assert.equal(notches, 0)
+    assert.deepEqual(f.stats(), { wheels: 0, clicks: 0 })
+  } finally { await f.window.happyDOM.close() }
 })
 
 test('an unavailable Next button fails without wheel input or clicking', async () => {

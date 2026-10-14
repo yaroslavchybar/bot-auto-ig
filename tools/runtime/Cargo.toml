@@ -50,7 +50,7 @@ chrono-tz = "0.10.4"
 jpeg-encoder = { version = "0.7", features = ["simd"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-x11rb = "0.14.0"
+x11rb = { version = "0.14.0", features = ["xtest"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }

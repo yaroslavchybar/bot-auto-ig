@@ -4,6 +4,29 @@ import type { BrowserContext, Page } from 'playwright-core'
 import { runtimeHeaders, runtimeUrl } from '../shared/runtime.js'
 import type { Display } from './display.js'
 
+export type NativeWheel = (x: number, y: number, direction: 'up' | 'down', timeout: number) => Promise<void>
+const nativeWheels = new WeakMap<Page, NativeWheel>()
+
+/** Headed automation pages can send discrete notches through their leased X11 display. */
+export function nativeWheelFor(page: Page): NativeWheel | undefined { return nativeWheels.get(page) }
+
+// Race each CDP wait against the same deadline; late results cannot resume input.
+function beforeWheelDeadline<T>(start: () => Promise<T>, deadline: number): Promise<T> {
+  const remaining = deadline - Date.now()
+  if (remaining <= 0) return Promise.reject(new Error('Native wheel deadline ended'))
+  if (!Number.isFinite(remaining)) return start()
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Native wheel deadline ended')), remaining)
+    Promise.resolve().then(start).then(value => {
+      clearTimeout(timer)
+      resolve(value)
+    }, error => {
+      clearTimeout(timer)
+      reject(error)
+    })
+  })
+}
+
 /** Sync the X11 pointer before Cloak's raw moves, including locator/handle clicks. */
 export async function installDesktopPointer(
   context: BrowserContext,
@@ -60,29 +83,43 @@ export async function installDesktopPointer(
     throw error
   }
   let queue = Promise.resolve()
+  const pages = new Set<Page>()
+  const enqueue = (action: () => Promise<void>) => {
+    const work = queue.then(action)
+    queue = work.catch(() => {})
+    return work
+  }
   const attach = (page: Page) => {
+    pages.add(page)
     const move = page.mouse.move.bind(page.mouse)
     const metrics = context.newCDPSession(page)
+    const input = async (x: number, y: number, wheel?: 'up' | 'down', deadline = Infinity) => {
+      const session = await beforeWheelDeadline(() => metrics, deadline)
+      const { cssLayoutViewport } = await beforeWheelDeadline(() => session.send('Page.getLayoutMetrics'), deadline)
+      if (Date.now() >= deadline) throw new Error('Native wheel deadline ended')
+      // Once sent, keep the queue until the transport result; expiry cannot undo input.
+      await request({ x, y, width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight,
+        ...(wheel ? { wheel } : {}) })
+    }
     // Page.getLayoutMetrics is real geometry; window.screen* is fingerprint-spoofed.
     page.mouse.move = async (x, y, options) => {
-      const work = queue.then(async () => {
-        const session = await metrics
-        const { cssLayoutViewport } = await session.send('Page.getLayoutMetrics')
-        await request({
-          x,
-          y,
-          width: cssLayoutViewport.clientWidth,
-          height: cssLayoutViewport.clientHeight,
-        })
+      await enqueue(async () => {
+        await input(x, y)
         await move(x, y, options)
       })
-      queue = work.catch(() => {})
-      return work
     }
+    nativeWheels.set(page, (x, y, direction, timeout) => {
+      const deadline = Date.now() + timeout
+      const previous = queue
+      const work = enqueue(() => input(x, y, direction, deadline))
+      return beforeWheelDeadline(() => previous, deadline).then(() => work)
+    })
     void metrics.catch(() => {})
   }
   const close = () => {
     context.off('page', attach)
+    for (const page of pages) nativeWheels.delete(page)
+    pages.clear()
     socket.terminate()
   }
   try {

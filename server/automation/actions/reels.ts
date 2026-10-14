@@ -8,6 +8,7 @@ import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/war
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { engagePost } from './engagement.js'
 import { clickAction } from './action-locator.js'
+import { nativeWheelFor, type NativeWheel } from '../../browser/desktopPointer.js'
 import {
   numeric,
   random,
@@ -137,22 +138,41 @@ async function waitForSettle(page: Page, session: BrowseSession): Promise<boolea
   return false
 }
 
-// Use the named Next control with cursor movement, then verify navigation and settling.
-export async function advanceReel(page: Page, session: BrowseSession, log: ActionLogger = () => {}): Promise<boolean> {
+// Headed sessions use one native wheel notch. Other viewers retain the named Next control.
+export async function advanceReel(page: Page, session: BrowseSession, log: ActionLogger = () => {},
+  wheel: NativeWheel | undefined = nativeWheelFor(page)): Promise<boolean> {
   session.check()
   const before = reelId(page.url())
   const changed = () => { const id = reelId(page.url()); return !!id && id !== before }
   let stage = 'next_button'
   const failed = (reason: string, error?: unknown) => {
     session.check()
-    log({ event: 'automation.actions.reels.advance_failed', stage, reason, error })
+    log({ event: 'automation.actions.reels.advance_failed', inputMethod: wheel ? 'native_wheel' : 'next_button', stage, reason, error })
     return false
   }
   try {
-    const next = page.getByRole('button', { name: 'Navigate to next Reel', exact: true }).filter({ visible: true }).first()
-    if (!await next.isVisible() || !await next.isEnabled()) return failed('Next button is unavailable')
-    stage = 'click'
-    await clickAction(next, session.timeout(5000))
+    if (wheel) {
+      stage = 'wheel_target'
+      const video = await inViewVideo(page, session)
+      const box = await video?.boundingBox({ timeout: session.timeout(1000) })
+      const port = await video?.evaluate(reelViewBounds, undefined, { timeout: session.timeout(1000) })
+      const viewport = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+      if (!box || !port) return failed('Visible reel is unavailable')
+      const left = Math.max(0, box.x), right = Math.min(viewport.width, box.x + box.width)
+      const top = Math.max(port.top, box.y), bottom = Math.min(port.bottom, box.y + box.height)
+      if (right <= left || bottom <= top) return failed('Visible reel has no wheel target')
+      const x = (left + right) / 2, y = (top + bottom) / 2
+      stage = 'cursor'
+      await page.mouse.move(x, y)
+      session.check()
+      stage = 'wheel'
+      await wheel(x, y, 'down', session.timeout(5000))
+    } else {
+      const next = page.getByRole('button', { name: 'Navigate to next Reel', exact: true }).filter({ visible: true }).first()
+      if (!await next.isVisible() || !await next.isEnabled()) return failed('Next button is unavailable')
+      stage = 'click'
+      await clickAction(next, session.timeout(5000))
+    }
     stage = 'navigation'
     await page.waitForURL(url => !!reelId(url.href) && reelId(url.href) !== before, { timeout: session.timeout(5000) })
     stage = 'settling'
