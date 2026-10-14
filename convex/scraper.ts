@@ -197,7 +197,8 @@ export const retryEnrichment = mutation({
   handler: async (ctx) => {
     const rows = await ctx.db
       .query('leads')
-      .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'error'))
+      // Missing and false refusal flags are below true in the index; refused leads are never scanned.
+      .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'error').lt('screeningRefused', true))
       .take(100)
     const stats = new LeadStatsChanges()
     const patch = {

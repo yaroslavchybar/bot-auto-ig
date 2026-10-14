@@ -69,6 +69,7 @@ export async function runWarmup(
   profileId: string, automationId: string, input: Record<string, unknown>, page: Page,
   log: ActionLogger, shouldStop: StopCheck, deps = dependencies,
   activity?: SessionActivity,
+  startupNotifications?: (session: BrowseSession, day: number) => Promise<void>,
 ): Promise<WarmupResult> {
   const config = warmupConfig(input)
   const runId = randomUUID()
@@ -123,7 +124,8 @@ export async function runWarmup(
     if (!stopped()) {
       await deps.check(page, session)
       log({ event: 'automation.warmup.daily_plan', day: plan.day ?? 1, activityPlan: budget.plan, activityUsed: budget.used })
-      await deps.notifications(page, log, session)
+      if (startupNotifications) await startupNotifications(session, day)
+      else await deps.notifications(page, log, session)
       if (!stopped()) await deps.inbox(page, log, session)
       if (!stopped()) await deps.home(page, log, session)
       if (!stopped()) await deps.check(page, session)

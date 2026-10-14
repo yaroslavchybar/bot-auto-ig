@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import type { Page } from 'playwright-core';
 import { runRoutineSession } from './routine.js';
 import { errors } from 'playwright-core';
-import { SessionEnded } from './actions/session.js';
+import { BrowseSession, SessionEnded } from './actions/session.js';
 import { currentLogScope, type LogScope } from '../shared/logger.js';
+import { DecisionRefusedError } from './actions/openrouter-decision.js';
 
 function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following' | 'Requested' = mode === 'dm' ? 'Following' : 'Follow',
 ) {
@@ -63,6 +64,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     recordFollow: async (_, __, followed) => { calls.push(followed ? 'record-follow' : 'record-unfollow'); },
     beginFollow: async () => { calls.push('authorize-follow'); return true; },
     notifications: async () => null,
+    checkNotifications: async () => false,
     readNotifications: async () => { calls.push('read-notifications'); return ['alice']; },
     recordNotifications: async () => { calls.push('record-notifications'); },
     dmTasks: async () => (mode === 'dm' ? [attempt] : []),
@@ -74,7 +76,8 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     begin: async () => { calls.push('authorize'); return true; },
     finish: async (_, __, ___, value, blocked) => { calls.push(value ? 'sent' : blocked ? 'blocked' : 'uncertain'); sent = value; },
     record: async (_, __, completed, error) => { calls.push(completed ? 'record-completed' : 'record-incomplete'); issue = error; },
-    warmup: async (_p, _a, _c, _page, _log, stopped, _deps, activity) => {
+    warmup: async (_p, _a, _c, _page, _log, stopped, _deps, activity, startupNotifications) => {
+      await startupNotifications?.(new BrowseSession(now + 600_000, stopped), 8);
       const result = await activity!({ deadline: now + 600_000, remainingMinutes: 10,
         browse: async (minutes) => { calls.push('browse'); now += minutes * 60_000; return 'finished'; },
       });
@@ -223,6 +226,30 @@ test('a screenshot/provider failure releases its lease without following or stop
   assert.equal(s.result().issue, undefined)
 })
 
+test('a provider refusal marks the lead terminal without approving, following or stopping browsing', async () => {
+  const s = setup('follow')
+  const reserve = s.deps.reserve
+  let reserved = false
+  s.deps.reserve = async (...args) => {
+    if (reserved) return null
+    reserved = true
+    return reserve(...args)
+  }
+  s.deps.screenLead = async () => { throw new DecisionRefusedError('Provider refused to answer') }
+  s.deps.finishScreening = async (_a, _p, _lead, _token, _date, decision, failureReason) => {
+    assert.equal(decision, undefined)
+    assert.equal(failureReason, 'refused')
+    s.calls.push('refusal-saved')
+    return false
+  }
+  await s.run()
+  assert.ok(s.calls.includes('refusal-saved'))
+  assert.equal(s.calls.filter(call => call === 'refusal-saved').length, 1)
+  assert.ok(!s.calls.includes('authorize-follow') && !s.calls.includes('follow') && !s.calls.includes('optional-like'))
+  assert.equal(s.result().issue, undefined)
+  assert.ok(s.calls.filter(call => call === 'browse').length > 1)
+})
+
 test('before maintenance the routine only browses, even when ready lead and DM mocks are available', async () => {
   const s = setup('follow');
   s.deps.warmup = async (_p, _a, _c, _page, _log, _stopped, _deps, activity) => {
@@ -352,6 +379,53 @@ test('daily notification evidence is recorded before selecting DMs', async () =>
   s.deps.dmTasks = async () => { assert.ok(s.calls.includes('record-notifications')); return select('automation', 'profile'); };
   await s.run(); assert.ok(s.calls.includes('sent'));
 });
+
+test('a due follow-back scan replaces the brief notification check and is not repeated during outreach', async () => {
+  const s = setup('follow')
+  let queries = 0, scans = 0
+  s.deps.notifications = async () => { queries++; return { date: '2026-09-21', since: 0 } }
+  s.deps.checkNotifications = async () => { throw new Error('Must not perform a second notification visit') }
+  s.deps.readNotifications = async () => {
+    assert.ok(!s.calls.includes('browse'), 'follow-back evidence is collected during startup')
+    scans++; s.calls.push('read-notifications'); return ['alice']
+  }
+  await s.run()
+  assert.equal(queries, 1)
+  assert.equal(scans, 1)
+  assert.ok(s.calls.indexOf('record-notifications') < s.calls.indexOf('browse'))
+  assert.equal(s.result().issue, undefined)
+})
+
+test('no due follow-back scan keeps exactly one brief startup notification check', async () => {
+  const s = setup('follow')
+  let queries = 0, visits = 0
+  s.deps.notifications = async () => { queries++; return null }
+  s.deps.checkNotifications = async () => { visits++; assert.ok(!s.calls.includes('browse')); return true }
+  s.deps.readNotifications = async () => { throw new Error('No follow-back scan is due') }
+  await s.run()
+  assert.equal(queries, 1)
+  assert.equal(visits, 1)
+  assert.ok(!s.calls.includes('record-notifications'))
+  assert.equal(s.result().issue, undefined)
+})
+
+test('week-one startup keeps the brief notification visit without querying outreach follow-backs', async () => {
+  const s = setup('follow')
+  let visits = 0
+  s.deps.notifications = async () => { throw new Error('Outreach is locked during week one') }
+  s.deps.checkNotifications = async () => { visits++; return true }
+  s.deps.warmup = async (_p, _a, _c, _page, _log, stopped, _deps, activity, startupNotifications) => {
+    await startupNotifications?.(new BrowseSession(600_000, stopped), 7)
+    const reason = await activity!({ deadline: 600_000, day: 7, remainingMinutes: 10,
+      browse: async minutes => { await s.deps.sleep(minutes * 60_000); return 'finished' },
+    })
+    return { minutes: 10, reason }
+  }
+  await s.run()
+  assert.equal(visits, 1)
+  assert.ok(!s.calls.includes('reserve') && !s.calls.includes('read-notifications'))
+  assert.equal(s.result().issue, undefined)
+})
 
 test('an interrupted notification scan is never marked complete', async () => {
   const s = setup(); s.deps.notifications = async () => ({ date: '2026-09-21', since: 0 }); s.deps.readNotifications = async () => null;

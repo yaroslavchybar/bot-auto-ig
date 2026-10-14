@@ -14,6 +14,10 @@ type Request = {
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 
+export class DecisionRefusedError extends Error {
+  constructor(message: string) { super(message); this.name = 'DecisionRefusedError' }
+}
+
 /** Inspect JPEG headers without decoding, persisting, or logging the image. */
 function imageDetails(bytes: Buffer) {
   const jpeg = bytes.length >= 4 && bytes.readUInt16BE(0) === 0xffd8
@@ -79,6 +83,8 @@ export async function requestOpenRouterDecision(input: Request): Promise<unknown
         upstreamErrorMessage: upstreamError.message ?? upstream.message ?? upstream.detail ?? (typeof raw === 'string' ? raw : undefined),
         upstreamErrorCode: upstreamError.code ?? upstream.code,
       }))
+      if (typeof error.message === 'string' && /\brefused to answer question\b/i.test(error.message))
+        throw new DecisionRefusedError(`${input.errorPrefix} refused to answer`)
       if (!response.ok) throw new Error(`${input.errorPrefix} returned HTTP ${response.status}`)
       const answers = object(object(data).answers)
       scope.add(scope.safeFields({ answerTypes: Object.fromEntries(Object.keys(object(input.payload.questions)).map(name => [name, object(answers[name]).type ?? 'missing'])) }))
@@ -86,7 +92,7 @@ export async function requestOpenRouterDecision(input: Request): Promise<unknown
       scope.add({ stage: 'complete' })
       return data
     } catch (error) {
-      scope.add({ failureKind: signal.aborted ? 'timeout' : !response ? 'network' : !response.ok ? 'http' : 'response',
+      scope.add({ failureKind: error instanceof DecisionRefusedError ? 'refused' : signal.aborted ? 'timeout' : !response ? 'network' : !response.ok ? 'http' : 'response',
         networkCode: object(object(error).cause).code })
       throw error
     }

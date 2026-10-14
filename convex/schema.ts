@@ -68,6 +68,7 @@ export default defineSchema({
     screeningListId: v.optional(v.id('leadLists')),
     screeningUntil: v.optional(v.number()),
     screeningFailures: v.optional(v.number()),
+    screeningRefused: v.optional(v.boolean()),
     senderId: v.optional(v.id('profiles')),
     outreachListId: v.optional(v.id('leadLists')),
     outreachAutomationId: v.optional(v.id('automations')),
@@ -87,7 +88,7 @@ export default defineSchema({
     .index('by_ig_id', ['igId'])
     .index('by_classification', ['classification'])
     .index('by_dm_pending', ['senderId', 'dmEligible', 'dmStartedAt', 'unfollowAt'])
-    .index('by_enrichment', ['enrichmentStatus'])
+    .index('by_enrichment', ['enrichmentStatus', 'screeningRefused'])
     .index('by_follow_due', ['senderId', 'followed', 'followDate'])
     .index('by_unfollow_due', ['senderId', 'followed', 'unfollowAt']),
   leadMemberships: defineTable({

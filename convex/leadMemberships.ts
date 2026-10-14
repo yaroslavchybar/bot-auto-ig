@@ -42,8 +42,10 @@ export const leadAvailable = (
     | 'unfollowAt'
     | 'dmStartedAt'
     | 'screeningFailures'
+    | 'screeningRefused'
   >,
 ) =>
+  !lead.screeningRefused &&
   (lead.screeningFailures ?? 0) < SCREENING_FAILURE_LIMIT &&
   !(lead.enrichmentStatus === 'ready' && !lead.classification) &&
   !hasOutreachHistory(lead)

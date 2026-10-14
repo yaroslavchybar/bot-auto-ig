@@ -110,6 +110,35 @@ test('mixed activity checks notifications only at startup and shares one reserva
   assert.equal(notificationChecks, 1);
 });
 
+test('the combined startup notification visit replaces the brief check before DMs and Home', async () => {
+  const s = setup(5)
+  s.deps.notifications = async () => { throw new Error('Must not open a second notification visit') }
+  s.deps.inbox = async () => { s.calls.push('inbox'); return true }
+  s.deps.home = async () => { s.calls.push('home') }
+  let visits = 0
+  await runWarmup('profile', 'automation', { watch_stories: false }, {} as Page, () => {}, () => false, s.deps,
+    undefined, async (session, day) => {
+      assert.equal(day, 8)
+      assert.equal(session.end, s.deps.now() + 5 * 60_000)
+      visits++; s.calls.push('follow-back')
+    })
+  assert.equal(visits, 1)
+  assert.deepEqual(s.calls, ['follow-back', 'inbox', 'home', 'feed'])
+})
+
+test('a stop during startup notification scanning prevents DMs, Home and browsing', async () => {
+  const s = setup(5)
+  let stopped = false
+  s.deps.notifications = async () => { throw new Error('Duplicate notification visit') }
+  s.deps.inbox = async () => { throw new Error('Must not open DMs after stop') }
+  s.deps.home = async () => { throw new Error('Must not navigate Home after stop') }
+  const result = await runWarmup('profile', 'automation', {}, {} as Page, () => {}, () => stopped, s.deps,
+    undefined, async () => { stopped = true })
+  assert.equal(result.reason, 'stopped')
+  assert.deepEqual(s.calls, [])
+  assert.deepEqual(s.recorded, [0])
+})
+
 test('exhausted budget performs no browsing or recording', async () => {
   const { run, calls, recorded } = setup(0)
   await run({ watch_stories: true })

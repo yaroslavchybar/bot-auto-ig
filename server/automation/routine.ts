@@ -21,7 +21,7 @@ import { renderOutreachMessage } from '../shared/outreachMessage.js';
 import { readFollowNotifications, ownUsername, followsUs, likeRecentPost } from './follow-back.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 import { sleep, random } from "./actions/shared.js";
-import { assertInstagramReady } from './actions/instagram-state.js';
+import { assertInstagramReady, checkNotifications } from './actions/instagram-state.js';
 import { performProfileFollow } from './actions/follow-safety.js';
 import { clickAction } from './actions/action-locator.js'
 import { screenLead, LEAD_SCREENING_MODEL } from './actions/lead-screening.js'
@@ -31,6 +31,7 @@ import { errors } from 'playwright-core'
 import { isTransientDomIssue } from '../shared/domErrors.js'
 import { isTemporaryUiError } from './actions/ui-errors.js'
 import { logOperation } from '../shared/logger.js'
+import { DecisionRefusedError } from './actions/openrouter-decision.js'
 
 const dependencies = {
   ready: routineReady,
@@ -49,6 +50,7 @@ const dependencies = {
   dmTasks: routineDmTasks,
   dismissDm: routineDismissDm,
   readNotifications: readFollowNotifications,
+  checkNotifications,
   ownUsername,
   followsUs,
   likeRecentPost,
@@ -152,23 +154,6 @@ export async function runRoutineSession(
         });
         try {
           await cleanup();
-          if (shouldStop()) return 'stopped';
-          const scan = await deps.notifications(automation._id, profileId);
-          if (scan) {
-            let names: string[] | null = null;
-            try {
-              names = await deps.readNotifications(page, shouldStop, scan.since, new BrowseSession(deadline, shouldStop));
-            } catch (error) {
-              if (shouldStop()) return 'stopped';
-              if (!isTemporaryUiError(error)) throw error;
-              await check();
-              log({ event: 'automation.routine.follow_notifications_skipped', error });
-            }
-            if (names && !shouldStop()) {
-              await deps.recordNotifications(automation._id, profileId, scan.date, names);
-              log({ event: 'automation.routine.follow_notifications', followerCount: names.length });
-            }
-          }
         } catch (error) {
           if (shouldStop()) return 'stopped';
           throw error;
@@ -249,15 +234,18 @@ export async function runRoutineSession(
                       error,
                       outcome: 'skipped',
                     })
+                    const refused = error instanceof DecisionRefusedError
                     await deps.finishScreening(
                       automation._id,
                       profileId,
                       attempt.leadId,
                       token,
                       attempt.date,
+                      undefined,
+                      refused ? 'refused' : undefined,
                     )
                     screeningFinished = true
-                    scope.add({ result: 'screening_failed' })
+                    scope.add({ result: refused ? 'screening_refused' : 'screening_failed' })
                     return shouldStop() ? 'unavailable' : 'blocked'
                   }
                   const accepted = await timed('screeningSave', () => deps.finishScreening(
@@ -363,6 +351,30 @@ export async function runRoutineSession(
             });
           },
         });
+      },
+      async (session, day) => {
+        deadline = session.end;
+        if (shouldStop()) return;
+        const scan = day >= 8 ? await deps.notifications(automation._id, profileId) : null;
+        if (shouldStop()) return;
+        if (!scan) {
+          await deps.checkNotifications(page, log, session);
+          return;
+        }
+        // The due follow-back scan replaces the brief startup visit; it owns opening and closing the panel.
+        let names: string[] | null = null;
+        try {
+          names = await deps.readNotifications(page, shouldStop, scan.since, session);
+        } catch (error) {
+          if (shouldStop()) return;
+          if (!isTemporaryUiError(error)) throw error;
+          await check();
+          log({ event: 'automation.routine.follow_notifications_skipped', error });
+        }
+        if (names && !shouldStop()) {
+          await deps.recordNotifications(automation._id, profileId, scan.date, names);
+          log({ event: 'automation.routine.follow_notifications', followerCount: names.length });
+        }
       },
     );
     hadActivity = warmup.minutes > 0;

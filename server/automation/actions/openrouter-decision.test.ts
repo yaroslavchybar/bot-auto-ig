@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { currentLogScope, logOperation, type LogScope } from '../../shared/logger.js'
-import { requestOpenRouterDecision } from './openrouter-decision.js'
+import { DecisionRefusedError, requestOpenRouterDecision } from './openrouter-decision.js'
 
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0, 17, 8, 0x02, 0xa3, 0x04, 0xb0,
   3, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0, 0xff, 0xd9])
@@ -63,6 +63,13 @@ test('a non-JSON gateway failure keeps its HTTP status without logging the respo
   assert.equal(f.scope().fields.responseIsJson, false)
   assert.equal(f.scope().fields.responseContentType, 'text/html')
   assert.ok(!JSON.stringify(f.scope().fields).includes('gateway response'))
+})
+
+for (const status of [502, 200]) test(`an explicit question refusal is a distinct error even with HTTP ${status}`, async () => {
+  const f = fixture(Response.json({ error: { code: 502, message: 'OpenAI refused to answer question "account_type"' } }, { status }))
+  await assert.rejects(requestOpenRouterDecision({ ...input, fetcher: f.fetcher }), DecisionRefusedError)
+  assert.equal(f.scope().fields.failureKind, 'refused')
+  assert.equal(f.scope().fields.httpStatus, status)
 })
 
 test('successful HTTP responses with invalid JSON are identified separately', async () => {

@@ -18,6 +18,7 @@ export function registerRoutineRoutes(http: HttpRouter) {
           date: b.date,
           category: b.category,
           confidence: b.confidence,
+          failureReason: b.failureReason,
         }),
       )
     }),

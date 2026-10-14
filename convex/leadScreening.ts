@@ -23,6 +23,7 @@ export const finish = internalMutation({
       v.union(v.literal('male'), v.literal('female'), v.literal('business')),
     ),
     confidence: v.optional(v.number()),
+    failureReason: v.optional(v.literal('refused')),
   },
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId),
@@ -30,12 +31,14 @@ export const finish = internalMutation({
     if (
       !lead ||
       lead.senderId ||
+      lead.screeningRefused ||
       lead.screeningToken !== args.screeningToken ||
       lead.screeningProfileId !== args.profileId ||
       lead.screeningAutomationId !== args.automationId ||
       (lead.screeningUntil ?? 0) <= now
     )
       return false
+    if (args.failureReason && args.category) throw new Error('A refused screening cannot include a category')
     if (
       args.category &&
       (args.confidence === undefined ||
@@ -102,8 +105,9 @@ export const finish = internalMutation({
             // A failed attempt does not replace an earlier successful decision.
             enrichmentStatus: 'error' as const,
             screeningFailures: failures,
+            ...(args.failureReason === 'refused' ? { screeningRefused: true } : {}),
             screeningUntil:
-              failures >= SCREENING_FAILURE_LIMIT
+              args.failureReason === 'refused' || failures >= SCREENING_FAILURE_LIMIT
                 ? undefined
                 : now + 5 * 60_000 * 2 ** (failures - 1),
           }),

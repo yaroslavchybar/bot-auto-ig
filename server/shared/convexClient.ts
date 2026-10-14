@@ -520,10 +520,11 @@ export const routineFinishScreening = (
   screeningToken: string,
   date: string,
   decision?: { category: 'male' | 'female' | 'business'; confidence: number },
+  failureReason?: 'refused',
 ) =>
   convexFetch<boolean>('/api/routines/screening', {
     method: 'POST',
-    body: { automationId, profileId, leadId, screeningToken, date, ...decision },
+    body: { automationId, profileId, leadId, screeningToken, date, ...decision, failureReason },
     maxRetries: 0,
   })
 export const routineReserve = (automationId: string, profileId: string) =>
