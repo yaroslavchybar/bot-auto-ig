@@ -7,7 +7,7 @@ import { Window } from 'happy-dom'
 import { BrowseSession, SessionEnded } from './session.js'
 import { revealForClick, settleOnPost, smoothScroll } from './scroll.js'
 import { likeVisible, clickVisible } from './mouse.js'
-import { detourDelay, postChoices, viewContent, viewVideo } from './viewing.js'
+import { viewContent, viewVideo } from './viewing.js'
 import { openDMs } from './inbox.js'
 import { openReels } from './reels.js'
 import { backToFeed } from './navigation.js'
@@ -60,28 +60,6 @@ test('settling checks posts beyond six and ignores fully offscreen posts', async
   posts.pop()
   await settleOnPost(page)
   assert.equal(wheelCalls, 0)
-})
-
-test('carousel choice rolls once per post', () => {
-  const original = Math.random
-  let rolls = 0
-  Math.random = () => { rolls++; return 0.5 }
-  try {
-    assert.deepEqual(postChoices({ like_chance: 100, follow_chance: 0, carousel_watch_chance: 20 }),
-      { carousel: false })
-    assert.equal(rolls, 1)
-  } finally { Math.random = original }
-})
-
-test('browsing never selects feed likes or follows even with previously active settings', () => {
-  assert.deepEqual(postChoices({ soft_warmup: false, like_chance: 100, follow_chance: 100, carousel_watch_chance: 0 }),
-    { carousel: false })
-})
-
-test('detour spacing scales with session length and has a minimum', () => {
-  assert.equal(detourDelay(300_000), 75_000)
-  assert.equal(detourDelay(600_000), 150_000)
-  assert.equal(detourDelay(10_000), 30_000)
 })
 
 test('one deadline caps waits and prevents actions after expiry', async () => {
@@ -220,6 +198,7 @@ test('story navigation and opening expiry stay local to the optional story chunk
     const deadline = now + 10_000
     Date.now = () => now
     const story = { first() { return this }, waitFor: async () => {},
+      evaluateAll: async () => ['alice'],
       isVisible: async () => { if (expiresAt === 'visibility') now += 11_000; return true },
       elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {},
         hover: async () => { now += 11_000; throw new errors.TimeoutError('Story opening expired') },
@@ -248,14 +227,16 @@ test('unexpected story failures still propagate', async () => {
 for (const stage of ['open', 'next']) test(`temporary story ${stage} failure skips stories while browsing time remains`, async () => {
   const failure = new errors.TimeoutError('Story control changed')
   const notes: Record<string, unknown>[] = []
+  let opened = false
   const control = { ...visibleActionGeometry, first() { return this }, waitFor: async () => {}, isVisible: async () => true,
+    evaluateAll: async () => ['alice'],
     elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { if (stage === 'open') throw failure },
-      click: async () => {}, dispose: async () => {} }),
+      click: async () => { opened = true }, dispose: async () => {} }),
   }
   const next = { ...control, page: () => page,
     elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { throw failure }, dispose: async () => {} }),
   }
-  const page = { url: () => 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
+  const page = { url: () => opened ? 'https://www.instagram.com/stories/alice/1/' : 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
     keyboard: { press: async () => {} },
     locator: (selector: string) => selector.includes('Story by') ? control : selector.includes('Next')
       ? { count: async () => 1, nth: () => next }
@@ -267,13 +248,12 @@ for (const stage of ['open', 'next']) test(`temporary story ${stage} failure ski
   assert.ok(notes.some(note => note.event === 'automation.actions.stories.skipped'))
 })
 
-test('stories skip a hidden first control in either tray layout', async () => {
-  for (const visibleKind of ['button', 'link']) {
+test('stories skip hidden or already-seen controls before choosing an unseen story', async () => {
+  for (const skipped of ['hidden', 'seen']) {
     const window = new Window()
     try {
-      window.document.body.innerHTML = `<main><div role="button" aria-label="Story by hidden" style="display:none"></div><a href="/stories/hidden/" style="display:none"></a>${visibleKind === 'button'
-        ? '<div id="visible-story" role="button" aria-label="Story by alice"></div>'
-        : '<a id="visible-story" href="/stories/alice/"></a>'}</main>`
+      window.document.body.innerHTML = `<main><div role="button" aria-label="Story by old, ${skipped === 'seen' ? 'seen' : 'not seen'}" ${skipped === 'hidden' ? 'style="display:none"' : ''}></div>
+        <div id="visible-story" role="button" aria-label="Story by alice, not seen"></div></main>`
       let clicked = ''
       const page = {
         goto: async () => {}, url: () => 'https://www.instagram.com/',
@@ -296,27 +276,28 @@ test('stories skip a hidden first control in either tray layout', async () => {
 
 test('stories return zero for missing trays and only completed views after an early stop', async () => {
   for (const mode of ['missing', 'full', 'stop on open', 'stop on next']) {
-    let stopped = false
+    let stopped = false, opened = false
     const control = {
       first() { return this }, nth() { return this },
       count: async () => 1, waitFor: async () => {},
+      evaluateAll: async () => ['alice'],
       isVisible: async () => mode !== 'missing',
       boundingBox: async () => ({ x: 100, y: 100, width: 40, height: 40 }),
       page: () => page,
       elementHandle: async () => control, dispose: async () => {},
       ...visibleActionGeometry, hover: async () => {},
-      click: async () => { stopped = mode === 'stop on open' },
+      click: async () => { opened = true; stopped = mode === 'stop on open' },
     }
     const next = { ...control, elementHandle: async () => ({
       ...visibleActionGeometry, hover: async () => {},
       click: async () => { stopped = true }, dispose: async () => {},
     }) }
     const page = {
-      goto: async () => {}, url: () => 'https://www.instagram.com/',
+      goto: async () => {}, url: () => opened ? 'https://www.instagram.com/stories/alice/1/' : 'https://www.instagram.com/',
       viewportSize: () => ({ width: 1280, height: 800 }),
       keyboard: { press: async () => {} },
       locator: (selector: string) => selector.includes('Story by') ? control
-        : selector.includes('Next') ? next : { count: async () => 0 },
+        : selector.includes('Next') ? next : { count: async () => 0, filter: () => ({ evaluateAll: async () => null }) },
     } as unknown as Page
     const watched = await watchStories(page, mode === 'stop on next' ? 3 : 1, () => {}, () => stopped,
       { minSeconds: 0, maxSeconds: 0 })

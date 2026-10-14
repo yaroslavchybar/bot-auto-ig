@@ -3,6 +3,18 @@ use crate::test_support::{body, Fixture};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
+fn interest_rewrite_is_routed_to_the_bun_worker_not_native_automation_control() {
+    let routes: Vec<Operation> = serde_json::from_str(include_str!("worker-routes.json")).unwrap();
+    let route = routes
+        .iter()
+        .find(|route| route.path == "/api/automations/interests/rewrite")
+        .unwrap();
+    assert_eq!(route.id, "interests.post.rewrite");
+    assert_eq!(route.method, "POST");
+    assert!(!crate::native::Native::handles(&route.id));
+}
+
+#[test]
 fn timestamps_accept_integer_and_fractional_numbers_but_reject_invalid_values() {
     assert_eq!(
         timestamp_ms(&json!(1_791_572_361_635u64)),

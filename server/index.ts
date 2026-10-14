@@ -16,9 +16,11 @@ import { cancelBrowserLogin, runBrowserLogin, shutdownBrowserLogins } from './ig
 import { ValidationError } from './shared/errors.js'
 
 import { createWorkerServer } from './worker/server.js'
+import { interestCommands } from './automation/interests.js'
 
 captureConsole()
 const callbacks = new Commands()
+callbacks.include(interestCommands())
 callbacks.register('browser.shutdown', 'POST', '/', async (_req, res) => {
   await shutdownBrowserLogins()
   res.json({ stopped: true })

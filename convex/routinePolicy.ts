@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { validateOutreachMessage } from '../server/shared/outreachMessage';
+import { validateInterests } from '../server/shared/interests';
 
 export const routineValidator = v.object({
   allowedCategories: v.optional(
@@ -24,6 +25,7 @@ export const routineValidator = v.object({
     ),
   ),
   activity: v.record(v.string(), v.union(v.number(), v.boolean(), v.string())),
+  interests: v.optional(v.array(v.object({ label: v.string(), description: v.string() }))),
   headless: v.boolean(),
   unfollowMinDays: v.optional(v.number()),
   unfollowMaxDays: v.optional(v.number()),
@@ -76,6 +78,7 @@ export const randomInRange = ([min, max]: readonly [number, number]) =>
   min + Math.floor(Math.random() * (max - min + 1));
 
 export function validateRoutine(p: RoutinePolicy) {
+  validateInterests(p.interests ?? [])
   if (
     p.allowedCategories &&
     (!p.allowedCategories.length ||

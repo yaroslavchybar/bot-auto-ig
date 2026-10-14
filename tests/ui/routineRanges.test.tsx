@@ -5,6 +5,7 @@ import type { Doc } from '../../convex/_generated/dataModel'
 import { defaultRoutine } from '../../convex/routinePolicy'
 import { RoutinePopup } from '@/features/automations/components/RoutinePopup'
 import { mount } from './mount'
+import { apiFetch } from '@/lib/api'
 
 vi.mock('convex/react', () => ({ useMutation: vi.fn(), useQuery: vi.fn() }))
 vi.mock('@/lib/api', () => ({ apiFetch: vi.fn() }))
@@ -110,10 +111,11 @@ test('automation ranges load, reject reversed ranges, and save both min/max pair
     nodes: [],
     edges: [],
     listIds: ['model'],
-    routine: { ...defaultRoutine, warmupMinPosts: 3, warmupMaxPosts: 6 },
+    routine: { ...defaultRoutine, warmupMinPosts: 3, warmupMaxPosts: 6,
+      activity: { stories_max: 99, reels_min: 99, post_view_min_seconds: 99, profile_visit_chance: 42, watch_stories: false } },
     createdAt: 1,
     updatedAt: 1,
-  } as Doc<'automations'>
+  } as unknown as Doc<'automations'>
   view = mount()
   await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
   await click('Warm-up')
@@ -146,6 +148,7 @@ test('automation ranges load, reject reversed ranges, and save both min/max pair
         warmupMaxPosts: 6,
         unfollowMinDays: 3,
         unfollowMaxDays: 6,
+        activity: { watch_stories: false },
       }),
     }),
   )
@@ -168,4 +171,64 @@ test('Outreach settings expose gradual daily follow limits instead of DM limits'
   expect(document.body.textContent).toContain('Max follows per day')
   expect(document.body.textContent).toContain('Notifications are checked daily')
   expect(document.body.textContent).not.toContain('Initial DMs per day')
+})
+
+test('interests add separate AI-rewritten tags, retain combinations, and save all descriptions', async () => {
+  const save = vi.fn().mockResolvedValue(undefined)
+  vi.mocked(useQuery).mockReturnValue([])
+  vi.mocked(useMutation).mockReturnValue(Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }))
+  vi.mocked(apiFetch).mockResolvedValueOnce({ description: 'Content featuring dancing or singing performances.' })
+    .mockResolvedValueOnce({ description: 'Fishing techniques and angling trips.' })
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'], routine: defaultRoutine } as unknown as Doc<'automations'>
+  view = mount()
+  await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
+  await click('Interests')
+  const setDraft = async (text: string) => {
+    const input = document.querySelector<HTMLInputElement>('#routine-interest')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, text)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+  await setDraft('dancing, singing')
+  expect(document.querySelector('footer')?.textContent).toContain('Add or discard')
+  await click('Add interest')
+  expect(document.querySelector('ul[aria-label="Saved interests"]')?.textContent).toContain('dancing, singing')
+  expect(document.querySelector('ul[aria-label="Saved interests"]')?.children.length).toBe(1)
+  await setDraft('fishing content')
+  await click('Add interest')
+  await click('Save changes')
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ routine: expect.objectContaining({ interests: [
+    { label: 'dancing, singing', description: 'Content featuring dancing or singing performances.' },
+    { label: 'fishing content', description: 'Fishing techniques and angling trips.' },
+  ] }) }))
+})
+
+test('an interest edit requires a new AI interpretation and failed rewriting keeps the draft', async () => {
+  const save = vi.fn().mockResolvedValue(undefined)
+  vi.mocked(useQuery).mockReturnValue([])
+  vi.mocked(useMutation).mockReturnValue(Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }))
+  vi.mocked(apiFetch).mockRejectedValueOnce(new Error('AI unavailable'))
+    .mockResolvedValueOnce({ description: 'Fishing content excluding competitions.' })
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'],
+    routine: { ...defaultRoutine, interests: [{ label: 'fishing', description: 'Fishing content.' }] } } as unknown as Doc<'automations'>
+  view = mount()
+  await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
+  await click('Interests')
+  await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Edit fishing"]')!.click())
+  const input = document.querySelector<HTMLInputElement>('#routine-interest')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'fishing, no competitions')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await click('Update interest')
+  expect(document.querySelector('[role="alert"]')?.textContent).toBe('AI unavailable')
+  expect(input.value).toBe('fishing, no competitions')
+  await click('Save changes')
+  expect(save).not.toHaveBeenCalled()
+  await click('Update interest')
+  await click('Save changes')
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ routine: expect.objectContaining({ interests: [
+    { label: 'fishing, no competitions', description: 'Fishing content excluding competitions.' },
+  ] }) }))
 })

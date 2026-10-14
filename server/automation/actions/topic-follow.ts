@@ -4,7 +4,7 @@ import { warmupBeginFollow, warmupConfirmFollow, warmupPauseFollows, type Warmup
 import { warmupTopics } from '../../shared/warmupTopics.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { followButton, profileControls } from '../follow.js'
-import { likeRecentPost, ownUsername } from '../follow-back.js'
+import { ownUsername } from '../follow-back.js'
 import { clickAction } from './action-locator.js'
 import { isUserHref } from './guards.js'
 import { assertInstagramReady } from './instagram-state.js'
@@ -14,16 +14,16 @@ import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { performProfileFollow } from './follow-safety.js'
 import { searchExplore } from './explore.js'
 
-const dependencies = { beginFollow: warmupBeginFollow, confirmFollow: warmupConfirmFollow, like: likeRecentPost, ownUsername,
+const dependencies = { beginFollow: warmupBeginFollow, confirmFollow: warmupConfirmFollow, ownUsername,
   follow: performProfileFollow, pauseFollows: warmupPauseFollows, topic: topicContentMatches, search: searchExplore }
 
-/** Week-one engagement visits topic search accounts; missing topic evidence always blocks engagement. */
-export async function engageWeekOne(page: Page, keywords: string, budget: WarmupActivityBudget,
+/** Topic follows use verified interest evidence and the shared daily follow allowance. */
+export async function followTopicAccounts(page: Page, interests: string | readonly string[], budget: WarmupActivityBudget,
   session: BrowseSession, request: Omit<WarmupFollowRequest, 'username'>, log: ActionLogger, deps: Omit<typeof dependencies, 'topic'> & { topic?: TopicMatcher } = dependencies,
   interlude?: () => Promise<boolean>, searchTerms: readonly string[] = []): Promise<void> {
-  const topics = warmupTopics(keywords)
+  const topics = warmupTopics(interests)
   const matchesTopic = deps.topic ?? topicContentMatches
-  if (!topics.length || !searchTerms.length || !budget.remaining('profiles') || (!budget.remaining('likes') && !budget.remaining('follows'))) return
+  if (!topics.length || !searchTerms.length || !budget.remaining('profiles') || !budget.remaining('follows')) return
   session.check()
   const recover = async (error: unknown, action: string) => {
     session.check()
@@ -42,7 +42,7 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
   } catch (error) { await recover(error, 'search'); return }
   const allowed = async () => { session.check(); await assertInstagramReady(page); session.check(); return true }
   let needsInterlude = false
-  while (candidates.length && !session.stopped() && budget.remaining('profiles') && (budget.remaining('likes') || budget.remaining('follows'))) {
+  while (candidates.length && !session.stopped() && budget.remaining('profiles') && budget.remaining('follows')) {
     if (needsInterlude && (!interlude || !await interlude())) break
     needsInterlude = false
     if (!budget.take('profiles')) break
@@ -59,17 +59,6 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
       }
     } catch (error) { await recover(error, 'profile'); continue }
     await session.wait(random(2000, 4000))
-    if (budget.remaining('likes')) {
-      try {
-        const liked = await deps.like(page, allowed, async () => {
-          session.check()
-          const post = page.getByRole('dialog').getByRole('article')
-          const text = await post.innerText()
-          return await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log, post) && budget.take('likes')
-        })
-        if (liked) log({ event: 'automation.warmup.topic_like', targetUsername: href.split('/')[1] })
-      } catch (error) { await recover(error, 'like'); continue }
-    }
     if (!budget.remaining('follows')) continue
     try {
       if (!await followButton(page).isVisible()) continue

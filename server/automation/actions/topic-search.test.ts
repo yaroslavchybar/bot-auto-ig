@@ -111,3 +111,15 @@ test('profiles sharing generation retain separate deadlines', async () => {
   complete(['strength training'])
   assert.deepEqual(await pending, ['strength training'])
 })
+
+test('multiple interests remain independent in query generation and any tag edit invalidates the cache', async () => {
+  const inputs: string[] = []
+  const get = createTopicSearchTerms(async description => { inputs.push(description); return ['fishing', 'ecommerce'] })
+  const session = new BrowseSession(Date.now() + 10_000)
+  await get(['Fishing trips', 'E-commerce tutorials'], session, () => {})
+  await get(['Fishing trips', 'E-commerce tutorials'], session, () => {})
+  await get(['Fishing trips without competitions', 'E-commerce tutorials'], session, () => {})
+  assert.deepEqual(inputs.map(value => JSON.parse(value)), [
+    ['Fishing trips', 'E-commerce tutorials'], ['Fishing trips without competitions', 'E-commerce tutorials'],
+  ])
+})

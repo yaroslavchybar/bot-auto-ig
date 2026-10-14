@@ -21,7 +21,7 @@ import {
   watchRoutineRuntime,
   type RuntimeSnapshot,
 } from '../shared/convexRealtime.js'
-import { warmupReady } from './warmup.js'
+import { sessionReady } from './sessions.js'
 import { runRoutineSession } from './routine.js'
 import { postModelUpdateInSession } from '../ig-accounts/warmup.js'
 import { setupModelInSession } from '../ig-accounts/profile-setup.js'
@@ -450,7 +450,7 @@ export async function runAutomation(
         })
         return
       }
-      if (hasWarmup && !warmupReady(await warmupGetByProfile(profile.id))) return
+      if (hasWarmup && !sessionReady(await warmupGetByProfile(profile.id))) return
       let access = !profile.paused
       const accessSubscription = useRealtime
         ? watchProfileAccess(profile.id, value => { access = value }, () => { access = false })
@@ -482,7 +482,7 @@ export async function runAutomation(
         (!automation.routine || !snapshot || routineMayRun(snapshot, profile.id)))
       // Resting profiles must not affect proxy alternation among runnable profiles.
       const ready = hasWarmup
-        ? await Promise.all(pending.map(async profile => warmupReady(await warmupGetByProfile(profile.id))))
+        ? await Promise.all(pending.map(async profile => sessionReady(await warmupGetByProfile(profile.id))))
         : pending.map(() => true)
       await runPool(orderProfileQueue(pending.filter((_, index) => ready[index]), previousProxy), parallel, runProfile)
     }

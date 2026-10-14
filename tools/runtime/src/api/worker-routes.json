@@ -1,5 +1,13 @@
 [
   {
+    "id": "interests.post.rewrite",
+    "method": "POST",
+    "path": "/api/automations/interests/rewrite",
+    "body": "json",
+    "maxBody": 4096,
+    "imageRead": false
+  },
+  {
     "id": "profiles.get.list",
     "method": "GET",
     "path": "/api/profiles",

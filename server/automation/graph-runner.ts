@@ -2,9 +2,8 @@ import type { WorkerEvent } from '../shared/contracts.js'
 import type { BrowserSession } from '../browser/cloak.js'
 import { sleep, shouldStop, shutdownSignal } from '../browser/lifecycle.js'
 import type { DbProfileRow } from '../shared/convexClient.js'
-import { runWarmup } from './warmup.js'
+import { runBrowsingSession } from './sessions.js'
 import type { ActionLogger } from './actions/shared.js'
-import { watchStories } from './actions.js'
 import { advanceLoop, nextNode, nodeActivity, type AutomationNode, type AutomationEdge } from './graph.js'
 
 type AnyRecord = Record<string, any>
@@ -137,18 +136,7 @@ export async function executeGraphProfile(context: GraphProfileContext): Promise
           number(config.iterations, 3),
         )
       } else if (activity === 'browse_feed') {
-        await runWarmup(profile.id, automationId, config, session.page, log, stopped)
-      } else if (activity === 'watch_stories') {
-        await watchStories(
-          session.page,
-          number(config.stories_max, 3),
-          log,
-          stopped,
-          {
-            minSeconds: number(config.stories_min_view_seconds, 2),
-            maxSeconds: number(config.stories_max_view_seconds, 5),
-          },
-        )
+        await runBrowsingSession(profile.id, automationId, config, session.page, log, stopped)
       } else if (activity === 'close_browser') {
         await controls.close()
       } else if (activity === 'start') {

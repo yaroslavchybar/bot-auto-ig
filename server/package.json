@@ -17,6 +17,7 @@
         "mmdb-lib": "^3.0.3",
         "pino": "^10.3.1",
         "playwright-core": "1.63.0",
+        "sharp": "^0.35.5",
         "ws": "^8.22.0"
     },
     "devDependencies": {

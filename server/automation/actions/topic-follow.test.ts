@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
-import { engageWeekOne } from './week-one.js'
+import { followTopicAccounts } from './topic-follow.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { BrowseSession } from './session.js'
 
@@ -29,7 +29,7 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
     getByRole: (role: string) => role === 'dialog'
       ? { getByRole: () => ({ innerText: async () => caption }) } : control,
   } as unknown as Page
-  const deps: NonNullable<Parameters<typeof engageWeekOne>[6]> = {
+  const deps: NonNullable<Parameters<typeof followTopicAccounts>[6]> = {
     search: async (_page, query) => { assert.equal(query, 'strength training'); return true },
     follow: async (_page, allowed, click, confirmed) => { if (!await allowed()) return false; await click(); await confirmed(); return true },
     pauseFollows: async () => {},
@@ -40,32 +40,22 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
     ownUsername: async () => 'self',
     beginFollow: async () => { calls.push('authorize'); return authorize },
     confirmFollow: async () => { calls.push('confirm-follow') },
-    like: async (_page, allowed, beforeLike) => {
-      await allowed()
-      if (!await beforeLike!()) return false
-      calls.push('like'); return true
-    },
   }
   const budget = new WarmupActivityBudget({ likes: 2, follows: 2, profiles: 2, reels: 18, stories: 0 })
   const session = new BrowseSession(Date.now() + 60_000)
   session.wait = async () => { session.check() }
-  const run = (topics = 'fitness', interlude?: () => Promise<boolean>) => engageWeekOne(page, topics, budget, session,
+  const run = (topics = 'fitness', interlude?: () => Promise<boolean>) => followTopicAccounts(page, topics, budget, session,
     { profileId: 'profile', runId: 'run', date: '2026-10-12' }, () => {}, deps, interlude, ['strength training'])
   return { calls, budget, run, deps, page }
 }
 
-for (const stage of ['profile', 'like'] as const) test(`week-one ${stage} timeout skips its candidate and continues`, async () => {
+test('a topic follow profile timeout skips its candidate and continues', async () => {
   const s = setup('Fitness coach', 'Fitness workout', true, ['/trainer_one/', '/trainer_two/'])
+  const goto = s.page.goto.bind(s.page)
   let failures = 0
-  if (stage === 'profile') {
-    const goto = s.page.goto.bind(s.page)
-    s.page.goto = async (...args) => { if (++failures === 1) throw new errors.TimeoutError('Profile loading timed out'); return goto(...args) }
-  } else {
-    const like = s.deps.like
-    s.deps.like = async (...args) => { if (++failures === 1) throw new errors.TimeoutError('Optional Like timed out'); return like(...args) }
-  }
+  s.page.goto = async (...args) => { if (++failures === 1) throw new errors.TimeoutError('Profile loading timed out'); return goto(...args) }
   await s.run()
-  assert.ok(s.calls.includes('confirm-follow'), 'a later candidate can still be followed')
+  assert.ok(s.calls.includes('confirm-follow'))
   assert.equal(s.budget.used.profiles, 2)
 })
 
@@ -75,10 +65,10 @@ test('week-one uncertain follow input is not treated as optional UI work', async
   await assert.rejects(s.run(), /Follow click timed out/)
 })
 
-test('week-one actions verify the profile and post topic and authorize before following', async () => {
+test('topic follows verify profile interests and authorize before input', async () => {
   const s = setup(); await s.run()
-  assert.deepEqual(s.calls, ['visit', 'like', 'authorize', 'follow', 'confirm-follow'])
-  assert.equal(s.budget.used.likes, 1); assert.equal(s.budget.used.follows, 1)
+  assert.deepEqual(s.calls, ['visit', 'authorize', 'follow', 'confirm-follow'])
+  assert.equal(s.budget.used.likes, 0); assert.equal(s.budget.used.follows, 1)
   assert.equal(s.budget.used.profiles, 1)
 })
 
@@ -89,7 +79,7 @@ test('search results without matching profile evidence are never engaged', async
   assert.equal(s.budget.used.profiles, 1)
 })
 
-test('an off-topic post is not liked or counted even on a topic-related account', async () => {
+test('topic follow actions never duplicate content engagement', async () => {
   const s = setup('Fitness coach', 'Dinner'); await s.run()
   assert.ok(!s.calls.includes('like')); assert.equal(s.budget.used.likes, 0)
   assert.ok(s.calls.includes('follow'))

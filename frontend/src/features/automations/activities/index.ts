@@ -8,7 +8,6 @@
  * - types.ts         → Type definitions
  * - browsing/        → Feed activities
  * - engagement/      → Engagement activities (empty until activities register)
- * - stories/         → Story watching activities
  * - control/         → Flow control (delay, loop, etc.)
  *
  * TO ADD A NEW ACTIVITY:
@@ -31,7 +30,6 @@ export type {
 // Import all activity groups
 import { browsingActivities } from './browsing'
 import { engagementActivities } from './engagement'
-import { storiesActivities } from './stories'
 import { controlActivities } from './control'
 
 import type { ActivityCategory, ActivityDefinition } from './types'
@@ -45,7 +43,6 @@ export type ActivityCategoryFilter = ActivityCategory | 'all'
 export const ACTIVITY_REGISTRY: ActivityDefinition[] = [
   ...browsingActivities,
   ...engagementActivities,
-  ...storiesActivities,
   ...controlActivities,
 ]
 
@@ -65,7 +62,7 @@ export function getActivityById(id: string): ActivityDefinition | undefined {
  * Get list of all categories
  */
 export function getAllCategories(): ActivityCategory[] {
-  return ['browsing', 'stories', 'control']
+  return ['browsing', 'control']
 }
 
 /**

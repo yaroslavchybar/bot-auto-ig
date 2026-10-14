@@ -1,38 +1,27 @@
 import type { Locator, Page } from 'playwright-core'
 import { isTemporaryUiError } from './ui-errors.js'
 import { BrowseSession, SessionEnded } from './session.js'
-import { postChoices, detourDelay, viewContent } from './viewing.js'
+import { viewContent } from './viewing.js'
 import { focusPageContent } from '../../browser/focus.js'
 import {
-  chance,
   numeric,
   random,
   type ActionLogger,
   type StopCheck,
 } from './shared.js'
-import { clickPointOnScreen } from './guards.js'
 import {
-  clickVisible,
   driftMouse,
 } from './mouse.js'
 import {
   alignPostOnScreen,
   smoothScroll,
 } from './scroll.js'
-import { backToFeed, dismissPopups, isInstagramHome } from './navigation.js'
-import {
-  openAuthorProfile,
-  openOwnProfile,
-  openVisitorProfile,
-  wanderProfile,
-} from './profiles.js'
-import { openDMs } from './inbox.js'
-import { openReels, watchReels } from './reels.js'
+import { dismissPopups, isInstagramHome } from './navigation.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { feedPostContext, feedPostMatches, warmupTopics } from '../../shared/warmupTopics.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
-import { maintainPost } from './maintenance.js'
+import { engagePost } from './engagement.js'
 
 // Ads get scrolled past, never engaged with. Header labels are checked separately.
 // Structural markers: ad redirect links and tracking
@@ -127,7 +116,7 @@ export async function visibleFeedPost(page: Page, seen: ReadonlySet<string>): Pr
   return fallback
 }
 
-async function browseFeedSession(
+async function browseHomeFeedSession(
   page: Page,
   minutes: number,
   config: Record<string, unknown>,
@@ -136,6 +125,7 @@ async function browseFeedSession(
   session: BrowseSession,
   budget?: WarmupActivityBudget,
   matchesTopic: TopicMatcher = topicContentMatches,
+  seen: Set<string> = new Set(),
 ): Promise<'finished' | 'stopped' | 'stalled'> {
   if (!(minutes > 0) || shouldStop()) return 'stopped'
   if (config.browse_home_feed === false) return 'finished'
@@ -164,28 +154,13 @@ async function browseFeedSession(
 
   const viewMin = Math.max(0, numeric(config.post_view_min_seconds, 2))
   const viewMax = Math.max(viewMin, numeric(config.post_view_max_seconds, 5))
-  const skipMax = Math.max(
-    1,
-    Math.floor(numeric(config.skip_post_max, 2)),
-  )
-  const carouselMax = Math.max(
-    1,
-    Math.floor(numeric(config.carousel_max_slides, 3)),
-  )
-
   const durationMs = Math.max(1, end - start)
   const topics = warmupTopics(config.warmup_topics)
-  let skipsRemaining = 0
   // Detect lack of scroll progress, including skips and already-seen posts.
   let stuckRounds = 0
   let lastPosition = ''
   let reloaded = false
-  let detours = 0
-  const MAX_DETOURS = 3
-  const detourSpacing = detourDelay(durationMs)
-  let nextDetourAt = start + detourSpacing
   // Permalink ids already dwelled on; never read the same post twice.
-  const seen = new Set<string>()
   let feedEnds = 0
   log({ event: 'automation.actions.feed.starting_feed_session_for', message: `Starting feed session for ${minutes} minute(s)` })
   while (Date.now() < end && !shouldStop()) {
@@ -207,18 +182,7 @@ async function browseFeedSession(
         .waitFor({ state: 'visible', timeout: session.timeout(5_000) })
         .catch(() => undefined)
       await dismissPopups(page, session)
-      if (config.scroll_reels !== false && feedEnds >= 2 && end - Date.now() > 30_000 && !shouldStop() && (!budget || budget.remaining('reels') > 0)) {
-        const reels = Math.round(random(numeric(config.reels_min, 3), numeric(config.reels_max, 8)))
-        if (await openReels(page, log, session)) {
-          log({ event: 'automation.actions.feed.watching_reels', message: 'Watching reels' })
-          await watchReels(page, reels, config, log, shouldStop, end, session, budget, matchesTopic)
-          await backToFeed(page, log, session)
-          session.check()
-          await focusPageContent(page)
-          await dismissPopups(page, session)
-        }
-        feedEnds = 0
-      }
+      if (feedEnds >= 2) return 'finished'
       stuckRounds = 0
       lastPosition = ''
       if (end - Date.now() < 10_000) break
@@ -273,9 +237,6 @@ async function browseFeedSession(
     const context = await target.evaluate(feedPostContext).catch(() => ({
       text: '', relationship: 'unknown' as const, sponsored: false,
     }))
-    const preserveFollowed = context.relationship !== 'not-followed'
-    if (preserveFollowed) skipsRemaining = 0
-
     // Ads remain excluded, including ads from followed authors.
     if (context.sponsored || await isAdPost(target)) {
       if (targetId) seen.add(targetId)
@@ -283,21 +244,12 @@ async function browseFeedSession(
       continue
     }
 
-    // Inspect each author between bored skips, so batches cannot skip followed accounts.
-    if (!preserveFollowed && (skipsRemaining > 0 || chance(config.skip_post_chance))) {
-      if (!skipsRemaining) skipsRemaining = Math.round(random(1, skipMax))
-      skipsRemaining--
-      if (targetId) seen.add(targetId)
-      await advanceFeedPost(page, target, session, budget)
-      continue
-    }
-
     // Settle content into view before the screenshot decision or any interaction.
     await alignPostOnScreen(page, target, session)
-    const related = !preserveFollowed && topics.length > 0 && await matchesTopic(context, topics, session, log, target)
+    const related = topics.length > 0 && await matchesTopic(context, topics, session, log, target)
     if (!feedPostMatches(context, topics, related)) {
       if (targetId) seen.add(targetId)
-      log({ event: 'automation.warmup.feed_post_off_topic', message: 'Skipped a recommended post outside the selected topics' })
+      log({ event: 'automation.warmup.feed_post_off_topic', message: 'Skipped a post outside the selected interests' })
       await advanceFeedPost(page, target, session, budget)
       continue
     }
@@ -325,103 +277,13 @@ async function browseFeedSession(
       dwell = random(viewMin, viewMax) * 1000 * sessionScale
     }
     if (Math.random() < 0.08) dwell *= random(2, 3) // found something interesting
-    const choices = postChoices(config)
-    // Week-one engagement is handled separately; maintenance engages only eligible content.
+    // Matched content shares the daily interaction budget from day two.
     const viewed = await viewContent(target, dwell, session)
     if (viewed && budget) budget.browsed++
-    if (viewed && choices.carousel) {
-      const slides = Math.floor(random(1, carouselMax + 1))
-      for (let i = 0; i < slides; i++) {
-        session.check()
-        const selector = 'button[aria-label*="Next"], [aria-label="Next"]'
-        if (!await clickVisible(target, selector, session).catch(() => false)) break
-        await session.wait(random(900, 2200))
-      }
-    }
-    if (viewed && numeric(config.warmup_day, 1) >= 8 && budget)
-      await maintainPost(page, target, context, topics, budget, session, log, matchesTopic)
+    if (viewed && numeric(config.warmup_day, 1) >= 2 && budget)
+      await engagePost(page, target, context, topics, budget, session, log, matchesTopic)
     session.check()
     await assertInstagramReady(page)
-    // Re-read geometry after carousel/reveal scrolling, not before.
-    const targetBox = await target.boundingBox().catch(() => null)
-    const vpSize = page.viewportSize() ?? { width: 1280, height: 800 }
-    const targetOnScreen = !!targetBox && clickPointOnScreen(targetBox, vpSize)
-
-    // Space detours across the session. Only successful visits use a slot.
-    const canDetour =
-      detours < MAX_DETOURS && Date.now() >= nextDetourAt && end - Date.now() > 15_000 && !shouldStop()
-    let detoured = false
-    let openedDetour = false
-    // A failed attempt also waits before retrying, but does not use a success slot.
-    if (canDetour && chance(config.own_profile_chance ?? 10)) {
-      detoured = true
-      if (await openOwnProfile(page, log, session)) {
-        openedDetour = true
-        log({ event: 'automation.actions.feed.looking_around_own_profile', message: 'Looking around own profile' })
-        await wanderProfile(page, log, shouldStop, end, session)
-      }
-    } else if (canDetour && chance(config.dm_chance ?? 8)) {
-      detoured = true
-      if (await openDMs(page, log, session)) {
-        openedDetour = true
-        // From inbox: back to feed, or via own profile from the sidebar.
-        if (Math.random() < 0.5 && (await openOwnProfile(page, log, session))) {
-          log({ event: 'automation.actions.feed.looking_around_own_profile', message: 'Looking around own profile' })
-          await wanderProfile(page, log, shouldStop, end, session)
-        }
-      }
-    } else if (config.scroll_reels !== false && canDetour && (!budget || budget.remaining('reels') > 0) && chance(config.reels_chance ?? 12)) {
-      detoured = true
-      // Sidebar Reels, watch a few, Back/Home returns to the feed.
-      const reels = Math.round(
-        random(numeric(config.reels_min, 3), numeric(config.reels_max, 8)),
-      )
-      if (await openReels(page, log, session)) {
-        openedDetour = true
-        log({ event: 'automation.actions.feed.watching_reels', message: 'Watching reels' })
-        await watchReels(page, reels, config, log, shouldStop, end, session, budget, matchesTopic)
-      }
-    } else if (
-      canDetour &&
-      targetOnScreen &&
-      (!budget || budget.remaining('profiles') > 0) &&
-      chance(config.profile_visit_chance ?? 35)
-    ) {
-      // Rabbit hole: visit the author or a liker/commenter without engagement.
-      detoured = true
-      const viaVisitor = Math.random() < 0.5
-      log({ event: 'automation.actions.feed.detail', message: viaVisitor ? 'Opening a liker profile' : 'Opening the author profile' })
-      const opened = viaVisitor
-        ? await openVisitorProfile(page, target, session)
-        : await openAuthorProfile(page, target, session)
-      if (opened) {
-        budget?.take('profiles')
-        openedDetour = true
-        log({ event: 'automation.actions.feed.looking_around_the_profile', message: 'Looking around the profile' })
-        await wanderProfile(page, log, shouldStop, end, session)
-      }
-    }
-    if (detoured) {
-      if (openedDetour) detours++
-      nextDetourAt = Date.now() + detourSpacing
-      session.check()
-      // Re-anchor to the feed the human way: browser Back, then Home.
-      await backToFeed(page, log, session)
-      session.check()
-      await focusPageContent(page)
-      await dismissPopups(page, session)
-      await page
-        .locator('article')
-        .first()
-        .waitFor({ state: 'visible', timeout: session.timeout(15_000) })
-        .catch(() => undefined)
-      await dismissPopups(page, session)
-      await driftMouse(page, undefined, undefined, session)
-      await sleep(random(800, 2000))
-      stuckRounds = 0
-      continue
-    }
-
     if (Date.now() >= end || shouldStop()) break
     await advanceFeedPost(page, target, session, budget)
 
@@ -431,16 +293,17 @@ async function browseFeedSession(
   return shouldStop() ? 'stopped' : 'finished'
 }
 
-export async function browseFeed(
+export async function browseHomeFeed(
   page: Page, minutes: number, config: Record<string, unknown>,
   log: ActionLogger, shouldStop: StopCheck,
   budget?: WarmupActivityBudget,
   matchesTopic: TopicMatcher = topicContentMatches,
+  seen = new Set<string>(),
 ): Promise<'finished' | 'stopped' | 'stalled'> {
   if (!(minutes > 0) || shouldStop()) return 'stopped'
   const session = new BrowseSession(Date.now() + minutes * 60_000, shouldStop)
   try {
-    return await browseFeedSession(page, minutes, config, log, shouldStop, session, budget, matchesTopic)
+    return await browseHomeFeedSession(page, minutes, config, log, shouldStop, session, budget, matchesTopic, seen)
   } catch (error) {
     if (error instanceof SessionEnded || session.stopped())
       return shouldStop() ? 'stopped' : 'finished'

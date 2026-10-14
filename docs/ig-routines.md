@@ -1,20 +1,49 @@
 # Daily IG routines
 
+A session has one reservation, deadline, and shared activity budget. On days 1–4, Explore warm-up uses up to 30% of the available time to seed the selected interests, then returns to the common browsing flow. Notifications/follow-back checks, inbox, unseen Stories, follow/DM batches, and unfollow cleanup belong to that flow. Home feed and Reels are sibling actions; when both are enabled, the flow alternates them in time slices. Seen post/Reel identities persist across slices. Content actions do not navigate into other activities. Likes, saves, comment reading, and brief matched-author visits share the engagement module. Random profile wandering, unrelated liker/commenter visits, separate outreach likes, standalone Story nodes, and carousel probability/count settings are removed.
+
+```mermaid
+flowchart TD
+  Sessions --> Warmup[Explore warm-up]
+  Sessions --> Browse[Browse feed]
+  Warmup --> Browse
+  Browse --> Home[Home feed]
+  Browse --> Reels
+  Browse --> Follow
+  Browse --> Unfollow
+  Browse --> Notifications
+  Browse --> DMs
+  Browse --> Stories[Unseen Stories]
+  Home --> Classify[Interest classifier]
+  Reels --> Classify
+  Classify --> Engagement
+  Engagement --> Likes
+  Engagement --> Saves
+  Engagement --> Comments[Read comments]
+  Engagement --> Visits[Matched-author visits]
+```
+
 Create one automation per model. Select browsing surfaces, daily time, and session/rest ranges, then optionally enable Outreach. Outreach starts on warm-up day 8 once the account has at least three posts and its browser is logged in. Posting continues daily to the configured target without blocking outreach.
+
+Interests drive viewing and engagement in both Home feed and Reels. Every author, including followed accounts, needs a positive screenshot match when interests are selected. Off-topic content and failed decisions are skipped. With no interests, browsing stays passive. From day 2, positive matches can receive likes, saves, comment reading, and author visits within the shared daily action budgets. Random skip and engagement probabilities are removed. Reels use the generated browsing session deadline, with no min/max batch or daily view count limit. Old saved overrides are ignored. Story view timing is automatic. Stories are on by default and remain optional. They watch only accounts marked “not seen” for a random 1–3 minutes before browsing, bounded by the remaining session time. Empty or already-seen trays skip after at most two seconds; missing Next controls, finished playback, or transitions into previously seen accounts end the phase early. Autoplay transitions never receive an extra Next click. Story counts are recorded without a daily count ceiling. Home feed and Reels still have independent browsing toggles.
 
 Profile outreach readiness is automatic; it has no manual toggle. Setup confirms the three-post requirement, and the routine unlocks lead follows and DMs on day 8 when the automation's Outreach setting is enabled. The profile's Logged in toggle remains available.
 
-Warm-up days 1–7 gradually engage topic-related accounts. Maintenance mixes browsing with lead outreach in batches of 3–5 completed follows/DMs, limited by the remaining quota and session time. Each batch starts after browsing and a 10–20 second pause before opening the first lead profile. Accounts within a batch keep the existing randomized pauses; excluded candidates do not count toward batch completion. The daily follow target starts small, grows after confirmed outreach days, and stays within the configured maximum. Paused profiles do not run.
+Warm-up engagement starts on day 2 and gradually follows topic-related accounts. The browsing flow mixes content viewing with lead outreach in batches of 3–5 completed follows/DMs, limited by the remaining quota and session time. Each batch starts after browsing and a 10–20 second pause before opening the first lead profile. Accounts within a batch keep the existing randomized pauses; excluded candidates do not count toward batch completion. The daily follow target starts small, grows after confirmed outreach days, and stays within the configured maximum. Paused profiles do not run.
 
-Topic post searches run only on warm-up days 1–4. The worker opens Search, types a generated hashtag, presses Enter, and clicks its exact native result. It scrolls the grid, opens visible posts, and closes each post before continuing. From day 5, browsing uses the enabled Home feed/Reels surfaces with the same screenshot topic rule. Week-one topic account searches for likes/follows continue through day 7.
+Add separate plain-English tags in Interests. Normal Luna rewrites each tag into a visible, editable intent description before it is saved. Commas remain inside a tag so combinations and exclusions are preserved. Matching accepts any one interest independently; it does not require every tag to match. Editing a tag rewrites its intent and regenerates cached search phrases. The model matches observable content and explicit context rather than inferring sensitive personal traits from appearance.
+
+Topic post searches run only on warm-up days 1–4 to shape Instagram recommendations. Normal Luna generates search phrases from all saved interest descriptions. The worker opens Search, types a generated hashtag, presses Enter, and clicks its exact native result or the native suggested hashtag when no exact result exists. It never constructs a search URL. From day 5, browsing uses the enabled Home feed/Reels surfaces with the same screenshot interest rule. Topic account searches for verified follows continue through day 7 as a follow action in the shared browsing flow. Post likes have one owner: interest-based content engagement.
+
+Explore inspects one visible row of up to four posts per request, adapting to the current layout. The screenshot is cropped to that row, numbered in memory, and compressed to at most 150,000 bytes. Luna Decisions answers independently for each tile so several or none can match. Only selected exact post links are opened; the opened media and caption get a second screenshot check before viewing or interacting. Grid reflow during capture skips the request. From day 2, matching Explore posts can receive budgeted interactions. Screenshots and numeric overlays are never written to the browser DOM or saved to disk.
 
 Sidebar navigation works with both collapsed icons and expanded labels. Notification checks retry a changing control once, then skip the optional check if it stays unavailable. Temporary DOM visibility, detachment, and animation errors use the normal retry cooldown; saved errors of these kinds also recover. Login, checkpoint, and uncertain delivery issues still require attention.
 
-Feed, profiles, overlays, and notification scanning use eased wheel scrolling. Controls are revealed inside their own scroll container before cursor movement and clicking, while staying bound to the selected element. Reels select the video with the largest visible area and advance only through the named Next button with cursor movement. Advancement succeeds only after the URL changes and a visible frame stops moving; the frame need not be centered in the viewport. Failed advances log the stage and error; session expiry stops browsing without reporting a stuck reel. Notifications and inbox are checked at session startup, with no closing notification check. Explore opens a tile already near the viewport with a longer click budget; temporary search or Explore failures skip that phase and continue normal browsing. Week-one, standalone warm-up, and maintenance share bounded browsing retries. Story chunk expiry skips the optional story; completed views count before optional maintenance.
+Feed, profiles, overlays, and notification scanning use eased wheel scrolling. Controls are revealed inside their own scroll container before cursor movement and clicking, while staying bound to the selected element. Reels select the video with the largest visible area and advance only through the named Next button with cursor movement. Advancement succeeds only after the URL changes and a visible frame stops moving; the frame need not be centered in the viewport. Failed advances log the stage and error; session expiry stops browsing without reporting a stuck reel. Notifications and inbox are checked at session startup, with no closing notification check. Explore opens a tile already near the viewport with a longer click budget; temporary search or Explore failures skip that phase and continue normal browsing. Every session uses the same bounded browsing retry loop. Story phase expiry skips the optional story; completed views count before optional engagement.
 
 Visible automation sessions move the native desktop pointer along Cloak's mouse path before clicking. TigerVNC includes that remote cursor in the stream; no cursor is injected into the page. The viewer hides its local cursor while the agent controls the session. Manual sessions keep normal cursor control.
 
-In the Reels tab, a selected Like first double-clicks the current video player and checks for Unlike. If the web player does not accept double-tap liking, it uses that reel's Like button under the same single attempt. Home feed and Explore post dialogs keep button liking. Like actions allow up to 15 seconds for cursor movement and clicking, bounded by the session deadline. Temporary maintenance click or confirmation failures are logged and skipped; session expiry and Instagram account warnings still stop browsing.
+In the Reels tab, a selected Like first double-clicks the current video player and checks for Unlike. If the web player does not accept double-tap liking, it uses that reel's Like button under the same single attempt. Home feed and Explore post dialogs keep button liking. Like actions allow up to 15 seconds for cursor movement and clicking, bounded by the session deadline. Temporary engagement click or confirmation failures are logged and skipped; session expiry and Instagram account warnings still stop browsing.
 
 Temporary story controls, week-one search/profile/Like work, and notification scans skip locally. A notification panel that survives Close and Escape is cleared by bounded Home navigation. Feed navigation/reload failures return a stalled result for the existing browsing retry loop; detached reel context skips to Next. DM preparation failures skip that recipient for the current session without recording delivery, and unscreened follow leases are released for backoff. Scans stay incomplete after failure. Account warnings, lost access, backend failures, and uncertain Follow or Send input still stop the session.
 
@@ -34,9 +63,9 @@ The existing lead pool has been reset for browser screening. Assignments and out
 
 ## Outreach and cleanup
 
-An accepted recipient is followed if it is not already followed or requested. Confirmed follows are recorded for cleanup; public accounts may receive one like. Only confirmed follows advance the follow ramp. Approved claims remain permanent after an interrupted Instagram action, avoiding duplicate outreach.
+An accepted recipient is followed if it is not already followed or requested. Confirmed follows are recorded for cleanup. Only confirmed follows advance the follow ramp. Approved claims remain permanent after an interrupted Instagram action, avoiding duplicate outreach.
 
-Optional post likes use a grid tile already on screen, with 15 seconds for the action and up to three seconds for dialog cleanup. Private profiles skip this step. Each recipient has its own `automation.recipient_session` event with navigation, screening, follow, and optional-like timings, so later browsing cannot overwrite the lead's diagnostic notes.
+Each recipient has its own `automation.recipient_session` event with navigation, screening, and follow timings, so later browsing cannot overwrite the lead's diagnostic notes. Recipient following has no separate post-like path.
 
 Screenshot capture records its stage, elapsed time, and byte size. Each lead/topic Decisions call emits a correlated `automation.openrouter_decision` event with image byte size, JPEG header/end checks and dimensions when readable, request size, timeout, HTTP status, response type, provider/request IDs, retry timing, and sanitized upstream error fields. This distinguishes capture, network, timeout, HTTP, and JSON failures. Images, request payloads, API keys, and raw response bodies are not logged; echoed image data and credentials are redacted. The normal request deadline and retry behavior remain unchanged.
 

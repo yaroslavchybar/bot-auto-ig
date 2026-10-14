@@ -5,7 +5,7 @@ import { visibleActionGeometry } from './action-locator.test-support.js'
 import { openProfileThroughSearch, openTopicResults } from './explore.js'
 import { BrowseSession, SessionEnded } from './session.js'
 
-function fixture(options: { missing?: boolean; wrongTarget?: boolean; checkpoint?: boolean } = {}) {
+function fixture(options: { missing?: boolean; wrongTarget?: boolean; checkpoint?: boolean; suggestedTag?: boolean } = {}) {
   let url = 'https://www.instagram.com/', query = ''
   const calls: string[] = []
   const control = (name: string) => ({ ...visibleActionGeometry,
@@ -28,7 +28,10 @@ function fixture(options: { missing?: boolean; wrongTarget?: boolean; checkpoint
       if (selector.includes('[role="alert"]')) return { filter: () => ({ evaluateAll: async () => null }) }
       if (selector === 'a:has(svg[aria-label="Search"])') return control('search')
       if (selector === 'main header' || selector.startsWith('main a[href*=')) return control('loaded')
-      const expected = query.startsWith('#') ? 'main a[href="/explore/tags/strengthtraining/"]' : 'main a[href="/alice/"]'
+      if (selector === 'main a[href^="/explore/tags/"]') return { ...control('result'), evaluateAll: async () => [
+        options.suggestedTag ? '/explore/tags/strengthtraining%F0%9F%8F%8B/' : '/explore/tags/strengthtraining/',
+      ] }
+      const expected = query.startsWith('#') ? `main a[href="/explore/tags/${options.suggestedTag ? 'strengthtraining%F0%9F%8F%8B' : 'strengthtraining'}/"]` : 'main a[href="/alice/"]'
       assert.equal(selector, expected, 'results must match the exact tag or username')
       return control('result')
     },
@@ -53,6 +56,12 @@ test('topic navigation types a hashtag, presses Enter, and clicks its native res
   const s = fixture()
   assert.equal(await openTopicResults(s.page, 'strength training', s.session), true)
   assert.deepEqual(s.calls, ['hover:search', 'click:search', 'type:#strengthtraining', 'enter', 'hover:result', 'click:result'])
+})
+
+test('native hashtag suggestions with emoji can open their result without constructing a URL', async () => {
+  const s = fixture({ suggestedTag: true })
+  assert.equal(await openTopicResults(s.page, 'strength training', s.session), true)
+  assert.ok(s.calls.includes('click:result'))
 })
 
 test('username search clicks the exact username and verifies the destination', async () => {

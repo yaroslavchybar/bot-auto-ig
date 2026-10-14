@@ -3,10 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Window } from 'happy-dom';
 import type { Page } from 'playwright-core';
-import { readFollowNotifications, notificationTimeUpperBound, followsUs, likeRecentPost, ownUsername } from './follow-back.js';
+import { readFollowNotifications, notificationTimeUpperBound, followsUs, ownUsername } from './follow-back.js';
 import { followButton, followingButton } from './follow.js';
 import { BrowseSession } from './actions/session.js';
-import { errors } from 'playwright-core';
 
 async function notifications(html: string, options: { stopped?: boolean; since?: number; loading?: boolean } = {}) {
   const window = new Window();
@@ -88,74 +87,9 @@ test('coarse notification dates keep boundary events and handle the year rollove
   assert.equal(notificationTimeUpperBound(' неизвестноFollowing', now), Infinity);
 });
 
-for (const wording of ['This profile is private', 'This account is private']) test(`${wording} skips post likes and inaccessible following lists`, async () => {
+for (const wording of ['This profile is private', 'This account is private']) test(`${wording} skips inaccessible following lists`, async () => {
   const page = { getByText: (text: RegExp) => ({ isVisible: async () => text.test(wording) }) } as unknown as Page;
   assert.equal(await followsUs(page, 'sender'), false);
-  assert.equal(await likeRecentPost(page, async () => true), false);
-});
-
-function postLikeFixture(options: { offscreen?: boolean; lateLike?: boolean; confirmationFailure?: boolean } = {}) {
-  let liked = false, opened = false, selected = -1, clicks = 0, closed = false;
-  const timeouts: number[] = [];
-  const tiles = [-1000, options.offscreen ? 1000 : 100].map(top => ({
-    ownerDocument: { defaultView: { innerWidth: 1280, innerHeight: 800 } },
-    getBoundingClientRect: () => ({ left: 100, top, width: 200, height: 200 }),
-  }));
-  const handle = (click: () => void, hover = () => {}) => ({ ...visibleActionGeometry,
-    hover: async () => hover(), click: async () => click(), dispose: async () => {} });
-  const like = { first() { return this; }, isVisible: async () => !liked,
-    or: () => ({ waitFor: async (o: { timeout: number }) => { timeouts.push(o.timeout); } }),
-    elementHandle: async () => handle(() => { throw new Error('Like must resolve its live locator after hovering'); },
-      () => { if (options.lateLike) liked = true; }),
-    click: async (o: { timeout: number }) => { assert.equal(liked, false); timeouts.push(o.timeout); clicks++; liked = true; },
-  };
-  const unlike = { first() { return this; }, isVisible: async () => liked,
-    waitFor: async (o: { timeout: number }) => {
-      timeouts.push(o.timeout);
-      if (options.confirmationFailure) throw new errors.TimeoutError('Like confirmation timed out');
-      assert.ok(liked);
-    },
-  };
-  const close = { filter() { return this; }, first() { return this; }, isVisible: async () => opened && !closed,
-    elementHandle: async () => handle(() => { closed = true; }) };
-  const page = { getByText: () => ({ isVisible: async () => false }),
-    locator: () => ({ evaluateAll: async (fn: (tiles: Element[]) => number) => fn(tiles as unknown as Element[]),
-      nth: (i: number) => ({ elementHandle: async () => handle(() => { selected = i; opened = true; }) }) }),
-    getByRole: (role: string) => role === 'dialog'
-      ? { getByRole: () => ({ getByRole: (_role: string, o: { name: string }) => o.name === 'Like' ? like : unlike }) }
-      : close,
-  } as unknown as Page;
-  return { page, stats: () => ({ selected, clicks, closed, timeouts }) };
-}
-
-test('optional profile likes open an on-screen tile instead of scrolling to the first grid post', async () => {
-  const f = postLikeFixture();
-  assert.equal(await likeRecentPost(f.page, async () => true), true);
-  assert.equal(f.stats().selected, 1);
-  assert.equal(f.stats().clicks, 1);
-  assert.equal(f.stats().closed, true);
-});
-
-test('optional profile likes skip when no post tile is on screen', async () => {
-  const f = postLikeFixture({ offscreen: true });
-  assert.equal(await likeRecentPost(f.page, async () => true), false);
-  assert.equal(f.stats().selected, -1);
-  assert.equal(f.stats().clicks, 0);
-});
-
-test('a like registered during hover is not undone by an optional profile like', async () => {
-  const f = postLikeFixture({ lateLike: true });
-  assert.equal(await likeRecentPost(f.page, async () => true), false);
-  assert.equal(f.stats().clicks, 0);
-  assert.equal(f.stats().closed, true);
-});
-
-test('optional like waits respect the remaining session time and close the dialog after failure', async () => {
-  const f = postLikeFixture({ confirmationFailure: true });
-  await assert.rejects(likeRecentPost(f.page, async () => true, async () => true,
-    new BrowseSession(Date.now() + 1000)), errors.TimeoutError);
-  assert.ok(f.stats().timeouts.every(timeout => timeout > 0 && timeout <= 1000));
-  assert.equal(f.stats().closed, true);
 });
 
 test('relationship selectors support humanized clicks without role or chained engines', () => {

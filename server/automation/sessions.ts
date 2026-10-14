@@ -1,0 +1,99 @@
+import { randomUUID } from 'node:crypto'
+import type { Page } from 'playwright-core'
+import { warmupBeginRun, warmupFinishRun, type DbWarmupState } from '../shared/convexClient.js'
+import { WarmupActivityBudget, warmupActivityPlan } from '../shared/warmupPlan.js'
+import { warmupTopics } from '../shared/warmupTopics.js'
+import { BrowseSession, SessionEnded } from './actions/session.js'
+import { runExploreWarmup } from './actions/explore-warmup.js'
+import { runBrowseFeedSession } from './actions/browse-feed.js'
+import { assertInstagramReady } from './actions/instagram-state.js'
+import type { ActionLogger, StopCheck } from './actions/shared.js'
+
+const defaults = {
+  warmup_min_minutes: 10, warmup_max_minutes: 20,
+  session_min_minutes: 5, session_max_minutes: 10,
+  rest_min_minutes: 60, rest_max_minutes: 120,
+}
+export type SessionConfig = typeof defaults & {
+  watch_stories: boolean; warmup_topics: string[]; browse_home_feed: boolean; scroll_reels: boolean; warmup_day?: number
+}
+
+/** Only session time and enabled surfaces are configurable; engagement follows interest evidence. */
+export function sessionConfig(input: Record<string, unknown>): SessionConfig {
+  const config = { ...defaults, warmup_topics: warmupTopics(input.warmup_topics),
+    browse_home_feed: input.browse_home_feed !== false, scroll_reels: input.scroll_reels !== false,
+    watch_stories: input.watch_stories !== false }
+  for (const key of Object.keys(defaults) as Array<keyof typeof defaults>) {
+    const value = input[key]
+    if (typeof value === 'number' && Number.isFinite(value)) config[key] = Math.max(0, value)
+  }
+  config.warmup_min_minutes = Math.max(1, config.warmup_min_minutes)
+  config.warmup_max_minutes = Math.max(config.warmup_min_minutes, config.warmup_max_minutes)
+  config.session_min_minutes = Math.max(1, config.session_min_minutes)
+  config.session_max_minutes = Math.max(config.session_min_minutes, config.session_max_minutes)
+  config.rest_max_minutes = Math.max(config.rest_min_minutes, config.rest_max_minutes)
+  return config
+}
+
+/** Check before opening a browser; Convex checks again when reserving time. */
+export function sessionReady(state: Pick<DbWarmupState, 'date' | 'nextRunAt' | 'reservedMinutes' | 'minutesUsedToday' | 'todayMinutes'> | null, now = Date.now()): boolean {
+  if (!state) return true
+  if ((state.nextRunAt ?? 0) > now) return false
+  if (state.date !== new Date(now).toISOString().slice(0, 10)) return true
+  return !state.reservedMinutes && state.minutesUsedToday < state.todayMinutes
+}
+
+
+export type SessionResult = { minutes: number; reason: 'finished' | 'stopped' | 'stalled' | 'skipped' }
+export type SessionActivity = (session: {
+  deadline: number; remainingMinutes: number; day?: number;
+  browse: (minutes: number) => Promise<SessionResult['reason']>;
+}) => Promise<SessionResult['reason']>
+
+const dependencies = { begin: warmupBeginRun, finish: warmupFinishRun, explore: runExploreWarmup,
+  browse: runBrowseFeedSession, check: assertInstagramReady, now: Date.now }
+
+/** One reservation owns both phases: optional Explore warm-up, then the shared browsing flow. */
+export async function runBrowsingSession(profileId: string, automationId: string, input: Record<string, unknown>, page: Page,
+  log: ActionLogger, shouldStop: StopCheck, deps = dependencies, activity?: SessionActivity,
+  startupNotifications?: (session: BrowseSession, day: number) => Promise<void>): Promise<SessionResult> {
+  const config = sessionConfig(input), runId = randomUUID()
+  const plan = await deps.begin({ profileId, automationId, runId,
+    minMinutes: config.warmup_min_minutes, maxMinutes: config.warmup_max_minutes,
+    sessionMinMinutes: config.session_min_minutes, sessionMaxMinutes: config.session_max_minutes,
+    restMinMinutes: config.rest_min_minutes, restMaxMinutes: config.rest_max_minutes })
+  if (plan.minutes <= 0) {
+    log({ event: 'automation.session.skipped', reason: 'resting_or_budget_used' })
+    return { minutes: 0, reason: 'skipped' }
+  }
+  const started = deps.now(), midnight = Date.parse(plan.date + 'T00:00:00Z') + 86_400_000
+  const deadline = Math.min(started + plan.minutes * 60_000, midnight)
+  const stopped = () => shouldStop() || deps.now() >= deadline
+  const day = plan.day ?? 1
+  config.warmup_day = day
+  const daily = plan.activityPlan ?? warmupActivityPlan(day)
+  const eligible = day >= 2 && config.warmup_topics.length > 0
+  const budget = new WarmupActivityBudget(eligible ? daily : { ...daily, likes: 0, follows: 0, saves: 0, comments: 0 }, plan.activityUsed)
+  let reason: SessionResult['reason'] = 'stopped', minutes = 0
+  try {
+    if (!stopped()) {
+      await deps.check(page, new BrowseSession(deadline, stopped))
+      log({ event: 'automation.session.daily_plan', day, activityPlan: budget.plan, activityUsed: budget.used })
+      // Explore receives part of this reservation, leaving time for the common browsing flow.
+      await deps.explore(page, Math.min(deadline, deps.now() + (deadline - deps.now()) * 0.3), config, budget, log, stopped)
+      if (!stopped()) reason = await deps.browse(page, {
+        deadline, day, config, budget, request: { profileId, runId, date: plan.date },
+        remainingMinutes: Math.max(0, Math.min(plan.remainingMinutes ?? plan.minutes, (midnight - started) / 60_000) - (deps.now() - started) / 60_000),
+      }, log, shouldStop, activity, startupNotifications)
+    }
+    if (!shouldStop() && deps.now() >= deadline) reason = 'finished'
+  } catch (error) {
+    if (!(error instanceof SessionEnded)) throw error
+    reason = shouldStop() ? 'stopped' : 'finished'
+  } finally {
+    minutes = Math.min(plan.minutes, Math.max(0, deps.now() - started) / 60_000)
+    await deps.finish({ profileId, runId, date: plan.date, minutes, activity: budget.delta() })
+  }
+  log({ event: 'automation.session.finished', reason, minutes, activityAttempts: budget.delta() })
+  return { minutes, reason }
+}

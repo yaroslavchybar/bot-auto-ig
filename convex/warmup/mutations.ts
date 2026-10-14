@@ -51,7 +51,7 @@ export const beginRunInternal = internalMutation({
       const activityPlan = warmupActivityPlan(state.day)
       const activityUsed = { ...emptyWarmupActivity(), ...state.activityUsed }
       for (const key of Object.keys(activityUsed) as Array<keyof typeof activityUsed>)
-        activityUsed[key] = Math.min(activityPlan[key], activityUsed[key])
+        if (key !== 'stories' && key !== 'reels') activityUsed[key] = Math.min(activityPlan[key], activityUsed[key])
       await ctx.db.patch(state._id, { activityPlan, activityUsed, followAttempts: state.followAttempts ?? [] })
       state = (await ctx.db.get(state._id))!
     }
@@ -92,7 +92,9 @@ export const finishRunInternal = internalMutation({
     for (const key of Object.keys(activityUsed) as Array<keyof typeof activityUsed>) {
       // Follow attempts were already persisted before their browser clicks.
       if (key === 'follows') continue
-      activityUsed[key] = Math.min(state.activityPlan?.[key] ?? 0, activityUsed[key] + (args.activity?.[key] ?? 0))
+      const completed = activityUsed[key] + (args.activity?.[key] ?? 0)
+      // Stories and Reels have time limits; their actual view counts have no daily ceiling.
+      activityUsed[key] = key === 'stories' || key === 'reels' ? completed : Math.min(state.activityPlan?.[key] ?? 0, completed)
     }
     await recordActivity(ctx, args.date, { warmupMinutes: usedMinutes - (state.minutesUsedToday ?? 0) })
     await ctx.db.patch(state._id, {

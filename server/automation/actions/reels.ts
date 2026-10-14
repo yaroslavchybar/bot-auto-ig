@@ -6,10 +6,9 @@ import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/warmupTopics.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
-import { maintainPost } from './maintenance.js'
+import { engagePost } from './engagement.js'
 import { clickAction } from './action-locator.js'
 import {
-  chance,
   numeric,
   random,
   type ActionLogger,
@@ -165,7 +164,7 @@ export async function advanceReel(page: Page, session: BrowseSession, log: Actio
   }
 }
 
-// Watch a few reels without engagement, then advance to the next.
+// Browse until the session deadline; a finite count is only used by bounded callers.
 export async function watchReels(
   page: Page,
   count: number,
@@ -176,15 +175,15 @@ export async function watchReels(
   session = new BrowseSession(end, shouldStop),
   budget?: WarmupActivityBudget,
   matchesTopic: TopicMatcher = topicContentMatches,
+  seen = new Set<string>(),
 ): Promise<void> {
   if (config.scroll_reels === false) return
   const sleep = session.wait
   session.check()
   const viewMin = Math.max(0, numeric(config.post_view_min_seconds, 2))
   const viewMax = Math.max(viewMin, numeric(config.post_view_max_seconds, 5))
-  const seen = new Set<string>()
   let watched = 0
-  const target = Math.min(Math.max(0, Math.round(count)), budget?.remaining('reels') ?? Infinity)
+  const target = Math.max(0, Math.round(count))
   const topics = warmupTopics(config.warmup_topics)
   const advance = async () => {
     const moved = await advanceReel(page, session, log)
@@ -228,28 +227,15 @@ export async function watchReels(
       if (!await advance()) break
       continue
     }
-    const preserveFollowed = context.relationship !== 'not-followed'
-    // Inspect the current author before deciding whether to skip.
-    if (!preserveFollowed && chance(config.reels_skip_chance ?? 25)) {
-      await sleep(random(300, 800))
-      if (Date.now() >= end || shouldStop()) break
-      if (!await advance()) {
-        log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
-        break
-      }
-      await sleep(random(1200, 2200))
-      continue
-    }
     // Include caption siblings while stopping before containers with neighboring reels.
     const post = video.locator('xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
-    const related = !preserveFollowed && topics.length > 0 && await matchesTopic(context, topics, session, log, post)
+    const related = topics.length > 0 && await matchesTopic(context, topics, session, log, post)
     if (!feedPostMatches(context, topics, related)) {
       log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })
       await sleep(random(300, 800))
       if (!await advance()) break
       continue
     }
-    if (budget && !budget.take('reels')) break
     // Clip length drives the watch time, same as feed videos.
     let clip = 0
     try {
@@ -266,14 +252,14 @@ export async function watchReels(
         : Math.random() > 0.85 ? random(Math.max(viewMin, 18), Math.max(viewMax, 35))
         : random(Math.max(viewMin, 6), Math.max(viewMax, 16))) * 1000
     const viewed = await viewVideo(video, dwell, session)
-    if (viewed && budget) budget.browsed++
-    if (viewed && numeric(config.warmup_day, 1) >= 8 && budget) {
+    if (viewed && budget) { budget.browsed++; budget.used.reels++ }
+    if (viewed && numeric(config.warmup_day, 1) >= 2 && budget) {
       const surface = video.locator('xpath=ancestor::*[@role="group" and @aria-label="Video player"][1]')
-      await maintainPost(page, post, context, topics, budget, session, log, matchesTopic, surface)
+      await engagePost(page, post, context, topics, budget, session, log, matchesTopic, surface)
     }
+    if (viewed) watched++
     await assertInstagramReady(page)
     if (Date.now() >= end || shouldStop()) break
-    watched++
     if (watched >= target) break
     if (!await advance()) {
       log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })

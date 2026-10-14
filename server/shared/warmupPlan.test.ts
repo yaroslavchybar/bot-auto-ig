@@ -2,14 +2,14 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { emptyWarmupActivity, WarmupActivityBudget, warmupActivityPlan } from './warmupPlan.js'
 
-test('maintenance uses the requested like, profile and reel ceilings with occasional extras', () => {
+test('maintenance limits interactions and uses time rather than Reel or Story ceilings', () => {
     for (const roll of [0, 0.999]) {
       const plan = warmupActivityPlan(8, () => roll)
       assert.ok(plan.likes >= 2 && plan.likes <= 6)
       assert.equal(plan.follows, 0)
       assert.ok(plan.profiles >= 1 && plan.profiles <= 4)
-      assert.ok(plan.reels >= 15 && plan.reels <= 30)
-      assert.ok(plan.stories >= 0 && plan.stories <= 3)
+      assert.equal(plan.reels, 0)
+      assert.equal(plan.stories, 0)
     }
 })
 

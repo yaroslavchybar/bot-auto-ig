@@ -328,7 +328,7 @@ export function profilesSetIgLoggedIn(profileId: string, igLoggedIn: boolean): P
 
 export type DbAutomationRow = {
   listIds?: string[]
-  routine?: { activity: Record<string, number | boolean | string>; headless: boolean }
+  routine?: { activity: Record<string, number | boolean | string>; headless: boolean; interests?: { label: string; description: string }[] }
   _id: string
   name: string
   nodes: import('../automation/graph.js').AutomationNode[]

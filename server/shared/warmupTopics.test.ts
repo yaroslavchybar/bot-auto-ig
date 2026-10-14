@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Window } from 'happy-dom'
-import { warmupTopics, reelPostContext, feedPostContext, feedPostMatches, maintenancePostMatches } from './warmupTopics.js'
+import { warmupTopics, reelPostContext, feedPostContext, feedPostMatches, engagementMatches } from './warmupTopics.js'
 
 test('topic descriptions preserve intent, case, commas and exclusions', () => {
   const description = 'Strength training, mobility, but no bodybuilding competitions'
@@ -9,15 +9,17 @@ test('topic descriptions preserve intent, case, commas and exclusions', () => {
   assert.deepEqual(warmupTopics('   '), [])
   assert.deepEqual(warmupTopics(null), [])
   assert.equal(warmupTopics('x'.repeat(1001))[0].length, 1000)
+  assert.deepEqual(warmupTopics(['dancing, singing', ' E-commerce income, excluding trading ', '', null]),
+    ['dancing, singing', 'E-commerce income, excluding trading'])
 })
 
-test('maintenance engagement requires a followed author or topic evidence, including with blank keywords', () => {
-  assert.equal(maintenancePostMatches({ text: 'Dinner', relationship: 'followed' }, []), true)
-  assert.equal(maintenancePostMatches({ text: 'No literal keyword', relationship: 'not-followed' }, ['fitness'], true), true)
-  assert.equal(maintenancePostMatches({ text: 'Dinner', relationship: 'not-followed' }, ['fitness']), false)
-  assert.equal(maintenancePostMatches({ text: 'Dinner #fitness', relationship: 'not-followed' }, ['fitness'], false), false)
-  assert.equal(maintenancePostMatches({ text: 'Anything', relationship: 'not-followed' }, []), false)
-  assert.equal(maintenancePostMatches({ text: 'Anything', relationship: 'unknown' }, []), false)
+test('engagement requires interest evidence even for followed authors', () => {
+  assert.equal(engagementMatches({ text: 'Dinner', relationship: 'followed' }, []), false)
+  assert.equal(engagementMatches({ text: 'No literal keyword', relationship: 'not-followed' }, ['fitness'], true), true)
+  assert.equal(engagementMatches({ text: 'Dinner', relationship: 'not-followed' }, ['fitness']), false)
+  assert.equal(engagementMatches({ text: 'Dinner #fitness', relationship: 'not-followed' }, ['fitness'], false), false)
+  assert.equal(engagementMatches({ text: 'Anything', relationship: 'not-followed' }, []), false)
+  assert.equal(engagementMatches({ text: 'Anything', relationship: 'unknown' }, []), false)
 })
 
 test('reel topic context excludes sidebar and neighboring captions', async () => {
@@ -48,17 +50,17 @@ test('reel author checks ignore captions, hidden Follow controls and neighboring
       Object.defineProperty(control, 'getBoundingClientRect', { value: () => ({ width: 50, height: 20 }) })
     const read = (id: string) => reelPostContext(window.document.querySelector(`#${id} video`)! as unknown as Element)
     assert.equal(read('followed').relationship, 'followed')
-    assert.equal(feedPostMatches(read('followed'), ['fitness']), true)
+    assert.equal(feedPostMatches(read('followed'), ['fitness']), false)
     assert.equal(read('recommended').relationship, 'not-followed')
     assert.equal(feedPostMatches(read('recommended'), ['fitness'], true), true)
     assert.equal(read('off-topic').relationship, 'not-followed')
     assert.equal(feedPostMatches(read('off-topic'), ['fitness']), false)
     assert.equal(read('unknown').relationship, 'unknown')
-    assert.equal(feedPostMatches(read('unknown'), ['fitness']), true)
+    assert.equal(feedPostMatches(read('unknown'), ['fitness']), false)
   } finally { await window.happyDOM.close() }
 })
 
-test('feed filtering preserves followed authors and filters only recommendations', async () => {
+test('feed filtering requires interest matches for every author', async () => {
   const window = new Window()
   try {
     window.document.body.innerHTML = `<nav>Fitness</nav><main>
@@ -72,13 +74,13 @@ test('feed filtering preserves followed authors and filters only recommendations
       Object.defineProperty(control, 'getBoundingClientRect', { value: () => ({ width: 50, height: 20 }) })
     const read = (id: string) => feedPostContext(window.document.querySelector(`#${id}`)! as unknown as Element)
     assert.equal(read('followed').relationship, 'followed', 'comment-row Follow must not override the author relationship')
-    assert.equal(feedPostMatches(read('followed'), ['fitness']), true)
+    assert.equal(feedPostMatches(read('followed'), ['fitness']), false)
     assert.equal(read('recommended').relationship, 'not-followed')
     assert.equal(feedPostMatches(read('recommended'), ['fitness']), false, 'sidebar keywords and neighboring posts must not match')
     assert.equal(feedPostMatches(read('matching'), ['strength training'], true), true)
     assert.equal(feedPostMatches(read('recommended'), []), true)
     assert.equal(read('unknown').relationship, 'unknown')
-    assert.equal(feedPostMatches(read('unknown'), ['fitness']), true, 'an unknown layout must not skip a potentially followed author')
+    assert.equal(feedPostMatches(read('unknown'), ['fitness']), false, 'unknown author layouts still need interest evidence')
   } finally { await window.happyDOM.close() }
 })
 

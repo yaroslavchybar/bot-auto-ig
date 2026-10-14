@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { toast } from 'sonner'
-import { Flame, Send, Settings2, Users } from 'lucide-react'
+import { Flame, Heart, Send, Settings2, Users } from 'lucide-react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../../convex/_generated/dataModel'
 import {
@@ -17,7 +17,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
@@ -32,14 +31,13 @@ import type { ActivityInput } from '../activities/types'
 import { getAutomationDisplayStatus, getStatusColor, getStatusLabel } from '../types'
 import { OutreachAssignments } from './OutreachAssignments'
 import { RoutineProfiles } from './RoutineProfiles'
+import { RoutineInterests } from './RoutineInterests'
 import {
   Field,
   NumberField,
-  PercentField,
   RangeField,
   SettingsGroup,
   ToggleRow,
-  type Limits,
 } from './RoutineFields'
 import { cn } from '@/lib/utils'
 
@@ -49,6 +47,7 @@ const tabs = [
   { id: 'warmup', label: 'Warm-up', icon: Flame },
   { id: 'outreach', label: 'Outreach', icon: Send },
   { id: 'profiles', label: 'Profiles', icon: Users },
+  { id: 'interests', label: 'Interests', icon: Heart },
 ] as const
 
 type TabId = (typeof tabs)[number]['id']
@@ -73,14 +72,19 @@ export function RoutinePopup({
   const [listIds, setListIds] = useState<Id<'lists'>[]>(automation?.listIds ?? [])
   const [policy, setPolicy] = useState<RoutinePolicy>(() => {
     const initial = automation?.routine ?? defaultRoutine
+    const { warmup_topics, ...activity } = initial.activity
     return {
       ...initial,
+      activity: Object.fromEntries(Object.entries(activity).filter(([key]) => browseFeed.inputs.some(input => input.name === key))),
+      interests: initial.interests ?? (typeof warmup_topics === 'string' && warmup_topics.trim()
+        ? [{ label: warmup_topics.trim().slice(0, 300), description: warmup_topics.trim() }] : []),
       leadListId: undefined,
       message: '',
       outreachRoutes: outreachRoutes(initial),
     }
   })
   const [saving, setSaving] = useState(false)
+  const [interestPending, setInterestPending] = useState(false)
   const lists = useQuery(api.lists.list, {})
   const automations = useQuery(api.automations.queries.list, {})
   const leadLists = useQuery(api.leads.lists, {})
@@ -102,7 +106,7 @@ export function RoutinePopup({
     ? 'Add a name'
     : listIds.length !== 1
       ? 'Choose a model'
-      : routineProblem(policy)
+      : interestPending ? 'Add or discard the interest draft' : routineProblem(policy)
   const canSave = !blocker && dirty && !locked && !saving
   const displayStatus = automation ? getAutomationDisplayStatus(automation) : undefined
   const footerNote = locked
@@ -126,26 +130,6 @@ export function RoutinePopup({
     ? `Outreach from day 8 with ${OUTREACH_MIN_POSTS} posts: ${policy.initialDms} follows a day, growing up to ${policy.maxDms}. DMs wait for a follow-back.`
     : 'Off. No outreach follows or DMs.'
 
-  // Binds a 0–100 activity setting to a slider.
-  const percentSetting = (label: string, key: string) => (
-    <PercentField
-      id={key}
-      label={label}
-      value={num(key)}
-      onChange={(value) => setActivity({ [key]: value })}
-    />
-  )
-  // Binds one numeric activity setting. Bounds come from browse-feed.ts.
-  const numberSetting = (label: string, key: string, unit?: string) => (
-    <NumberField
-      id={key}
-      label={label}
-      unit={unit}
-      limits={limitsOf(feedSetting(key))}
-      value={num(key)}
-      onChange={(value) => setActivity({ [key]: value })}
-    />
-  )
   // Binds a min/max activity pair. Bounds come from the two settings' definitions.
   const rangeSetting = (label: string, minKey: string, maxKey: string, unit?: string) => (
     <RangeField
@@ -359,16 +343,6 @@ export function RoutinePopup({
                     checked={flag('scroll_reels')}
                     onChange={(checked) => setActivity({ scroll_reels: checked })}
                   />
-                  <Field id="warmup-topics" label="Topic description" wide>
-                    <Textarea
-                      id="warmup-topics"
-                      value={String(policy.activity.warmup_topics ?? '')}
-                      maxLength={1000}
-                      rows={3}
-                      placeholder="People sharing gym workouts and strength training tips"
-                      onChange={(event) => setActivity({ warmup_topics: event.target.value })}
-                    />
-                  </Field>
                 </SettingsGroup>
                 <SettingsGroup title="Schedule">
                   {rangeSetting(
@@ -399,16 +373,6 @@ export function RoutinePopup({
                     9,
                   )}
                 </SettingsGroup>
-                <SettingsGroup title="Feed" collapsible defaultOpen={false}>
-                  {percentSetting('Skip post', 'skip_post_chance')}
-                  {numberSetting('Max posts skipped', 'skip_post_max')}
-                  {rangeSetting(
-                    'Post view',
-                    'post_view_min_seconds',
-                    'post_view_max_seconds',
-                    'sec',
-                  )}
-                </SettingsGroup>
                 <SettingsGroup title="Stories" collapsible defaultOpen={false}>
                   <ToggleRow
                     wide
@@ -416,21 +380,7 @@ export function RoutinePopup({
                     checked={flag('watch_stories')}
                     onChange={(checked) => setActivity({ watch_stories: checked })}
                   />
-                  {numberSetting('Max stories', 'stories_max')}
-                  {rangeSetting(
-                    'Story view',
-                    'stories_min_view_seconds',
-                    'stories_max_view_seconds',
-                    'sec',
-                  )}
-                </SettingsGroup>
-                <SettingsGroup title="Explore" collapsible defaultOpen={false}>
-                  {percentSetting('Profile visit', 'profile_visit_chance')}
-                  {percentSetting('Own profile', 'own_profile_chance')}
-                  {percentSetting('DM check', 'dm_chance')}
-                  {percentSetting('Reels', 'reels_chance')}
-                  {percentSetting('Reel skip', 'reels_skip_chance')}
-                  {rangeSetting('Reels per session', 'reels_min', 'reels_max')}
+                  <p className="text-sm text-muted-copy sm:col-span-2">Watch unseen stories for 1–3 minutes. Skip when none are available.</p>
                 </SettingsGroup>
               </fieldset>
             )}
@@ -521,6 +471,11 @@ export function RoutinePopup({
               </fieldset>
             )}
 
+            <div hidden={tab !== 'interests'}>
+              <RoutineInterests value={policy.interests ?? []} disabled={formDisabled}
+                onPendingChange={setInterestPending} onChange={value => change('interests', value)} />
+            </div>
+
             {tab === 'profiles' &&
               (automation ? (
                 <RoutineProfiles automationId={automation._id} modelId={automation.listIds?.[0]} />
@@ -550,11 +505,6 @@ export function RoutinePopup({
       </DialogContent>
     </Dialog>
   )
-}
-
-// Converts a feed definition's bounds into input limits.
-function limitsOf(input: ActivityInput): Limits {
-  return { min: input.min, max: input.max, step: input.step }
 }
 
 // Formats a min/max pair for summaries, such as "5–10" or "9". Shows ? while a value is empty.

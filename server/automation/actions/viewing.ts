@@ -1,17 +1,5 @@
 import type { Locator } from 'playwright-core'
-import { chance } from './shared.js'
 import { BrowseSession } from './session.js'
-
-/** Choose passive carousel viewing once per post. */
-export function postChoices(config: Record<string, unknown>) {
-  return {
-    carousel: chance(config.carousel_watch_chance),
-  }
-}
-
-export function detourDelay(duration: number): number {
-  return Math.max(30_000, duration / 4)
-}
 
 /** Count video playback, not buffering. Give up after three seconds without progress. */
 export async function viewContent(target: Locator, ms: number, session: BrowseSession): Promise<boolean> {

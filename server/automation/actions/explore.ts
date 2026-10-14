@@ -26,13 +26,20 @@ export async function searchExplore(page: Page, query: string, session: BrowseSe
 export async function openTopicResults(page: Page, topic: string, session: BrowseSession): Promise<boolean> {
   const tag = topic.replace(/[^\p{L}\p{N}_]/gu, '').toLowerCase()
   if (!tag || !await searchExplore(page, `#${tag}`, session)) return false
-  const result = page.locator(`main a[href=${JSON.stringify(`/explore/tags/${encodeURIComponent(tag)}/`)}]`).filter({ visible: true }).first()
-  try { await result.waitFor({ state: 'visible', timeout: session.timeout(6000) }) }
+  const suggestions = page.locator('main a[href^="/explore/tags/"]').filter({ visible: true })
+  try { await suggestions.first().waitFor({ state: 'visible', timeout: session.timeout(6000) }) }
   catch (error) {
     if (!(error instanceof errors.TimeoutError)) throw error
     session.check(); await assertInstagramReady(page)
     return false
   }
+  const hrefs = await suggestions.evaluateAll(links => links.map(link => link.getAttribute('href')).filter((href): href is string => !!href))
+  const candidates = hrefs.filter(href => /^\/explore\/tags\/[^/]+\/$/.test(href))
+  const exact = `/explore/tags/${encodeURIComponent(tag)}/`
+  const href = candidates.includes(exact) ? exact : candidates[0]
+  if (!href) return false
+  // Native suggestions may add an emoji or a suffix. Classify the actual posts before engaging.
+  const result = page.locator(`main a[href=${JSON.stringify(href)}]`).filter({ visible: true }).first()
   await clickAction(result, session.timeout(5000))
   await page.locator('main a[href*="/p/"], main a[href*="/reel/"]').first()
     .waitFor({ state: 'visible', timeout: session.timeout(10_000) })

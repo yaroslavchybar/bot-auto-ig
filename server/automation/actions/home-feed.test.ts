@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
-import { browseFeed, visibleFeedPost } from './feed.js'
+import { browseHomeFeed, visibleFeedPost } from './home-feed.js'
 
 function pageWithPosts(tops: number[]) {
   const posts = tops.map((y, index) => ({
@@ -30,12 +30,12 @@ test('prefers unread visible posts and never falls back to an offscreen article'
 
 test('zero budget never navigates the browser', async () => {
   const page = { goto: async () => { throw new Error('Must not navigate') } } as unknown as Page
-  assert.equal(await browseFeed(page, 0, {}, () => {}, () => false), 'stopped')
+  assert.equal(await browseHomeFeed(page, 0, {}, () => {}, () => false), 'stopped')
 })
 
 test('disabled home feed never navigates even with reels detours configured', async () => {
   const page = { goto: async () => { throw new Error('Must not navigate') } } as unknown as Page
-  assert.equal(await browseFeed(page, 10, { browse_home_feed: false, reels_chance: 100 }, () => {}, () => false), 'finished')
+  assert.equal(await browseHomeFeed(page, 10, { browse_home_feed: false, reels_chance: 100 }, () => {}, () => false), 'finished')
 })
 
 test('temporary Home navigation failure stalls browsing without ending the reservation', async () => {
@@ -44,7 +44,7 @@ test('temporary Home navigation failure stalls browsing without ending the reser
     goto: async () => { throw new errors.TimeoutError('Home navigation timed out') },
     locator: () => ({ filter: () => ({ evaluateAll: async () => null }) }),
   } as unknown as Page
-  assert.equal(await browseFeed(page, 1, {}, note => notes.push(note), () => false), 'stalled')
+  assert.equal(await browseHomeFeed(page, 1, {}, note => notes.push(note), () => false), 'stalled')
   assert.equal(notes[0]?.event, 'automation.actions.feed.browsing_unavailable')
 })
 
@@ -54,11 +54,11 @@ test('Home navigation recovery still propagates checkpoints and lost browser con
     const page = { url: () => navigated && checkpoint ? 'https://www.instagram.com/challenge/' : 'https://www.instagram.com/reels/current/',
       goto: async () => { navigated = true; throw checkpoint ? new errors.TimeoutError('Navigation timed out') : new Error('Browser disconnected') },
     } as unknown as Page
-    await assert.rejects(browseFeed(page, 1, {}, () => {}, () => false), checkpoint ? /checkpoint needs attention/ : /Browser disconnected/)
+    await assert.rejects(browseHomeFeed(page, 1, {}, () => {}, () => false), checkpoint ? /checkpoint needs attention/ : /Browser disconnected/)
   }
 })
 
-test('feed skips avoid topic requests and both reel paths receive the supplied matcher', () => {
+test('Home feed always classifies content and never navigates to Reels', () => {
   // Isolate module mocks so the other browser-action tests keep their real dependencies.
   execFileSync('bun', ['--eval', `
     import assert from 'node:assert/strict'
@@ -86,8 +86,7 @@ test('feed skips avoid topic requests and both reel paths receive the supplied m
       alignPostOnScreen: async () => {},
       smoothScroll: async () => {
         now += 1000
-        if (mode === 'skip' || (mode === 'skip-batch' && reads === 2)) stopped = true
-        if (mode === 'skip-batch') config.skip_post_chance = 0
+        if (mode === 'off-topic') stopped = true
       }
     })
     await replace('./server/automation/actions/mouse.ts', { driftMouse: async () => {} })
@@ -95,15 +94,14 @@ test('feed skips avoid topic requests and both reel paths receive the supplied m
     await replace('./server/automation/actions/instagram-state.ts', { assertInstagramReady: async () => {} })
     await replace('./server/automation/actions/viewing.ts', {
       viewContent: async () => { now += 31_000; return true },
-      postChoices: () => ({ carousel: false }), detourDelay: () => 0
     })
     const matcher = async (_context, _topics, _session, _log, target) => {
       assert.equal(target, post, 'topic screenshot must use the current feed article')
-      decisions++; if (mode === 'match') stopped = true; return true
+      decisions++; if (mode === 'match') stopped = true; return mode !== 'off-topic'
     }
     await replace('./server/automation/actions/reels.ts', {
       openReels: async () => true,
-      watchReels: async (...args) => { assert.equal(args[8], matcher); reels++; stopped = true }
+      watchReels: async (...args) => { assert.equal(args[8], matcher); assert.equal(args[1], Infinity); assert.equal(args[5], 120_000); reels++; stopped = true }
     })
     const empty = { count: async () => 0, first() { return this }, filter() { return this },
       waitFor: async () => {}, getAttribute: async () => '/p/post' + reads + '/' }
@@ -119,17 +117,17 @@ test('feed skips avoid topic requests and both reel paths receive the supplied m
       locator: selector => selector === 'article'
         ? { first: () => empty, count: async () => 1, nth: () => post } : empty
     }
-    const { browseFeed } = await import('./server/automation/actions/feed.ts')
-    for (mode of ['skip', 'skip-batch', 'match', 'feed-end', 'reels-detour']) {
+    const { browseHomeFeed } = await import('./server/automation/actions/home-feed.ts')
+    for (mode of ['off-topic', 'match', 'feed-end']) {
       now = 0; stopped = false; decisions = 0; reads = 0; reels = 0
-      config = { warmup_topics: 'fitness', skip_post_chance: mode.startsWith('skip') ? 100 : 0,
+      config = { warmup_topics: 'fitness', skip_post_chance: 100,
         skip_post_max: 2, own_profile_chance: 0, dm_chance: 0, reels_chance: 100 }
-      assert.equal(await browseFeed(page, 2, config, () => {}, () => stopped, undefined, matcher), 'stopped')
-      if (mode.startsWith('skip')) {
-        assert.equal(decisions, 0, mode)
-        assert.equal(reads, mode === 'skip-batch' ? 2 : 1, mode)
+      assert.equal(await browseHomeFeed(page, 2, config, () => {}, () => stopped, undefined, matcher), mode === 'feed-end' ? 'finished' : 'stopped')
+      if (mode === 'off-topic') {
+        assert.equal(decisions, 1, mode)
+        assert.equal(reads, 1, mode)
       } else if (mode === 'match') assert.equal(decisions, 1)
-      else assert.equal(reels, 1, mode)
+      else assert.equal(reels, 0, mode)
     }
   `], { cwd: process.cwd(), stdio: 'pipe', timeout: 10_000 })
 })

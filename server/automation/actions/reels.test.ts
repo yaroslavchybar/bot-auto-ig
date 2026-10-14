@@ -13,7 +13,7 @@ test('disabled reels never access the browser', async () => {
 })
 
 function reelAdvanceFixture(width: number, height: number, options: { nextVisible?: boolean; nextEnabled?: boolean; fixedViewport?: boolean; changeOnClick?: boolean;
-  contextFailure?: Error; warningAfterFailure?: boolean; offTopic?: boolean } = {}) {
+  contextFailure?: Error; warningAfterFailure?: boolean; offTopic?: boolean; successiveReels?: boolean } = {}) {
   const window = new Window({ width, height })
   window.document.body.innerHTML = '<main><div style="overflow-y:auto;scroll-snap-type:y mandatory"><video id="previous"></video><video id="current"></video></div></main>'
   const panel = window.document.querySelector('main > div')!
@@ -40,7 +40,8 @@ function reelAdvanceFixture(width: number, height: number, options: { nextVisibl
     isVisible: async () => options.nextVisible !== false, isEnabled: async () => options.nextEnabled !== false,
     elementHandle: async () => ({ ...visibleActionGeometry,
       hover: async () => { hovered = true },
-      click: async () => { assert.ok(hovered); clicks++; if (options.changeOnClick !== false) url = 'https://www.instagram.com/reels/next/' },
+      click: async () => { assert.ok(hovered); clicks++; if (options.changeOnClick !== false)
+        url = `https://www.instagram.com/reels/next${options.successiveReels ? clicks : ''}/` },
       dispose: async () => {},
     }),
   }
@@ -130,6 +131,28 @@ test('off-topic reels can make browsing progress without any completed watches',
     assert.ok(notes.some(note => note.event === 'automation.warmup.reel_off_topic'))
     assert.equal(notes.find(note => note.event === 'automation.reels_result')?.watchedCount, 0)
   } finally { await f.window.happyDOM.close() }
+})
+
+test('unlimited Reels continue past an old count cap and stop at the browsing deadline', async () => {
+  const originalNow = Date.now, originalRandom = Math.random
+  let now = originalNow()
+  const start = now
+  Date.now = () => now; Math.random = () => 0
+  const f = reelAdvanceFixture(1024, 600, { successiveReels: true })
+  for (const video of f.window.document.querySelectorAll('video')) Object.defineProperties(video, {
+    duration: { value: 0 }, currentTime: { get: () => (now - start) / 1000 },
+    paused: { value: false }, ended: { value: false },
+  })
+  const session = new BrowseSession(now + 25_000)
+  session.wait = async ms => { now += Math.min(Math.max(1, Math.ceil(ms)), session.end - now); session.check() }
+  const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0 })
+  try {
+    await assert.rejects(watchReels(f.page, Infinity, { reels_min: 1, reels_max: 1 }, () => {},
+      () => false, session.end, session, budget), SessionEnded)
+    assert.ok(budget.used.reels > 1, 'the old daily and min/max counts cannot stop viewing')
+    assert.ok(f.stats().clicks > 1)
+    assert.equal(now, session.end)
+  } finally { Date.now = originalNow; Math.random = originalRandom; await f.window.happyDOM.close() }
 })
 
 test('a detached reel caption skips that reel instead of ending the session', async () => {
@@ -277,7 +300,7 @@ for (const options of [{ nextEnabled: false }, { changeOnClick: false }])
   })
 
 for (const followed of [false, true]) test(followed
-  ? 'followed off-topic reels are watched even with a 100% random skip chance'
+  ? 'followed Reels receive interest checks despite old 100% random skip settings'
   : 'reels stay passive even with previously active settings and unused like allowance', async () => {
   const window = new Window(), originalNow = Date.now
   let now = originalNow()
@@ -285,7 +308,7 @@ for (const followed of [false, true]) test(followed
   Date.now = () => now
   try {
     window.document.body.innerHTML = `<main><section><div id="current-reel"><div><a href="/author/reels/">author</a>${followed ? '' : '<button>Follow</button>'}</div>
-      <video></video><p>${followed ? 'Cooking dinner' : 'Barbell squats and progressive overload'}</p></div>
+      <video></video><p>Barbell squats and progressive overload</p></div>
       <div><video></video><p>Neighboring reel caption</p></div></section></main>`
     for (const control of window.document.querySelectorAll('button'))
       Object.defineProperty(control, 'getBoundingClientRect', { value: () => ({ width: 50, height: 20 }) })
@@ -314,7 +337,7 @@ for (const followed of [false, true]) test(followed
     } as unknown as Page
     const session = new BrowseSession(now + 60_000)
     session.wait = async ms => { now += Math.max(1, Math.ceil(ms)); session.check() }
-    const budget = new WarmupActivityBudget({ likes: 6, profiles: 2, reels: 1, stories: 0 })
+    const budget = new WarmupActivityBudget({ likes: 6, profiles: 2, reels: 0, stories: 0 })
     let decisions = 0
     await watchReels(page, 1, { soft_warmup: false, warmup_topics: 'fitness', like_chance: 100, reels_skip_chance: followed ? 100 : 0 },
       () => {}, () => false, session.end, session, budget, async (context, _topics, _session, _log, screenshotTarget) => {
@@ -328,7 +351,7 @@ for (const followed of [false, true]) test(followed
         assert.match(context.text, /Barbell squats/)
         return true
       })
-    assert.equal(decisions, followed ? 0 : 1)
+    assert.equal(decisions, 1)
     assert.equal(budget.used.likes, 0)
     assert.equal(budget.used.reels, 1)
     assert.ok(now - start >= 6000)

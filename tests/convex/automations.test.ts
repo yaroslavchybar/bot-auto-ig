@@ -185,12 +185,9 @@ test('provides default config for the start node', () => {
     scroll_reels: true,
     warmup_topics: '',
     watch_stories: true,
-    stories_min_view_seconds: 2,
-    stories_max_view_seconds: 5,
-    skip_post_chance: 30,
-    post_view_min_seconds: 2,
-    post_view_max_seconds: 5,
   })
+  expect(browseFeedDefaults).not.toHaveProperty('stories_max')
+  for (const key of ['carousel_watch_chance', 'carousel_max_slides', 'stories_min_view_seconds', 'stories_max_view_seconds', 'stories_max', 'post_view_min_seconds', 'post_view_max_seconds', 'skip_post_chance', 'skip_post_max', 'reels_min', 'reels_max', 'reels_chance', 'reels_skip_chance', 'profile_visit_chance', 'own_profile_chance', 'dm_chance']) expect(browseFeedDefaults).not.toHaveProperty(key)
 })
 
 test('preserves explicit start node cooldown settings', () => {

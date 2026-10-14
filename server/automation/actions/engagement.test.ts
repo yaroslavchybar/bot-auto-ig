@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
-import { maintainPost } from './maintenance.js'
+import { engagePost } from './engagement.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 
@@ -43,8 +43,8 @@ function likeFixture(options: { doubleTapLikes?: boolean; failure?: Error; warni
   } as unknown as Page
   const budget = new WarmupActivityBudget({ likes: 1, saves: 0, comments: 0, profiles: 0, reels: 1, stories: 0 })
   const session = new BrowseSession(Date.now() + 60_000)
-  const run = (doubleTap = false) => maintainPost(page, target, { text: 'Dinner', relationship: 'followed' }, [],
-    budget, session, note => notes.push(note), undefined, doubleTap ? surface : undefined)
+  const run = (doubleTap = false) => engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'],
+    budget, session, note => notes.push(note), async () => true, doubleTap ? surface : undefined)
   return { run, calls, notes, budget, session, liked: () => liked }
 }
 
@@ -92,7 +92,7 @@ test('a six-second cursor movement has time to complete the Reels double-tap', a
     const fixture = likeFixture({ doubleTapLikes: true, slowMovement: () => { now += 6000 } })
     await fixture.run(true)
     assert.deepEqual(fixture.calls, ['double-tap'])
-    assert.equal(fixture.notes[0]?.event, 'automation.maintenance.liked')
+    assert.equal(fixture.notes[0]?.event, 'automation.engagement.liked')
   } finally { Math.random = originalRandom; Date.now = originalNow }
 })
 
@@ -102,7 +102,7 @@ test('a temporary Like failure is logged and does not end browsing or refund its
   try {
     const fixture = likeFixture({ failure: new errors.TimeoutError('Click timed out while moving to its target') })
     await fixture.run(true)
-    assert.equal(fixture.notes[0]?.event, 'automation.maintenance.action_skipped')
+    assert.equal(fixture.notes[0]?.event, 'automation.engagement.action_skipped')
     assert.equal(fixture.notes[0]?.action, 'like')
     assert.equal(fixture.budget.used.likes, 1)
     assert.deepEqual(fixture.calls, [])
@@ -128,17 +128,42 @@ test('an optional Like still stops when its session expires', async () => {
   } finally { Math.random = originalRandom }
 })
 
-test('maintenance never touches unrelated or unknown authors with blank keywords', async () => {
+test('engagement never engages any author without selected interests', async () => {
   const budget = new WarmupActivityBudget({ likes: 6, saves: 1, comments: 1, profiles: 4, reels: 30, stories: 3 })
-  for (const relationship of ['not-followed', 'unknown'] as const)
-    await maintainPost({} as Page, {} as Locator, { text: 'Dinner', relationship }, [], budget,
+  for (const relationship of ['not-followed', 'unknown', 'followed'] as const)
+    await engagePost({} as Page, {} as Locator, { text: 'Dinner', relationship }, [], budget,
       new BrowseSession(Date.now() + 60_000), () => {})
   assert.equal(budget.used.likes + budget.used.saves + budget.used.comments, 0)
 })
 
-test('maintenance pins the post controls, shares its cap, and reads comments without composing', async () => {
+test('a negative interest decision blocks every interaction, including followed authors', async () => {
+  const budget = new WarmupActivityBudget({ likes: 6, saves: 1, comments: 1, profiles: 4, reels: 0, stories: 0 })
+  let decisions = 0
+  for (const relationship of ['not-followed', 'unknown', 'followed'] as const)
+    await engagePost({} as Page, {} as Locator, { text: 'Dinner #fitness', relationship }, ['fitness'], budget,
+      new BrowseSession(Date.now() + 60_000), () => {}, async () => { decisions++; return false })
+  assert.equal(decisions, 3)
+  assert.equal(budget.used.likes + budget.used.saves + budget.used.comments, 0)
+})
+
+for (const related of [false, true]) test(`matched-author visits share interest evidence and the daily cap (${related})`, async () => {
+  const budget = new WarmupActivityBudget({ likes: 0, profiles: 1, reels: 0, stories: 0 })
+  const page = { url: () => 'https://www.instagram.com/reels/current/' } as Page
+  const target = {} as Locator, session = new BrowseSession(Date.now() + 60_000)
+  let visits = 0
+  const visit = async (visitedPage: Page, visitedTarget: Locator) => {
+    assert.equal(visitedPage, page); assert.equal(visitedTarget, target); visits++
+  }
+  for (let i = 0; i < 2; i++)
+    await engagePost(page, target, { text: 'Fishing trip', relationship: 'followed' }, ['Fishing'], budget,
+      session, () => {}, async () => related, undefined, visit)
+  assert.equal(visits, related ? 1 : 0)
+  assert.equal(budget.used.profiles, related ? 1 : 0)
+})
+
+test('engagement pins the post controls, shares its cap, and reads comments without composing', async () => {
   const originalRandom = Math.random
-  Math.random = () => 0
+  Math.random = () => 0.999
   try {
     let liked = false, saved = false, commentsOpen = false
     const calls: string[] = []
@@ -171,8 +196,8 @@ test('maintenance pins the post controls, shares its cap, and reads comments wit
       keyboard: { press: async (key: string) => { assert.equal(key, 'Escape'); commentsOpen = false } },
     } as unknown as Page
     const session = new BrowseSession(Date.now() + 60_000); session.wait = async () => { session.check() }
-    const budget = new WarmupActivityBudget({ likes: 2, saves: 1, comments: 1, profiles: 4, reels: 30, stories: 3 })
-    const view = () => maintainPost(page, target, { text: 'Dinner', relationship: 'followed' }, [], budget, session, () => {})
+    const budget = new WarmupActivityBudget({ likes: 2, saves: 1, comments: 1, profiles: 0, reels: 30, stories: 3 })
+    const view = () => engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'], budget, session, () => {}, async () => true)
     await view(); assert.equal(commentsOpen, false)
     assert.ok(calls.includes('Like') && calls.includes('Save') && calls.includes('Comment') && calls.includes('scroll-comments'))
     await view(); assert.equal(budget.used.likes, 1, 'already-liked posts must not consume another attempt')

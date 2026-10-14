@@ -1,6 +1,6 @@
 import type { Page } from 'playwright-core';
 import { profileControls } from './follow.js';
-import { actionLocator, clickAction } from './actions/action-locator.js';
+import { actionLocator } from './actions/action-locator.js';
 import { closeNotifications, notificationsHeading, openNotifications } from './actions/instagram-state.js';
 import { BrowseSession } from './actions/session.js';
 import { smoothScroll } from './actions/scroll.js';
@@ -96,39 +96,5 @@ export async function followsUs(page: Page, username: string) {
     return await own.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true, () => false);
   } finally {
     await (await actionLocator(dialog.getByRole('button', { name: 'Close', exact: true }), 5000)).click({ timeout: 5000 });
-  }
-}
-
-/** Private requests expose no posts. Like at most one visible recent post, never a comment. */
-export async function likeRecentPost(page: Page, allowed: () => Promise<boolean>, beforeLike: () => Promise<boolean> = async () => true,
-  session = new BrowseSession(Date.now() + 15_000)) {
-  session.check();
-  if (await page.getByText(/This (?:account|profile) is private/i, { exact: true }).isVisible()) return false;
-  const posts = page.locator('main a[href*="/p/"]');
-  // A profile may already be scrolled down. Use an on-screen tile instead of returning to the first post.
-  const index = await posts.evaluateAll(tiles => tiles.findIndex(tile => {
-    const box = tile.getBoundingClientRect(), view = tile.ownerDocument.defaultView!;
-    const x = box.left + box.width / 2, y = box.top + box.height / 2;
-    return box.width > 0 && box.height > 0 && x >= 0 && x < view.innerWidth && y >= 0 && y < view.innerHeight;
-  }));
-  if (index < 0 || !await allowed()) return false;
-  const post = posts.nth(index);
-  const article = page.getByRole('dialog').getByRole('article');
-  try {
-    await clickAction(post, session.timeout(5000));
-    const like = article.getByRole('button', { name: 'Like', exact: true }).first();
-    const unlike = article.getByRole('button', { name: 'Unlike', exact: true }).first();
-    await like.or(unlike).waitFor({ state: 'visible', timeout: session.timeout(5000) });
-    if (await unlike.isVisible() || !await allowed() || !await beforeLike()) return false;
-    await (await actionLocator(like, session.timeout(5000))).hover({ timeout: session.timeout(5000) });
-    if (await unlike.isVisible() || !await like.isVisible() || !await allowed()) return false;
-    const clickOptions = { timeout: session.timeout(5000), human_config: { scroll_target_zone: [0, 1] } };
-    await like.click(clickOptions);
-    await unlike.waitFor({ state: 'visible', timeout: session.timeout(3000) });
-    return true;
-  } finally {
-    // Allow bounded cleanup even if the optional action used up its time.
-    const close = page.getByRole('button', { name: 'Close', exact: true }).filter({ visible: true }).first();
-    if (await close.isVisible()) await clickAction(close, 3000);
   }
 }

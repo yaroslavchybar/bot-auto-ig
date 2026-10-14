@@ -1,7 +1,7 @@
 import { test } from 'node:test'
-import { visibleActionGeometry } from './actions/action-locator.test-support.js'
 import assert from 'node:assert/strict'
 import type { BrowserSession } from '../browser/cloak.js'
+import { errors } from 'playwright-core'
 import { runAutomation, setProfilePollIntervalMs } from './worker.js'
 
 for (const initialState of ['empty', 'busy', 'cooldown'] as const) {
@@ -43,59 +43,6 @@ for (const initialState of ['empty', 'busy', 'cooldown'] as const) {
     }
   })
 }
-
-test('standalone stories use configured viewing times', async () => {
-  const originalFetch = globalThis.fetch
-  const originalTimeout = globalThis.setTimeout
-  const delays: number[] = []
-  globalThis.setTimeout = ((callback: (...args: any[]) => void, ms?: number, ...args: any[]) => {
-    delays.push(ms ?? 0)
-    return originalTimeout(callback, 0, ...args)
-  }) as typeof setTimeout
-  globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles')
-    ? [{ id: 'chosen', name: 'chosen', listIds: ['chosen'], using: false }] : {})) as typeof fetch
-  try {
-    await runAutomation({ automation: {
-      nodes: [
-        { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
-        { id: 'stories', data: { activityId: 'watch_stories', config: {
-          stories_max: 1, stories_min_view_seconds: 12, stories_max_view_seconds: 15,
-        } } },
-      ],
-      edges: [{ source: 'start_node', target: 'stories', sourceHandle: 'next' }],
-    } }, async () => ({
-      page: {
-        goto: async () => {},
-        keyboard: { press: async () => {} },
-        getByRole: () => ({
-          count: async () => 0,
-          nth: () => ({ isVisible: async () => false, click: async () => {} }),
-          getByRole: () => ({
-            first: () => ({
-              isVisible: async () => false,
-              waitFor: async () => { throw new Error('missing') },
-              click: async () => {},
-            }),
-          }),
-          first: () => ({ isVisible: async () => false, click: async () => {} }),
-        }),
-        locator: () => ({
-          first: () => ({ isVisible: async () => true, waitFor: async () => {}, click: async () => {},
-            elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => {}, dispose: async () => {} }),
-          }),
-          count: async () => 0,
-          nth: () => ({ isVisible: async () => false, click: async () => {} }),
-        }),
-      },
-      close: async () => {},
-    } as unknown as BrowserSession))
-    assert.equal(delays.length, 1)
-    assert.ok(delays[0] >= 12_000 && delays[0] <= 15_000, `Unexpected viewing delay: ${delays[0]}`)
-  } finally {
-    globalThis.fetch = originalFetch
-    globalThis.setTimeout = originalTimeout
-  }
-})
 
 test('retry skips completed profiles without launching or changing their status', async () => {
   const originalFetch = globalThis.fetch
@@ -252,6 +199,7 @@ test('automation action failures reject the run and close the browser', async ()
               locator: (selector: string) => {
                 if (selector === 'article') throw new Error('Feed content failed')
                 return { count: async () => 0, filter() { return this }, first() { return this },
+                  waitFor: async () => { throw new errors.TimeoutError('No active stories') },
                   evaluateAll: async () => false, isVisible: async () => false }
               },
               getByRole: () => ({ filter() { return this }, first() { return this }, isVisible: async () => false }),

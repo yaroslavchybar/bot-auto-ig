@@ -1,4 +1,4 @@
-import type { SessionActivity } from './warmup.js';
+import type { SessionActivity } from './sessions.js';
 import type { ActionLogger, StopCheck } from './actions/shared.js';
 
 type Target = { target: number; remaining: number; sent: number };

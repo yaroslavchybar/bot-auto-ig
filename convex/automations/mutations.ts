@@ -341,7 +341,8 @@ export const reconcileInterruptedInternal = internalMutation({
       await ctx.db.patch(state._id, {
         minutesUsedToday: usedMinutes,
         // Interrupted input is uncertain; do not repeat today's engagement after recovery.
-        ...(state.activityPlan ? { activityUsed: state.activityPlan } : {}),
+        ...(state.activityPlan ? { activityUsed: { ...state.activityPlan,
+          reels: state.activityUsed?.reels ?? 0, stories: state.activityUsed?.stories ?? 0 } } : {}),
         nextRunAt: Math.ceil(Math.max(state.nextRunAt ?? 0, now + state.activeRun.restMinutes * 60_000)),
         activeRun: undefined,
       });

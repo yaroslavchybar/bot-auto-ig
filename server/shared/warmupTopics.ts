@@ -1,6 +1,9 @@
 export function warmupTopics(value: unknown): string[] {
-  const description = typeof value === 'string' ? value.slice(0, 1000).trim() : ''
-  return description ? [description] : []
+  const descriptions = Array.isArray(value) ? value : [value]
+  return [...new Set(descriptions.slice(0, 20).flatMap(value => {
+    const description = typeof value === 'string' ? value.slice(0, 1000).trim() : ''
+    return description ? [description] : []
+  }))]
 }
 
 /** Stop before neighboring reels or the page root; never match sidebar/background text. */
@@ -56,12 +59,12 @@ export function feedPostContext(article: Element): FeedPostContext {
       .map(link => link.getAttribute('href')).join(' ')}` }
 }
 
-/** Preserve followed authors (and unknown layouts); filter recommendations by topic. */
-export function feedPostMatches(context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[], related = false): boolean {
-  return context.relationship !== 'not-followed' || !topics.length || related
+/** Selected interests apply to every author; blank interests allow passive viewing. */
+export function feedPostMatches(_context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[], related = false): boolean {
+  return !topics.length || related
 }
 
-/** Viewing unknown authors is safe; engagement requires a followed author or explicit topic evidence. */
-export function maintenancePostMatches(context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[], related = false): boolean {
-  return context.relationship === 'followed' || (topics.length > 0 && related)
+/** Engagement always requires positive screenshot evidence for a selected interest. */
+export function engagementMatches(_context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[], related = false): boolean {
+  return topics.length > 0 && related
 }

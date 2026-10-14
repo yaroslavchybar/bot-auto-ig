@@ -13,12 +13,12 @@ import {
   warmupPauseFollows,
   routineFinishScreening,
 } from "../shared/convexClient.js";
-import { runWarmup } from "./warmup.js";
+import { runBrowsingSession } from "./sessions.js";
 import { browseUntilEnd, scheduleRoutine } from './routine-schedule.js';
 import { followButton, isFollowing, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage,
 } from './follow.js';
 import { renderOutreachMessage } from '../shared/outreachMessage.js';
-import { readFollowNotifications, ownUsername, followsUs, likeRecentPost } from './follow-back.js';
+import { readFollowNotifications, ownUsername, followsUs } from './follow-back.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 import { sleep, random } from "./actions/shared.js";
 import { assertInstagramReady, checkNotifications } from './actions/instagram-state.js';
@@ -41,7 +41,7 @@ const dependencies = {
   begin: routineBeginSend,
   finish: routineFinishSend,
   record: routineRecordSession,
-  warmup: runWarmup,
+  session: runBrowsingSession,
   followTasks: routineFollowTasks,
   recordFollow: routineRecordFollow,
   beginFollow: routineBeginFollow,
@@ -53,7 +53,6 @@ const dependencies = {
   checkNotifications,
   ownUsername,
   followsUs,
-  likeRecentPost,
   sleep,
   random,
   instagram: assertInstagramReady,
@@ -138,10 +137,11 @@ export async function runRoutineSession(
         });
       }
     };
-    const warmup = await deps.warmup(
+    const result = await deps.session(
       profileId,
       automation._id,
-      automation.routine!.activity,
+      { ...automation.routine!.activity,
+        warmup_topics: automation.routine!.interests?.map(interest => interest.description) ?? automation.routine!.activity.warmup_topics },
       page,
       log,
       () => stopped() || !allowed || Boolean(liveAccess && !liveAccess()),
@@ -270,15 +270,6 @@ export async function runRoutineSession(
                   followsRemaining = Math.max(0, followsRemaining - 1)
                   const followed = await timed('follow', () => followIfNeeded(attempt.leadId, attempt.date, () => { followAttempted = true; }));
                   scope.add({ followed });
-                  if (followed && !shouldStop()) {
-                    await timed('optionalLike', () => deps.likeRecentPost(page, async () => { await check(); return !shouldStop(); },
-                      async () => session.takeLike?.() ?? true, new BrowseSession(Math.min(deadline, Date.now() + 15_000), shouldStop)))
-                      .then(liked => scope.add({ liked }))
-                      .catch(error => {
-                        scope.add({ optionalLikeError: error });
-                        log({ event: 'automation.routine.optional_like', error, outcome: 'skipped' });
-                      });
-                  }
                   log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
                   return followed ? 'followed' : 'blocked';
                 }
@@ -377,8 +368,8 @@ export async function runRoutineSession(
         }
       },
     );
-    hadActivity = warmup.minutes > 0;
-    activityCompleted = hadActivity && warmup.reason === 'finished';
+    hadActivity = result.minutes > 0;
+    activityCompleted = hadActivity && result.reason === 'finished';
     const target = await deps.target(automation._id, profileId).catch(() => null);
     if (target && target.target > 0) log({ event: 'automation.daily_follow_target', followedCount: target.sent, targetCount: target.target,
       });

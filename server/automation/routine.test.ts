@@ -71,12 +71,11 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     dismissDm: async () => { calls.push('dismiss-dm'); },
     ownUsername: async () => 'sender',
     followsUs: async () => { calls.push('verify-follower'); return true; },
-    likeRecentPost: async () => { calls.push('optional-like'); return true; },
     reserve: async () => { calls.push('reserve'); return attempt; },
     begin: async () => { calls.push('authorize'); return true; },
     finish: async (_, __, ___, value, blocked) => { calls.push(value ? 'sent' : blocked ? 'blocked' : 'uncertain'); sent = value; },
     record: async (_, __, completed, error) => { calls.push(completed ? 'record-completed' : 'record-incomplete'); issue = error; },
-    warmup: async (_p, _a, _c, _page, _log, stopped, _deps, activity, startupNotifications) => {
+    session: async (_p, _a, _c, _page, _log, stopped, _deps, activity, startupNotifications) => {
       await startupNotifications?.(new BrowseSession(now + 600_000, stopped), 8);
       const result = await activity!({ deadline: now + 600_000, remainingMinutes: 10,
         browse: async (minutes) => { calls.push('browse'); now += minutes * 60_000; return 'finished'; },
@@ -96,13 +95,28 @@ test('follow-first outreach never opens or sends a DM in the follow action', asy
     ['reserve', 'navigate',
       'screen',
       'screen-saved',
-      'authorize-follow', 'follow', 'record-follow', 'optional-like',
+      'authorize-follow', 'follow', 'record-follow',
     ],
   );
   assert.equal(s.result().sent, false);
 });
 
-test('each lead retains navigation, screening, follow and optional-like timings in its own completed event', async () => {
+test('saved interest interpretations reach browsing, and clearing tags does not restore old topics', async () => {
+  for (const interests of [
+    [{ label: 'ecom', description: 'E-commerce income tutorials.' }, { label: 'fishing', description: 'Fishing trips.' }], [],
+  ]) {
+    const s = setup()
+    s.deps.session = async (_profile, _automation, config) => {
+      assert.deepEqual(config.warmup_topics, interests.map(interest => interest.description))
+      return { minutes: 0, reason: 'skipped' }
+    }
+    await runRoutineSession({ _id: 'automation', name: 'Interest routine', nodes: [], edges: [],
+      routine: { headless: true, activity: { warmup_topics: 'Old description' }, interests } },
+      'profile', s.page, () => {}, () => false, s.deps)
+  }
+})
+
+test('each lead retains navigation, screening and follow timings in its own completed event', async () => {
   const s = setup('follow');
   let scope: LogScope | undefined;
   const navigate = s.page.goto.bind(s.page), screen = s.deps.screenLead, follow = s.deps.follow;
@@ -113,12 +127,6 @@ test('each lead retains navigation, screening, follow and optional-like timings 
     return screen(...args);
   };
   s.deps.follow = async (...args) => { await s.deps.sleep(250); return follow(...args); };
-  s.deps.likeRecentPost = async (_page, _allowed, _before, session) => {
-    assert.ok(session);
-    assert.ok(session.end <= Date.now() + 15_000);
-    await s.deps.sleep(600);
-    return false;
-  };
   await s.run();
   assert.ok(scope?.completed);
   assert.equal(scope.event, 'automation.recipient_session');
@@ -126,9 +134,7 @@ test('each lead retains navigation, screening, follow and optional-like timings 
   assert.equal(scope.fields.navigationMs, 400);
   assert.equal(scope.fields.screeningMs, 1250);
   assert.equal(scope.fields.followMs, 250);
-  assert.equal(scope.fields.optionalLikeMs, 600);
   assert.equal(scope.fields.followed, true);
-  assert.equal(scope.fields.liked, false);
 });
 
 test('selected known public leads open through Search once before screening and following', async () => {
@@ -252,7 +258,7 @@ test('a provider refusal marks the lead terminal without approving, following or
 
 test('before maintenance the routine only browses, even when ready lead and DM mocks are available', async () => {
   const s = setup('follow');
-  s.deps.warmup = async (_p, _a, _c, _page, _log, _stopped, _deps, activity) => {
+  s.deps.session = async (_p, _a, _c, _page, _log, _stopped, _deps, activity) => {
     const result = await activity!({ day: 7, deadline: 600_000, remainingMinutes: 10,
       browse: async () => { s.calls.push('browse'); return 'skipped'; },
     });
@@ -266,7 +272,7 @@ test('before maintenance the routine only browses, even when ready lead and DM m
 test('week-one browsing retries a stall without running outreach', async () => {
   const s = setup('follow');
   let tries = 0;
-  s.deps.warmup = async (_p, _a, _c, _page, _log, _stopped, _deps, activity) => {
+  s.deps.session = async (_p, _a, _c, _page, _log, _stopped, _deps, activity) => {
     const reason = await activity!({ day: 7, deadline: 600_000, remainingMinutes: 10,
       browse: async minutes => {
         s.calls.push('browse');
@@ -368,10 +374,6 @@ test('private follow requests are recorded and do not send DMs', async () => {
   await s.run(); assert.ok(s.calls.includes('record-follow')); assert.ok(!s.calls.includes('send'));
 });
 
-test('an optional like failure does not undo a successful follow', async () => {
-  const s = setup('follow'); s.deps.likeRecentPost = async () => { throw new Error('Like missing'); }; await s.run();
-  assert.ok(s.calls.includes('record-follow')); assert.equal(s.result().issue, undefined);
-});
 
 test('daily notification evidence is recorded before selecting DMs', async () => {
   const s = setup(); s.deps.notifications = async () => ({ date: '2026-09-21', since: 0 });
@@ -414,7 +416,7 @@ test('week-one startup keeps the brief notification visit without querying outre
   let visits = 0
   s.deps.notifications = async () => { throw new Error('Outreach is locked during week one') }
   s.deps.checkNotifications = async () => { visits++; return true }
-  s.deps.warmup = async (_p, _a, _c, _page, _log, stopped, _deps, activity, startupNotifications) => {
+  s.deps.session = async (_p, _a, _c, _page, _log, stopped, _deps, activity, startupNotifications) => {
     await startupNotifications?.(new BrowseSession(600_000, stopped), 7)
     const reason = await activity!({ deadline: 600_000, day: 7, remainingMinutes: 10,
       browse: async minutes => { await s.deps.sleep(minutes * 60_000); return 'finished' },
@@ -527,7 +529,7 @@ test('a final logging query failure does not flag a completed session', async ()
 });
 
 test('exhausted browsing budget prevents DM-only, follow-only and cleanup sessions', async () => {
-  const s = setup(); s.deps.warmup = async () => ({ minutes: 0, reason: 'skipped' }); s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice' }];
+  const s = setup(); s.deps.session = async () => ({ minutes: 0, reason: 'skipped' }); s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice' }];
   await s.run(); assert.deepEqual(s.calls, ['record-incomplete']);
 });
 
@@ -538,7 +540,7 @@ test('a login challenge stops all actions and is reported', async () => {
 
 test('stopping the browser worker records an incomplete session without blocking the profile', async () => {
   const s = setup(); let stopped = false;
-  s.deps.warmup = async () => { stopped = true; throw new Error('Browser worker stopped'); };
+  s.deps.session = async () => { stopped = true; throw new Error('Browser worker stopped'); };
   await s.run(() => stopped);
   assert.equal(s.result().issue, undefined);
   assert.deepEqual(s.calls, ['record-incomplete']);
@@ -546,7 +548,7 @@ test('stopping the browser worker records an incomplete session without blocking
 
 test('stopping the worker never hides an uncertain delivery issue', async () => {
   const s = setup(); let stopped = false;
-  s.deps.warmup = async () => { stopped = true; throw new Error('Delivery needs review: Browser worker stopped'); };
+  s.deps.session = async () => { stopped = true; throw new Error('Delivery needs review: Browser worker stopped'); };
   await s.run(() => stopped);
   assert.equal(s.result().issue, 'Delivery needs review: Browser worker stopped');
 });

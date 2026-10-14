@@ -107,7 +107,7 @@ test('daily activity plan persists across sessions and finish retries without ex
     { ...finish, runId: 'two', activity: { ...finish.activity, likes: -1 } })).rejects.toThrow('Invalid warm-up activity')
   await t.mutation(internal.warmup.mutations.finishRunInternal,
     { ...finish, runId: 'two', activity: { likes: 100, profiles: 100, reels: 100, stories: 100 } })
-  expect((await begin('three')).activityUsed).toEqual(first.activityPlan)
+  expect((await begin('three')).activityUsed).toEqual({ ...first.activityPlan, reels: 103, stories: 100 })
   await t.mutation(internal.warmup.mutations.finishRunInternal,
     { ...finish, runId: 'three', activity: { likes: 0, profiles: 0, reels: 0, stories: 0 } })
   vi.setSystemTime(new Date('2026-10-13T12:00:00Z'))
@@ -119,9 +119,13 @@ test('daily activity plan persists across sessions and finish retries without ex
 test('recovery exhausts uncertain activity attempts so a crash cannot repeat engagement', async () => {
   const { t, begin } = await setup({ sessionMinMinutes: 5, sessionMaxMinutes: 5 })
   const first = await begin()
+  await t.run(async ctx => {
+    const state = (await ctx.db.query('warmupStates').unique())!
+    await ctx.db.patch(state._id, { activityUsed: { ...state.activityUsed!, reels: 12, stories: 7 } })
+  })
   await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})
   const state = await t.run(ctx => ctx.db.query('warmupStates').unique())
-  expect(state?.activityUsed).toEqual(first.activityPlan)
+  expect(state?.activityUsed).toEqual({ ...first.activityPlan, reels: 12, stories: 7 })
 })
 
 test('records actual time once, and releases unused time for another run', async () => {
