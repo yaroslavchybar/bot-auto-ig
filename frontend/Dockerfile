@@ -31,6 +31,8 @@ COPY --from=repo_root server/shared/proxy.ts ./server/shared/proxy.ts
 COPY --from=repo_root server/shared/pagination.ts ./server/shared/pagination.ts
 # Convex routine settings share message validation with the outreach worker.
 COPY --from=repo_root server/shared/outreachMessage.ts ./server/shared/outreachMessage.ts
+# Interest tags share validation between the editor, Convex, and the worker.
+COPY --from=repo_root server/shared/interests.ts ./server/shared/interests.ts
 # Convex warm-up mutations share the daily activity plan with the worker.
 COPY --from=repo_root server/shared/warmupPlan.ts ./server/shared/warmupPlan.ts
 # Convex routine recovery shares transient DOM error detection with the worker.
