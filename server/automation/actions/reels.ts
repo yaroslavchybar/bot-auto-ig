@@ -9,6 +9,7 @@ import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { engagePost } from './engagement.js'
 import { clickAction } from './action-locator.js'
 import { nativeWheelFor, type NativeWheel } from '../../browser/desktopPointer.js'
+import { positionScrollCursor } from './mouse.js'
 import {
   numeric,
   random,
@@ -161,9 +162,8 @@ export async function advanceReel(page: Page, session: BrowseSession, log: Actio
       const left = Math.max(0, box.x), right = Math.min(viewport.width, box.x + box.width)
       const top = Math.max(port.top, box.y), bottom = Math.min(port.bottom, box.y + box.height)
       if (right <= left || bottom <= top) return failed('Visible reel has no wheel target')
-      const x = (left + right) / 2, y = (top + bottom) / 2
       stage = 'cursor'
-      await page.mouse.move(x, y)
+      const { x, y } = await positionScrollCursor(page, { left, right, top, bottom }, session)
       session.check()
       stage = 'wheel'
       await wheel(x, y, 'down', session.timeout(5000))
@@ -251,6 +251,7 @@ export async function watchReels(
     const related = topics.length > 0 && await matchesTopic(context, topics, session, log, post)
     if (!feedPostMatches(context, topics, related)) {
       log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })
+      await session.wait(random(500, 1200))
       if (!await advance()) break
       continue
     }

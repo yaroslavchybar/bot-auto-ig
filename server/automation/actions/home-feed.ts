@@ -11,6 +11,7 @@ import {
 } from './shared.js'
 import {
   driftMouse,
+  positionScrollCursor,
 } from './mouse.js'
 import {
   alignPostOnScreen,
@@ -50,13 +51,17 @@ async function advanceFeedPost(page: Page, target: Locator, session: BrowseSessi
   const box = await target.boundingBox().catch(() => null)
   const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
   const distance = box ? Math.max(50, box.y + box.height - viewport.height * 0.25) : 450
-  if (skip) {
-    session.check()
-    // Keep wheel input over the content, away from sidebar controls and browser chrome.
-    await page.mouse.move(box ? Math.max(40, Math.min(viewport.width - 40, box.x + box.width / 2)) : viewport.width * 0.6,
-      box ? Math.max(40, Math.min(viewport.height - 40, box.y + box.height / 2)) : viewport.height * 0.6)
-    await quickScroll(page, distance, session)
-  } else await smoothScroll(page, distance, session)
+  session.check()
+  let left = Math.max(40, box?.x ?? viewport.width * 0.35)
+  let right = Math.min(viewport.width - 40, box ? box.x + box.width : viewport.width * 0.75)
+  let top = Math.max(40, box?.y ?? viewport.height * 0.3)
+  let bottom = Math.min(viewport.height - 40, box ? box.y + box.height : viewport.height * 0.75)
+  if (right <= left) { left = viewport.width * 0.35; right = viewport.width * 0.75 }
+  if (bottom <= top) { top = viewport.height * 0.3; bottom = viewport.height * 0.75 }
+  await positionScrollCursor(page, { left, right, top, bottom }, session)
+  session.check()
+  if (skip) await quickScroll(page, distance, session)
+  else await smoothScroll(page, distance, session)
   if (budget) budget.browsed++
   if (!skip) await session.wait(random(300, 700))
 }
@@ -258,6 +263,7 @@ async function browseHomeFeedSession(
     if (!feedPostMatches(context, topics, related)) {
       if (targetId) seen.add(targetId)
       log({ event: 'automation.warmup.feed_post_off_topic', message: 'Skipped a post outside the selected interests' })
+      await session.wait(random(500, 1200))
       await advanceFeedPost(page, target, session, budget, true)
       continue
     }

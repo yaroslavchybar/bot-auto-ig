@@ -63,7 +63,7 @@ test('Home feed always classifies content and never navigates to Reels', () => {
   execFileSync('bun', ['--eval', `
     import assert from 'node:assert/strict'
     import { mock } from 'bun:test'
-    let now = 0, stopped, mode, decisions, reads, reels, config, skips, aligns
+    let now = 0, stopped, mode, decisions, reads, reels, config, skips, aligns, decisionWaits
     Date.now = () => now
     Math.random = () => 0.5
     const session = await import('./server/automation/actions/session.ts')
@@ -73,7 +73,7 @@ test('Home feed always classifies content and never navigates to Reels', () => {
         stopped() { return this.stop() || now >= this.end }
         check() { if (this.stopped()) throw new session.SessionEnded() }
         timeout(max) { this.check(); return Math.min(max, this.end - now) }
-        wait = async ms => { now += ms; this.check() }
+        wait = async ms => { if (decisions > 0) decisionWaits.push(ms); now += ms; this.check() }
       }
     }))
     const replace = async (path, overrides) => mock.module(path, () => ({ ...modules[path], ...overrides }))
@@ -121,7 +121,7 @@ test('Home feed always classifies content and never navigates to Reels', () => {
     }
     const { browseHomeFeed } = await import('./server/automation/actions/home-feed.ts')
     for (mode of ['off-topic', 'ad', 'match', 'feed-end']) {
-      now = 0; stopped = false; decisions = 0; reads = 0; reels = 0; skips = 0; aligns = 0
+      now = 0; stopped = false; decisions = 0; reads = 0; reels = 0; skips = 0; aligns = 0; decisionWaits = []
       config = { warmup_topics: 'fitness', skip_post_chance: 100,
         skip_post_max: 2, own_profile_chance: 0, dm_chance: 0, reels_chance: 100 }
       assert.equal(await browseHomeFeed(page, 2, config, () => {}, () => stopped, undefined, matcher), mode === 'feed-end' ? 'finished' : 'stopped')
@@ -130,6 +130,7 @@ test('Home feed always classifies content and never navigates to Reels', () => {
         assert.equal(aligns, mode === 'ad' ? 0 : 1, mode)
         assert.equal(skips, 1, mode)
         assert.equal(reads, 1, mode)
+        assert.deepEqual(decisionWaits, mode === 'off-topic' ? [850] : [], mode)
       } else if (mode === 'match') assert.equal(decisions, 1)
       else assert.equal(reels, 0, mode)
     }

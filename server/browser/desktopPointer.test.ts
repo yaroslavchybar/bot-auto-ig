@@ -176,13 +176,15 @@ for (const ending of ['close', 'timeout']) {
         context.on('page', page => captured.set(page, page.mouse.move.bind(page.mouse)))
       },
     }))
-    const { installDesktopPointer, nativeWheelFor } = await import('./server/browser/desktopPointer.ts')
+    const { installDesktopPointer, nativeWheelFor, desktopCursorFor } = await import('./server/browser/desktopPointer.ts')
     const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
     try {
       await captured.get(restored)(100, 200)
+      assert.deepEqual(desktopCursorFor(restored), { x: 100, y: 200 })
       const fresh = page()
       context.emit('page', fresh)
       await captured.get(fresh)(300, 400)
+      assert.deepEqual(desktopCursorFor(fresh), { x: 300, y: 400 })
       assert.deepEqual(events, ['native:100', 'browser:100', 'native:300', 'browser:300'])
       await nativeWheelFor(restored)(100, 200, 'down', 5000)
       await nativeWheelFor(fresh)(300, 400, 'up', 5000)
@@ -214,6 +216,8 @@ for (const ending of ['close', 'timeout']) {
       close()
       assert.equal(nativeWheelFor(restored), undefined)
       assert.equal(nativeWheelFor(fresh), undefined)
+      assert.equal(desktopCursorFor(restored), undefined)
+      assert.equal(desktopCursorFor(fresh), undefined)
       assert.equal(context.listenerCount('page'), 1, 'native page listener is removed')
       const sent = events.length
       await assert.rejects(captured.get(fresh)(700, 400), /disconnected/)

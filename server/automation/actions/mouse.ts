@@ -3,6 +3,36 @@ import { random } from './shared.js'
 import { clickPointOnScreen } from './guards.js'
 import { BrowseSession } from './session.js'
 import { actionLocator } from './action-locator.js'
+import { desktopCursorFor } from '../../browser/desktopPointer.js'
+
+const nextScrollDrift = new WeakMap<Page, number>()
+const fallbackScrollCursors = new WeakMap<Page, Readonly<{ x: number; y: number }>>()
+
+// Keep a safe cursor still between scrolls, with small drift at irregular time intervals.
+export async function positionScrollCursor(page: Page, bounds: { left: number; right: number; top: number; bottom: number },
+  session: BrowseSession): Promise<{ x: number; y: number }> {
+  session.check()
+  const { left, right, top, bottom } = bounds
+  const width = right - left, height = bottom - top
+  const cursor = desktopCursorFor(page) ?? fallbackScrollCursors.get(page)
+  const inside = cursor && cursor.x > left + width * 0.15 && cursor.x < right - width * 0.15 &&
+    cursor.y > top + height * 0.15 && cursor.y < bottom - height * 0.15
+  if (inside && !nextScrollDrift.has(page)) nextScrollDrift.set(page, Date.now() + random(20_000, 45_000))
+  if (inside && Date.now() < nextScrollDrift.get(page)!) return cursor
+  const drift = (position: number, min: number, max: number) => {
+    const span = max - min, distance = Math.min(45, span * 0.1)
+    return Math.max(min + span * 0.15, Math.min(max - span * 0.15, position + random(-distance, distance)))
+  }
+  const point = inside ? {
+    x: drift(cursor.x, left, right),
+    y: drift(cursor.y, top, bottom),
+  } : { x: left + width * random(0.3, 0.7), y: top + height * random(0.3, 0.7) }
+  await page.mouse.move(point.x, point.y)
+  fallbackScrollCursors.set(page, point)
+  session.check()
+  nextScrollDrift.set(page, Date.now() + random(20_000, 45_000))
+  return point
+}
 
 export async function clickVisible(
   page: Page | Locator,

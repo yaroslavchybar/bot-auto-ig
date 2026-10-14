@@ -160,7 +160,7 @@ test('off-topic reels can make browsing progress without any completed watches',
   } finally { await f.window.happyDOM.close() }
 })
 
-for (const ad of [false, true]) test(`rejected Reels advance without dwell or pacing pauses (ad=${ad})`, async () => {
+for (const ad of [false, true]) test(`off-topic Reels pause briefly before skipping while ads advance immediately (ad=${ad})`, async () => {
   const f = reelAdvanceFixture(1024, 600, { offTopic: true })
   const waits: number[] = [], decisions: number[] = []
   const budget = new WarmupActivityBudget({ likes: 1, profiles: 0, reels: 0, stories: 0 })
@@ -176,7 +176,11 @@ for (const ad of [false, true]) test(`rejected Reels advance without dwell or pa
     await watchReels(f.page, 1, { warmup_topics: ['Fishing'] }, () => {}, () => f.stats().clicks >= 1,
       f.session.end, f.session, budget, async () => { decisions.push(1); return false })
     assert.equal(f.stats().clicks, 1)
-    assert.deepEqual(waits, [100], 'only the frame-stability check can wait')
+    if (ad) assert.deepEqual(waits, [100], 'ads only wait for frame stability after advancing')
+    else {
+      assert.ok(waits[0] >= 500 && waits[0] <= 1200, 'off-topic decision pauses 0.5–1.2 seconds')
+      assert.deepEqual(waits.slice(1), [100], 'no additional dwell beyond frame stability')
+    }
     assert.equal(decisions.length, ad ? 0 : 1, 'ads skip before any AI request')
     assert.equal(budget.used.reels, 0); assert.equal(budget.used.likes, 0)
   } finally { await f.window.happyDOM.close() }
@@ -250,11 +254,15 @@ test('viewers without a native bridge retain the named Next button with cursor m
 for (const [width, height] of [[800, 480], [1024, 600], [1366, 768], [1920, 1080], [3840, 2160]])
   test(`native Reels advance with exactly one notch over visible media at ${width}×${height}`, async () => {
     const f = reelAdvanceFixture(width, height), before = f.page.url()
+    const originalRandom = Math.random
+    let coordinateRandom = 0
+    Math.random = () => coordinateRandom++ % 2 === 0 ? 0.25 : 0.75
     let moved = false, notches = 0
     f.page.getByRole = (() => { throw new Error('Native wheel must not click Next') }) as Page['getByRole']
     f.page.mouse.move = async (x, y) => {
       assert.ok(x > f.boxes[1].x && x < f.boxes[1].x + f.boxes[1].width)
       assert.ok(y > 48 && y < height - 48, 'cursor stays inside the nested viewer')
+      assert.notEqual(x, f.boxes[1].x + f.boxes[1].width / 2, 'cursor varies from the media center')
       moved = true
     }
     try {
@@ -267,7 +275,7 @@ for (const [width, height] of [[800, 480], [1024, 600], [1366, 768], [1920, 1080
       assert.notEqual(f.page.url(), before)
       assert.equal(notches, 1)
       assert.deepEqual(f.stats(), { wheels: 0, clicks: 0 }, 'no pixel wheel events or clicks')
-    } finally { await f.window.happyDOM.close() }
+    } finally { Math.random = originalRandom; await f.window.happyDOM.close() }
   })
 
 for (const failure of ['unchanged', 'transport', 'unsettled'])

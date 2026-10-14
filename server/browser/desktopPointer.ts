@@ -6,9 +6,11 @@ import type { Display } from './display.js'
 
 export type NativeWheel = (x: number, y: number, direction: 'up' | 'down', timeout: number) => Promise<void>
 const nativeWheels = new WeakMap<Page, NativeWheel>()
+const desktopCursors = new WeakMap<Page, Readonly<{ x: number; y: number }>>()
 
 /** Headed automation pages can send discrete notches through their leased X11 display. */
 export function nativeWheelFor(page: Page): NativeWheel | undefined { return nativeWheels.get(page) }
+export function desktopCursorFor(page: Page): Readonly<{ x: number; y: number }> | undefined { return desktopCursors.get(page) }
 
 // Race each CDP wait against the same deadline; late results cannot resume input.
 function beforeWheelDeadline<T>(start: () => Promise<T>, deadline: number): Promise<T> {
@@ -100,6 +102,7 @@ export async function installDesktopPointer(
       // Once sent, keep the queue until the transport result; expiry cannot undo input.
       await request({ x, y, width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight,
         ...(wheel ? { wheel } : {}) })
+      desktopCursors.set(page, { x, y })
     }
     // Page.getLayoutMetrics is real geometry; window.screen* is fingerprint-spoofed.
     page.mouse.move = async (x, y, options) => {
@@ -118,7 +121,10 @@ export async function installDesktopPointer(
   }
   const close = () => {
     context.off('page', attach)
-    for (const page of pages) nativeWheels.delete(page)
+    for (const page of pages) {
+      nativeWheels.delete(page)
+      desktopCursors.delete(page)
+    }
     pages.clear()
     socket.terminate()
   }
