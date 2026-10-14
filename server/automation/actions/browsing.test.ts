@@ -5,7 +5,7 @@ import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { Window } from 'happy-dom'
 import { BrowseSession, SessionEnded } from './session.js'
-import { revealForClick, settleOnPost, smoothScroll } from './scroll.js'
+import { quickScroll, revealForClick, settleOnPost, smoothScroll } from './scroll.js'
 import { likeVisible, clickVisible } from './mouse.js'
 import { viewContent, viewVideo } from './viewing.js'
 import { openDMs } from './inbox.js'
@@ -13,6 +13,27 @@ import { openReels } from './reels.js'
 import { backToFeed } from './navigation.js'
 import { openAuthorProfile, openOwnProfile } from './profiles.js'
 import { watchStories } from './stories.js'
+
+test('fast skips keep an eased wheel glide, cover the post, and use less time', async () => {
+  const originalRandom = Math.random
+  Math.random = () => 0.5
+  const deltas: number[] = []
+  let elapsed = 0
+  const page = { mouse: { wheel: async (_x: number, delta: number) => { deltas.push(delta) } } } as unknown as Page
+  const session = new BrowseSession(Date.now() + 60_000)
+  session.wait = async ms => { elapsed += ms; session.check() }
+  try {
+    await quickScroll(page, 400, session)
+    assert.ok(deltas.length >= 8, 'a skip must stay smooth rather than jump with one wheel event')
+    assert.equal(deltas.reduce((sum, delta) => sum + delta, 0), 400)
+    assert.ok(Math.max(...deltas) > deltas[0] && Math.max(...deltas) > deltas.at(-1)!)
+    const skipElapsed = elapsed
+    assert.ok(skipElapsed <= 300)
+    elapsed = 0; deltas.length = 0
+    await smoothScroll(page, 400, session)
+    assert.ok(elapsed > skipElapsed, 'normal viewing keeps its existing slower glide')
+  } finally { Math.random = originalRandom }
+})
 
 for (const { height, startY, needsScroll } of [
   { height: 400, startY: 100, needsScroll: false },

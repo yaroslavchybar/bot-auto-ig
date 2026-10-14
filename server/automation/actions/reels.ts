@@ -54,35 +54,34 @@ export async function openReels(page: Page, log: ActionLogger, session = new Bro
   }
 }
 
-// Sponsored reel: small "Ad"/"Sponsored" tag under the caption plus a CTA
-// button (Listen now, Learn more, ...). Both must be visible — either one
-// alone could be a comment or caption word.
-async function isAdReel(page: Page): Promise<boolean> {
-  try {
-    return await page.evaluate(() => {
-      let tag = false
-      let cta = false
-      const els = document.querySelectorAll('main span, main div, main a')
-      for (const el of els) {
-        const r = (el as HTMLElement).getBoundingClientRect()
-        if (r.width === 0 || r.height === 0) continue
-        if (r.bottom < 0 || r.top > window.innerHeight) continue
-        const t = ((el as HTMLElement).innerText || '').trim()
-        if (!t || t.length > 24) continue
-        if (/^(ad|sponsored)$/i.test(t)) tag = true
-        if (
-          /^(listen now|learn more|shop now|install now|sign up|book now|order now|download|play now|get showtimes)$/i.test(
-            t,
-          )
-        )
-          cta = true
-        if (tag && cta) return true
-      }
-      return false
-    })
-  } catch {
-    return false
+// Live ads use a Facebook ad-redirect CTA. Keep markers inside this video's
+// single-reel container because Instagram preloads neighboring ads in the DOM.
+export function reelAdMarker(video: Element): 'ad_redirect' | 'ad_label_and_cta' | null {
+  const view = video.ownerDocument.defaultView!
+  let post = video.parentElement
+  if (!post || post.querySelectorAll('video').length !== 1) return null
+  while (post.parentElement && !/^(MAIN|BODY|HTML)$/.test(post.parentElement.tagName) &&
+    post.parentElement.querySelectorAll('video').length === 1) post = post.parentElement
+  let tag = false, cta = false
+  for (const el of post.querySelectorAll<HTMLElement>('span, div, a, button, [role="button"]')) {
+    const r = el.getBoundingClientRect()
+    if (!r.width || !r.height || r.bottom <= 0 || r.top >= view.innerHeight ||
+      r.right <= 0 || r.left >= view.innerWidth) continue
+    const style = view.getComputedStyle(el)
+    if (style.visibility === 'hidden' || style.display === 'none') continue
+    if (el.tagName === 'A') {
+      try {
+        const url = new URL(el.getAttribute('href') ?? '', video.ownerDocument.baseURI)
+        if ((url.hostname === 'www.facebook.com' || url.hostname === 'facebook.com') &&
+          url.pathname === '/ads/ig_redirect/') return 'ad_redirect'
+      } catch { /* An invalid link is not an ad marker. */ }
+    }
+    const text = (el.innerText || '').trim()
+    if (!text || text.length > 24) continue
+    if (/^(ad|sponsored)$/i.test(text)) tag = true
+    if (/^(listen now|learn more|shop now|install now|sign up|book now|order now|download|play now|get showtimes)$/i.test(text)) cta = true
   }
+  return tag && cta ? 'ad_label_and_cta' : null
 }
 // Video filling the screen right now (current + preloaded share the DOM).
 async function inViewVideo(page: Page, session: BrowseSession): Promise<Locator | null> {
@@ -120,7 +119,7 @@ async function waitForSettle(page: Page, session: BrowseSession): Promise<boolea
   const sleep = session.wait
   session.check()
   let previous: { x: number; y: number; width: number; height: number } | undefined
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 50; i++) {
     const video = await inViewVideo(page, session)
     const box = await video?.boundingBox({ timeout: session.timeout(1000) })
     const port = await video?.evaluate(reelViewBounds, undefined, { timeout: session.timeout(1000) })
@@ -133,7 +132,7 @@ async function waitForSettle(page: Page, session: BrowseSession): Promise<boolea
         previous = { ...box }
       } else previous = undefined
     } else previous = undefined
-    await sleep(500)
+    await sleep(100)
   }
   return false
 }
@@ -178,7 +177,6 @@ export async function watchReels(
   seen = new Set<string>(),
 ): Promise<void> {
   if (config.scroll_reels === false) return
-  const sleep = session.wait
   session.check()
   const viewMin = Math.max(0, numeric(config.post_view_min_seconds, 2))
   const viewMax = Math.max(viewMin, numeric(config.post_view_max_seconds, 5))
@@ -203,22 +201,23 @@ export async function watchReels(
       }
       seen.add(id)
     }
-    // Sponsored reel: flick past fast, never engage.
-    if (await isAdReel(page).catch(() => false)) {
-      log({ event: 'automation.actions.reels.skipped_reel_ad', message: 'Skipped reel ad' })
-      await sleep(random(400, 900))
-      if (Date.now() >= end || shouldStop()) break
-      if (!await advance()) {
-        log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
-        break
-      }
-      await sleep(random(1200, 2200))
-      continue
-    }
     const video = await inViewVideo(page, session)
     if (!video) break
     let context: ReturnType<typeof reelPostContext>
-    try { context = await video.evaluate(reelPostContext) }
+    try {
+      const adMarker = await video.evaluate(reelAdMarker, undefined, { timeout: session.timeout(1000) })
+      // Sponsored reel: advance before classification or engagement.
+      if (adMarker) {
+        log({ event: 'automation.actions.reels.skipped_reel_ad', message: 'Skipped reel ad', adMarker })
+        if (Date.now() >= end || shouldStop()) break
+        if (!await advance()) {
+          log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
+          break
+        }
+        continue
+      }
+      context = await video.evaluate(reelPostContext)
+    }
     catch (error) {
       session.check()
       if (!isTemporaryUiError(error)) throw error
@@ -232,7 +231,6 @@ export async function watchReels(
     const related = topics.length > 0 && await matchesTopic(context, topics, session, log, post)
     if (!feedPostMatches(context, topics, related)) {
       log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })
-      await sleep(random(300, 800))
       if (!await advance()) break
       continue
     }
@@ -265,7 +263,6 @@ export async function watchReels(
       log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
       break
     }
-    await sleep(random(1200, 2200))
   }
   log({ event: 'automation.reels_result', watchedCount: watched })
 }

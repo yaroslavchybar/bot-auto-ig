@@ -12,7 +12,7 @@ import { viewContent } from './viewing.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { engagePost } from './engagement.js'
 import { openTopicResults } from './explore.js'
-import { smoothScroll } from './scroll.js'
+import { quickScroll, smoothScroll } from './scroll.js'
 import { topicSearchTerms } from './topic-search.js'
 import { EXPLORE_TILE_SELECTOR, exploreRow, matchExploreGrid, readExploreTiles } from './explore-grid.js'
 
@@ -21,8 +21,8 @@ export const EXPLORE_WARMUP_LAST_DAY = 4
 /** Search through the UI, scan the grid, and return to it after each opened post. */
 export async function watchTopicPosts(page: Page, topic: string, count: number, budget: WarmupActivityBudget,
   seen: Set<string>, session: BrowseSession, log: ActionLogger, maintenance = false, matchesTopic: TopicMatcher = topicContentMatches,
-  topics: readonly string[], deps: { search: typeof openTopicResults; scroll: typeof smoothScroll; grid?: typeof matchExploreGrid } = {
-    search: openTopicResults, scroll: smoothScroll, grid: matchExploreGrid,
+  topics: readonly string[], deps: { search: typeof openTopicResults; scroll: typeof smoothScroll; skip?: typeof quickScroll; grid?: typeof matchExploreGrid } = {
+    search: openTopicResults, scroll: smoothScroll, skip: quickScroll, grid: matchExploreGrid,
   }): Promise<void> {
   if (count <= 0) return
   if (!await deps.search(page, topic, session)) return
@@ -46,8 +46,11 @@ export async function watchTopicPosts(page: Page, topic: string, count: number, 
     const candidates = row.filter(tile => inspected.get(tile.href))
     if (!candidates.length) {
       await page.mouse.move(viewport.width * 0.6, viewport.height * 0.6)
-      await deps.scroll(page, viewport.height * random(0.5, 0.8), session)
-      await session.wait(random(700, 1500))
+      if (row.length) await (deps.skip ?? quickScroll)(page, viewport.height * random(0.5, 0.8), session)
+      else {
+        await deps.scroll(page, viewport.height * random(0.5, 0.8), session)
+        await session.wait(random(700, 1500))
+      }
       continue
     }
     const href = candidates[Math.floor(Math.random() * candidates.length)]!.href

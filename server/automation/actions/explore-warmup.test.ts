@@ -185,6 +185,7 @@ for (const gridMatch of [false, true]) test(`Explore requires both grid and open
     await assert.rejects(watchTopicPosts(page, 'fishing', 1, budget, new Set(), session, () => {}, true,
       async () => { decisions++; return false }, ['Fishing'], {
         search: async () => true, grid: async () => gridMatch ? ['/p/one/'] : [],
+        skip: async () => { assert.equal(gridMatch, false); now = session.end; session.check() },
         scroll: async () => { now = session.end; session.check() },
       }), SessionEnded)
     assert.equal(clicks, gridMatch ? 1 : 0)

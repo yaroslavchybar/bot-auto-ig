@@ -137,6 +137,8 @@ test('provider timeout is capped by the remaining browsing session', async () =>
   })
   await match(context(), ['fitness'], new BrowseSession(Date.now() + 1000), log, target)
   assert.ok(timeout > 0 && timeout <= 1000)
+  await match(context(), ['fitness'], new BrowseSession(Date.now() + 60_000), log, target)
+  assert.ok(timeout > 0 && timeout <= 5000, 'slow classification cannot hold a Reel for twelve seconds')
 })
 
 test('capture and classification share one deadline, and local expiry does not stop browsing', async () => {

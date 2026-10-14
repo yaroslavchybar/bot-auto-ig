@@ -5,6 +5,12 @@ import { BrowseSession } from './session.js'
 type ScrollBounds = { top: number; bottom: number; left: number; right: number }
 type ScrollTarget = Pick<Locator, 'boundingBox'> & { evaluate: (fn: (node: Element) => ScrollBounds) => Promise<ScrollBounds> }
 
+/** Skip rejected content with a shorter eased wheel glide and a brief render settle. */
+export async function quickScroll(page: Page, total: number, session: BrowseSession): Promise<void> {
+  await smoothScroll(page, total, session, () => false, 200)
+  await session.wait(50)
+}
+
 function scrollBounds(node: Element): ScrollBounds {
   const view = node.ownerDocument.defaultView!
   let parent = node.parentElement
@@ -23,13 +29,14 @@ function scrollBounds(node: Element): ScrollBounds {
 // Smooth, trackpad-like scroll using only real wheel events (never JS).
 // Emits many tiny deltas on a ~60Hz cadence with an ease-in-out velocity
 // profile, so the page glides instead of jumping in chunks.
-export async function smoothScroll(page: Page, total: number, session = new BrowseSession(), done: () => boolean = () => false): Promise<void> {
+export async function smoothScroll(page: Page, total: number, session = new BrowseSession(), done: () => boolean = () => false,
+  durationMs?: number): Promise<void> {
   const sleep = session.wait
   session.check()
   const dir = Math.sign(total) || 1
   const dist = Math.abs(total)
   if (dist < 1) return
-  const duration = Math.min(1500, Math.max(250, dist * random(1.0, 1.8)))
+  const duration = durationMs ?? Math.min(1500, Math.max(250, dist * random(1.0, 1.8)))
   const frames = Math.max(8, Math.floor(duration / random(14, 30)))
   let emitted = 0
   for (let i = 0; i < frames; i++) {

@@ -14,6 +14,7 @@ import {
 } from './mouse.js'
 import {
   alignPostOnScreen,
+  quickScroll,
   smoothScroll,
 } from './scroll.js'
 import { dismissPopups, isInstagramHome } from './navigation.js'
@@ -45,12 +46,19 @@ async function isAdPost(target: Locator): Promise<boolean> {
 }
 
 /** Advance just past this post, leaving the next author available for inspection. */
-async function advanceFeedPost(page: Page, target: Locator, session: BrowseSession, budget?: WarmupActivityBudget): Promise<void> {
+async function advanceFeedPost(page: Page, target: Locator, session: BrowseSession, budget?: WarmupActivityBudget, skip = false): Promise<void> {
   const box = await target.boundingBox().catch(() => null)
-  const height = page.viewportSize()?.height ?? 800
-  await smoothScroll(page, box ? Math.max(50, box.y + box.height - height * 0.25) : 450, session)
+  const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
+  const distance = box ? Math.max(50, box.y + box.height - viewport.height * 0.25) : 450
+  if (skip) {
+    session.check()
+    // Keep wheel input over the content, away from sidebar controls and browser chrome.
+    await page.mouse.move(box ? Math.max(40, Math.min(viewport.width - 40, box.x + box.width / 2)) : viewport.width * 0.6,
+      box ? Math.max(40, Math.min(viewport.height - 40, box.y + box.height / 2)) : viewport.height * 0.6)
+    await quickScroll(page, distance, session)
+  } else await smoothScroll(page, distance, session)
   if (budget) budget.browsed++
-  await session.wait(random(300, 700))
+  if (!skip) await session.wait(random(300, 700))
 }
 
 async function hasVideo(target: Locator): Promise<boolean> {
@@ -230,7 +238,7 @@ async function browseHomeFeedSession(
     // Already read this one (Back nav landing or short scroll): nudge
     // forward instead of dwelling on it again.
     if (targetId && seen.has(targetId)) {
-      await advanceFeedPost(page, target, session, budget)
+      await advanceFeedPost(page, target, session, budget, true)
       continue
     }
 
@@ -240,7 +248,7 @@ async function browseHomeFeedSession(
     // Ads remain excluded, including ads from followed authors.
     if (context.sponsored || await isAdPost(target)) {
       if (targetId) seen.add(targetId)
-      await advanceFeedPost(page, target, session, budget)
+      await advanceFeedPost(page, target, session, budget, true)
       continue
     }
 
@@ -250,7 +258,7 @@ async function browseHomeFeedSession(
     if (!feedPostMatches(context, topics, related)) {
       if (targetId) seen.add(targetId)
       log({ event: 'automation.warmup.feed_post_off_topic', message: 'Skipped a post outside the selected interests' })
-      await advanceFeedPost(page, target, session, budget)
+      await advanceFeedPost(page, target, session, budget, true)
       continue
     }
 

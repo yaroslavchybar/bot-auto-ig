@@ -29,7 +29,7 @@ test('prefers unread visible posts and never falls back to an offscreen article'
 })
 
 test('zero budget never navigates the browser', async () => {
-  const page = { goto: async () => { throw new Error('Must not navigate') } } as unknown as Page
+  const page = { mouse: { move: async () => {} }, goto: async () => { throw new Error('Must not navigate') } } as unknown as Page
   assert.equal(await browseHomeFeed(page, 0, {}, () => {}, () => false), 'stopped')
 })
 
@@ -63,7 +63,7 @@ test('Home feed always classifies content and never navigates to Reels', () => {
   execFileSync('bun', ['--eval', `
     import assert from 'node:assert/strict'
     import { mock } from 'bun:test'
-    let now = 0, stopped, mode, decisions, reads, reels, config
+    let now = 0, stopped, mode, decisions, reads, reels, config, skips, aligns
     Date.now = () => now
     Math.random = () => 0.5
     const session = await import('./server/automation/actions/session.ts')
@@ -83,7 +83,8 @@ test('Home feed always classifies content and never navigates to Reels', () => {
       modules[path] = await import(path)
     }
     await replace('./server/automation/actions/scroll.ts', {
-      alignPostOnScreen: async () => {},
+      alignPostOnScreen: async () => { aligns++ },
+      quickScroll: async () => { skips++; now += 50; stopped = true },
       smoothScroll: async () => {
         now += 1000
         if (mode === 'off-topic') stopped = true
@@ -107,9 +108,10 @@ test('Home feed always classifies content and never navigates to Reels', () => {
       waitFor: async () => {}, getAttribute: async () => '/p/post' + reads + '/' }
     const post = { boundingBox: async () => ({ x: 100, y: 100, width: 500, height: 400 }),
       locator: () => empty,
-      evaluate: async () => { reads++; return { text: 'Barbell squats', relationship: 'not-followed', sponsored: false } }
+      evaluate: async () => { reads++; return { text: 'Barbell squats', relationship: 'not-followed', sponsored: mode === 'ad' } }
     }
-    const page = { goto: async () => { throw new Error('The open Home feed must not be refreshed') }, url: () => 'https://www.instagram.com/',
+    const page = { mouse: { move: async () => {} },
+      goto: async () => { throw new Error('The open Home feed must not be refreshed') }, url: () => 'https://www.instagram.com/',
       viewportSize: () => ({ width: 1280, height: 800 }),
       evaluate: async () => String(now),
       getByText: () => ({ first() { return this }, boundingBox: async () => mode === 'feed-end'
@@ -118,13 +120,15 @@ test('Home feed always classifies content and never navigates to Reels', () => {
         ? { first: () => empty, count: async () => 1, nth: () => post } : empty
     }
     const { browseHomeFeed } = await import('./server/automation/actions/home-feed.ts')
-    for (mode of ['off-topic', 'match', 'feed-end']) {
-      now = 0; stopped = false; decisions = 0; reads = 0; reels = 0
+    for (mode of ['off-topic', 'ad', 'match', 'feed-end']) {
+      now = 0; stopped = false; decisions = 0; reads = 0; reels = 0; skips = 0; aligns = 0
       config = { warmup_topics: 'fitness', skip_post_chance: 100,
         skip_post_max: 2, own_profile_chance: 0, dm_chance: 0, reels_chance: 100 }
       assert.equal(await browseHomeFeed(page, 2, config, () => {}, () => stopped, undefined, matcher), mode === 'feed-end' ? 'finished' : 'stopped')
-      if (mode === 'off-topic') {
-        assert.equal(decisions, 1, mode)
+      if (mode === 'off-topic' || mode === 'ad') {
+        assert.equal(decisions, mode === 'ad' ? 0 : 1, mode)
+        assert.equal(aligns, mode === 'ad' ? 0 : 1, mode)
+        assert.equal(skips, 1, mode)
         assert.equal(reads, 1, mode)
       } else if (mode === 'match') assert.equal(decisions, 1)
       else assert.equal(reels, 0, mode)

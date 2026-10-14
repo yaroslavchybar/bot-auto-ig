@@ -5,17 +5,44 @@ import { Window } from 'happy-dom'
 import { errors } from 'playwright-core'
 import { visibleActionGeometry } from './action-locator.test-support.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
-import { advanceReel, openReels, watchReels } from './reels.js'
+import { advanceReel, openReels, reelAdMarker, watchReels } from './reels.js'
 import { BrowseSession, SessionEnded } from './session.js'
 
 test('disabled reels never access the browser', async () => {
   await watchReels({} as Page, 5, { scroll_reels: false }, () => {}, () => false, Date.now() + 60_000)
 })
 
+for (const fixture of [
+  { name: 'live Facebook ad redirect without an English CTA or label', current: '<a href="https://www.facebook.com/ads/ig_redirect/?d=example">Переглянути</a>', expected: 'ad_redirect' },
+  { name: 'visible Ad label and CTA fallback', current: '<span>Ad</span><a href="https://example.com/">Learn more</a>', expected: 'ad_label_and_cta' },
+  { name: 'Sponsored span paired with a native Learn more button', current: '<span>Sponsored</span><button>Learn more</button>', expected: 'ad_label_and_cta' },
+  { name: 'Sponsored span paired with a button-role CTA', current: '<span>Sponsored</span><p role="button">Learn more</p>', expected: 'ad_label_and_cta' },
+  { name: 'hidden Learn more button', current: '<span>Sponsored</span><button style="display:none">Learn more</button>', expected: null },
+  { name: 'Learn more button in a neighboring Reel', current: '<span>Sponsored</span>', neighbor: '<button>Learn more</button>', expected: null },
+  { name: 'preloaded neighboring ad even when its CTA overlaps the viewport', neighbor: '<span>Ad</span><a href="https://www.facebook.com/ads/ig_redirect/">Learn more</a>', expected: null },
+  { name: 'Ad label and CTA belonging to different Reels', current: '<span>Ad</span>', neighbor: '<a>Learn more</a>', expected: null },
+  { name: 'ordinary promotional CTA', current: '<a href="https://example.com/">Shop now</a>', expected: null },
+  { name: 'lookalike ad link on another host', current: '<a href="https://facebook.com.example.com/ads/ig_redirect/">Visit website</a>', expected: null },
+  { name: 'offscreen ad redirect', current: '<a data-offscreen href="https://www.facebook.com/ads/ig_redirect/">Learn more</a>', expected: null },
+  { name: 'hidden ad redirect', current: '<a style="display:none" href="https://www.facebook.com/ads/ig_redirect/">Learn more</a>', expected: null },
+]) test(`Reel ad detection: ${fixture.name}`, async () => {
+  const window = new Window({ width: 1024, height: 600 })
+  window.document.body.innerHTML = `<main><section>
+    <div><video id="current"></video>${fixture.current ?? ''}</div>
+    <div><video></video>${fixture.neighbor ?? ''}</div>
+  </section></main>`
+  for (const el of window.document.querySelectorAll('span, a, button, [role="button"]')) {
+    const top = el.hasAttribute('data-offscreen') ? 700 : 100
+    el.getBoundingClientRect = () => ({ width: 200, height: 48, top, bottom: top + 48, left: 200, right: 400 }) as DOMRect
+  }
+  try { assert.equal(reelAdMarker(window.document.querySelector('#current')! as unknown as Element), fixture.expected) }
+  finally { await window.happyDOM.close() }
+})
+
 function reelAdvanceFixture(width: number, height: number, options: { nextVisible?: boolean; nextEnabled?: boolean; fixedViewport?: boolean; changeOnClick?: boolean;
   contextFailure?: Error; warningAfterFailure?: boolean; offTopic?: boolean; successiveReels?: boolean } = {}) {
   const window = new Window({ width, height })
-  window.document.body.innerHTML = '<main><div style="overflow-y:auto;scroll-snap-type:y mandatory"><video id="previous"></video><video id="current"></video></div></main>'
+  window.document.body.innerHTML = '<main><div style="overflow-y:auto;scroll-snap-type:y mandatory"><section><video id="previous"></video></section><section><video id="current"></video></section></div></main>'
   const panel = window.document.querySelector('main > div')!
   const step = height - 96
   Object.defineProperties(panel, { clientHeight: { value: step }, scrollHeight: { value: step * 3 } })
@@ -130,6 +157,28 @@ test('off-topic reels can make browsing progress without any completed watches',
     assert.equal(budget.used.reels, 0)
     assert.ok(notes.some(note => note.event === 'automation.warmup.reel_off_topic'))
     assert.equal(notes.find(note => note.event === 'automation.reels_result')?.watchedCount, 0)
+  } finally { await f.window.happyDOM.close() }
+})
+
+for (const ad of [false, true]) test(`rejected Reels advance without dwell or pacing pauses (ad=${ad})`, async () => {
+  const f = reelAdvanceFixture(1024, 600, { offTopic: true })
+  const waits: number[] = [], decisions: number[] = []
+  const budget = new WarmupActivityBudget({ likes: 1, profiles: 0, reels: 0, stories: 0 })
+  if (ad) {
+    const link = f.window.document.createElement('a')
+    link.href = 'https://www.facebook.com/ads/ig_redirect/?d=example'
+    link.innerText = 'Visit website'
+    link.getBoundingClientRect = () => ({ width: 200, height: 48, top: 100, bottom: 148, left: 200, right: 400 }) as DOMRect
+    f.window.document.querySelector('#current')!.parentElement!.append(link)
+  }
+  f.session.wait = async ms => { waits.push(ms); f.session.check() }
+  try {
+    await watchReels(f.page, 1, { warmup_topics: ['Fishing'] }, () => {}, () => f.stats().clicks >= 1,
+      f.session.end, f.session, budget, async () => { decisions.push(1); return false })
+    assert.equal(f.stats().clicks, 1)
+    assert.deepEqual(waits, [100], 'only the frame-stability check can wait')
+    assert.equal(decisions.length, ad ? 0 : 1, 'ads skip before any AI request')
+    assert.equal(budget.used.reels, 0); assert.equal(budget.used.likes, 0)
   } finally { await f.window.happyDOM.close() }
 })
 
