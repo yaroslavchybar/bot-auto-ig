@@ -44,6 +44,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
           } : locator,
   } as unknown as Page;
   const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
+    browseLeadPosts: async () => {},
     searchProfile: async () => true,
     screenLead: async () => {
       calls.push('screen')
@@ -100,6 +101,51 @@ test('follow-first outreach never opens or sends a DM in the follow action', asy
   );
   assert.equal(s.result().sent, false);
 });
+
+for (const browseFirst of [true, false]) test(`lead post browsing runs ${browseFirst ? 'before' : 'after'} the authorized Follow`, async () => {
+  const s = setup('follow')
+  s.deps.random = (min, max) => min === 0 && max === 1 ? browseFirst ? 0 : 0.9 : min
+  s.deps.browseLeadPosts = async (page, username) => {
+    assert.equal(page, s.page); assert.equal(username, 'alice'); s.calls.push('lead-posts')
+  }
+  await s.run()
+  assert.ok(s.calls.includes('lead-posts'))
+  assert.equal(s.calls.indexOf('lead-posts') < s.calls.indexOf('authorize-follow'), browseFirst)
+  assert.ok(s.calls.indexOf('lead-posts') > s.calls.indexOf('screen-saved'))
+  assert.ok(!s.calls.includes('send'))
+  assert.equal(s.result().issue, undefined)
+})
+
+test('DM activity never invokes lead post browsing', async () => {
+  const s = setup('dm')
+  s.deps.browseLeadPosts = async () => { throw new Error('Only new lead Follow visits may browse posts') }
+  await s.run(); assert.ok(s.calls.includes('sent')); assert.equal(s.result().issue, undefined)
+})
+
+test('rejected leads never browse posts or Like them', async () => {
+  const s = setup('follow')
+  s.deps.finishScreening = async () => false
+  s.deps.browseLeadPosts = async () => { s.calls.push('lead-posts') }
+  await s.run(); assert.ok(!s.calls.includes('lead-posts')); assert.ok(!s.calls.includes('follow'))
+})
+
+for (const browseFirst of [true, false]) test(`optional lead post UI errors preserve Follow and the session (${browseFirst})`, async () => {
+  const s = setup('follow')
+  s.deps.random = (min, max) => min === 0 && max === 1 ? browseFirst ? 0 : 0.9 : min
+  s.deps.browseLeadPosts = async () => { s.calls.push('lead-posts'); throw new errors.TimeoutError('Viewer failed to close') }
+  await s.run()
+  assert.ok(s.calls.includes('follow')); assert.ok(s.calls.includes('record-follow'))
+  assert.equal(s.calls.filter(c => c === 'navigate').length, 2, 'recover the exact lead profile')
+  assert.equal(s.result().issue, undefined)
+})
+
+test('cancellation while browsing a lead prevents subsequent Follow authorization', async () => {
+  const s = setup('follow')
+  let stopped = false
+  s.deps.browseLeadPosts = async () => { stopped = true; throw new SessionEnded('Stopped') }
+  await s.run(() => stopped)
+  assert.ok(!s.calls.includes('authorize-follow')); assert.ok(!s.calls.includes('follow'))
+})
 
 test('saved interest interpretations reach browsing, and clearing tags does not restore old topics', async () => {
   for (const interests of [

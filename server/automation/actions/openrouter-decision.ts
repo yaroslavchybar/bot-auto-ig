@@ -1,7 +1,7 @@
 import { currentLogScope, logOperation } from '../../shared/logger.js'
 
 type Request = {
-  kind: 'lead' | 'topic'
+  kind: 'lead' | 'topic' | 'lead_post'
   model: string
   screenshot: Buffer
   timeout: number

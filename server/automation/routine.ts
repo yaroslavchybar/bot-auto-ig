@@ -33,6 +33,7 @@ import { isTemporaryUiError } from './actions/ui-errors.js'
 import { logOperation } from '../shared/logger.js'
 import { DecisionRefusedError } from './actions/openrouter-decision.js'
 import { beginSessionDecision } from './actions/session-decision.js'
+import { browseLeadPosts } from './actions/lead-posts.js'
 
 const dependencies = {
   ready: routineReady,
@@ -62,6 +63,7 @@ const dependencies = {
   screenLead,
   finishScreening: routineFinishScreening,
   searchProfile: openProfileThroughSearch,
+  browseLeadPosts,
 };
 
 /** Check membership at action boundaries; live subscriptions stop active work. */
@@ -273,9 +275,29 @@ export async function runRoutineSession(
                   })
                   if (!accepted || shouldStop()) return shouldStop() ? 'unavailable' : 'blocked'
                   followsRemaining = Math.max(0, followsRemaining - 1)
+                  const browsePosts = async () => {
+                    try {
+                      await timed('leadPosts', () => deps.browseLeadPosts(page, attempt.username,
+                        new BrowseSession(deadline, shouldStop), log))
+                    } catch (error) {
+                      if (shouldStop()) return
+                      await check()
+                      if (!(error instanceof SessionEnded) && !isTemporaryUiError(error)) throw error
+                      log({ event: 'automation.lead_posts.skipped', targetUsername: attempt.username, error })
+                      // Restore the exact recipient if a viewer failed to close or navigation changed.
+                      await page.goto(`https://www.instagram.com/${attempt.username}/`, {
+                        waitUntil: 'domcontentloaded', timeout: timeout(15_000),
+                      })
+                    }
+                    await check()
+                  }
+                  const browseFirst = deps.random(0, 1) < 0.5
+                  if (browseFirst) await browsePosts()
+                  if (shouldStop()) return 'unavailable'
                   const followed = await timed('follow', () => followIfNeeded(attempt.leadId, attempt.date, () => { followAttempted = true; }));
                   scope.add({ followed });
                   log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
+                  if (!browseFirst && followed && !shouldStop()) await browsePosts()
                   return followed ? 'followed' : 'blocked';
                 }
                 if (!(await isFollowing(page)) || !(await deps.followsUs(page, username))) {

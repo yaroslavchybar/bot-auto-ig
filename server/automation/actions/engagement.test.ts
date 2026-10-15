@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
-import { engagePost, liveLikeSelector } from './engagement.js'
+import { engagePost, likePost, liveLikeSelector } from './engagement.js'
 import { Window } from 'happy-dom'
 import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import { BrowseSession, SessionEnded } from './session.js'
@@ -57,8 +57,29 @@ function likeFixture(options: { path?: string; alreadyLiked?: boolean; missing?:
         budget, session, note => notes.push(note), async () => options.related !== false, undefined, likeOnly)
     } finally { Math.random = originalRandom }
   }
-  return { run, calls, notes, budget, liked: () => liked }
+  return { run, calls, notes, budget, page, target, session, liked: () => liked }
 }
+
+test('lead Like input always clicks without a budget or random roll, and still skips already-liked content', async () => {
+  const fixture = likeFixture(), originalRandom = Math.random
+  Math.random = () => 0.999
+  try {
+    fixture.budget.used.likes = 500
+    await likePost(fixture.page, fixture.target, undefined, fixture.session, () => {}, 100)
+    await likePost(fixture.page, fixture.target, undefined, fixture.session, () => {}, 100)
+    assert.deepEqual(fixture.calls, ['Like'])
+    assert.equal(fixture.budget.used.likes, 500, 'lead outreach is independent of the browsing Like budget')
+  } finally { Math.random = originalRandom }
+})
+
+test('a lead post identity change during cursor movement prevents Like input', async () => {
+  const fixture = likeFixture()
+  let checks = 0
+  await assert.rejects(likePost(fixture.page, fixture.target, undefined, fixture.session, () => {}, 100, async () => {
+    if (++checks === 2) throw new errors.TimeoutError('Lead post changed')
+  }), /Lead post changed/)
+  assert.deepEqual(fixture.calls, [])
+})
 
 for (const path of ['/', '/reels/current/']) test('likes use one live Like-button click on ' + path, async () => {
   const fixture = likeFixture({ path })
