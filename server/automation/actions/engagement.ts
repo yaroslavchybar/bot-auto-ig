@@ -1,7 +1,7 @@
 import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
+import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import { nativeDoubleClickFor, type NativeDoubleClick } from '../../browser/desktopPointer.js'
-import { isTransientDomIssue } from '../../shared/domErrors.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { engagementMatches, type FeedPostContext } from '../../shared/warmupTopics.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
@@ -12,13 +12,26 @@ import { BrowseSession, SessionEnded } from './session.js'
 import { visitAuthorProfile } from './profiles.js'
 import { isInstagramHome } from './navigation.js'
 import { random, type ActionLogger } from './shared.js'
+import { isTemporaryUiError } from './ui-errors.js'
 
 const control = (target: Locator, label: string) => target.locator(
   `button:has(svg[aria-label="${label}"]), [role="button"]:has(svg[aria-label="${label}"])`).first()
 
-/** Native input needs a final hit test after Cloak moves onto the pinned Reel. */
-async function nativeReelDoubleTap(page: Page, surface: Locator, target: Locator,
-  session: BrowseSession, doubleClick: NativeDoubleClick): Promise<boolean> {
+/** A single CSS selector works with Cloak and stops matching if Like becomes Unlike. */
+export function liveLikeSelector(button: Element): string {
+  if (!button.isConnected) throw new Error('Action target is detached or missing')
+  const path: string[] = []
+  for (let node: Element | null = button; node; node = node.parentElement) {
+    let index = 1
+    for (let sibling = node.previousElementSibling; sibling; sibling = sibling.previousElementSibling) index++
+    path.unshift(`${node.localName}:nth-child(${index})`)
+  }
+  return `${path.join(' > ')}:has(svg[aria-label="Like"])`
+}
+
+/** Move inside the visible video, then hit-test its player before issuing two left clicks. */
+async function reelDoubleTap(page: Page, surface: Locator, target: Locator,
+  session: BrowseSession, doubleClick?: NativeDoubleClick): Promise<boolean> {
   const deadline = Date.now() + session.timeout(15_000), url = page.url()
   const remaining = () => {
     const time = deadline - Date.now()
@@ -29,19 +42,31 @@ async function nativeReelDoubleTap(page: Page, surface: Locator, target: Locator
   if (!element) throw new errors.TimeoutError('Reel double-tap target is missing')
   try {
     const box = await element.boundingBox()
-    if (!box) throw new errors.TimeoutError('Reel double-tap target is hidden')
-    const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const video = target.locator('video').first()
+    const videoBox = await video.boundingBox({ timeout: remaining() })
+    if (!box || !videoBox) throw new errors.TimeoutError('Reel double-tap target is hidden')
+    const viewport = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+    const left = Math.max(0, box.x, videoBox.x), top = Math.max(0, box.y, videoBox.y)
+    const right = Math.min(viewport.width, box.x + box.width, videoBox.x + videoBox.width)
+    const bottom = Math.min(viewport.height, box.y + box.height, videoBox.y + videoBox.height)
+    if (right <= left || bottom <= top) throw new errors.TimeoutError('Reel video is outside the viewport')
+    const point = { x: (left + right) / 2, y: (top + bottom) / 2 }
     // Cloak's handle hover picks its own point; move to the exact native click point instead.
     remaining()
     await page.mouse.move(point.x, point.y)
     session.check(); await assertInstagramReady(page)
     if (await control(target, 'Unlike').isVisible() || !await control(target, 'Like').isVisible()) return false
-    const ready = page.url() === url && await element.evaluate((node, point) => {
+    const currentVideoBox = await video.boundingBox({ timeout: remaining() })
+    const ready = page.url() === url && currentVideoBox && point.x > currentVideoBox.x &&
+      point.x < currentVideoBox.x + currentVideoBox.width && point.y > currentVideoBox.y &&
+      point.y < currentVideoBox.y + currentVideoBox.height && await element.evaluate((node, point) => {
       const hit = node.ownerDocument.elementFromPoint(point.x, point.y)
       return node.isConnected && hit !== null && node.contains(hit)
     }, point)
     if (!ready) throw new errors.TimeoutError('Reel double-tap target moved or is covered')
-    await doubleClick(point.x, point.y, remaining())
+    const timeout = remaining()
+    if (doubleClick) await doubleClick(point.x, point.y, timeout)
+    else await page.mouse.dblclick(point.x, point.y, { button: 'left', delay: random(80, 140) })
     return true
   } finally { await element.dispose().catch(() => {}) }
 }
@@ -60,41 +85,45 @@ export async function engagePost(page: Page, target: Locator,
       if (error instanceof SessionEnded) throw error
       session.check()
       await assertInstagramReady(page)
-      if (!(error instanceof errors.TimeoutError) && !isTransientDomIssue(error)) throw error
+      if (!isTemporaryUiError(error) && !(error instanceof UnsupportedHumanizeSelectorError)) throw error
       log({ event: 'automation.engagement.action_skipped', action, error })
     }
   }
   await optional('like', async () => {
     if (budget.remaining('likes') && !await target.locator('svg[aria-label="Unlike"]').count()) {
+      if (/\/reels\//.test(page.url()) && !likeSurface) {
+        log({ event: 'automation.engagement.action_skipped', action: 'like', reason: 'video_player_unavailable' })
+        return
+      }
       const like = control(target, 'Like')
       const surface = likeSurface ?? like
       if (await surface.isVisible() && await revealForClick(page, surface, session)) {
         session.check(); await assertInstagramReady(page)
         if (budget.take('likes')) {
           if (likeSurface) {
-            if (nativeDoubleClick) {
-              if (!await nativeReelDoubleTap(page, surface, target, session, nativeDoubleClick)) return
-            } else {
-              await (await actionLocator(surface, session.timeout(15_000))).dblclick({ timeout: session.timeout(15_000) })
-            }
-            // Some web Reels layouts only toggle playback on double-click. Confirm before falling back.
+            if (!await reelDoubleTap(page, surface, target, session, nativeDoubleClick)) return
             const liked = await control(target, 'Unlike').waitFor({ state: 'visible', timeout: session.timeout(2000) })
               .then(() => true, error => { if (error instanceof errors.TimeoutError) return false; throw error })
             if (liked) { log({ event: 'automation.engagement.liked', method: nativeDoubleClick ? 'native_double_tap' : 'double_tap' }); return }
             session.check(); await assertInstagramReady(page)
-            if (await control(target, 'Unlike').isVisible() || !await like.isVisible()) return
+            if (await control(target, 'Unlike').isVisible()) return
+            log({ event: 'automation.engagement.action_skipped', action: 'like', method: nativeDoubleClick ? 'native_double_tap' : 'double_tap',
+              reason: 'like_not_confirmed' })
+            return
           }
           const timeout = session.timeout(15_000), deadline = Date.now() + timeout
           await (await actionLocator(like, timeout)).hover({ timeout })
           session.check(); await assertInstagramReady(page)
           if (await control(target, 'Unlike').isVisible() || !await like.isVisible()) return
+          // Resolve a fresh Like through one CSS selector; Cloak rejects the original chained locator.
+          const selector = await like.evaluate(liveLikeSelector, undefined, { timeout: session.timeout(Math.max(1, deadline - Date.now())) })
           const remaining = deadline - Date.now()
           if (remaining <= 0) throw new errors.TimeoutError('Like click timed out while moving to its target')
           // Resolve Like again after hovering; a pinned handle could now be Unlike.
           const clickOptions = { timeout: session.timeout(remaining), human_config: { scroll_target_zone: [0, 1] } }
-          await like.click(clickOptions)
+          await page.locator(selector).click(clickOptions)
           await control(target, 'Unlike').waitFor({ state: 'visible', timeout: session.timeout(2000) })
-          log({ event: 'automation.engagement.liked' })
+          log({ event: 'automation.engagement.liked', method: 'like_button' })
         }
       } else log({ event: 'automation.engagement.action_skipped', action: 'like', reason: 'target_unavailable' })
     }

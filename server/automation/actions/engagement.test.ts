@@ -3,18 +3,24 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
-import { engagePost } from './engagement.js'
+import { engagePost, liveLikeSelector } from './engagement.js'
+import { Window } from 'happy-dom'
+import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import { BrowseSession, SessionEnded } from './session.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 
 function likeFixture(options: { doubleTapLikes?: boolean; failure?: Error; warning?: string; slowMovement?: () => void;
   native?: boolean; covered?: boolean; navigated?: boolean; nativeFailure?: Error;
+  missingSurface?: boolean; videoBox?: { x: number; y: number; width: number; height: number };
   lateLike?: 'after-confirmation' | 'during-hover' | 'before-live-click' } = {}) {
   let liked = false, failed = false, confirmationExpired = false
   let hovered = false
+  let reels = false
   const calls: string[] = [], notes: Record<string, unknown>[] = []
   const makeControl = (label: string) => ({
     ...visibleActionGeometry, first() { return this },
+    evaluate: async (fn: (node: Element) => unknown) => fn === liveLikeSelector
+      ? 'button:has(svg[aria-label="Like"])' : visibleActionGeometry.evaluate(fn),
     count: async () => label === 'Unlike' ? Number(liked) : 1,
     isVisible: async () => label === 'Unlike' ? liked : options.lateLike === 'after-confirmation' || !liked,
     waitFor: async () => { if (!liked) { confirmationExpired = true; throw new errors.TimeoutError('Like was not confirmed') } },
@@ -41,44 +47,53 @@ function likeFixture(options: { doubleTapLikes?: boolean; failure?: Error; warni
       dblclick: async () => { calls.push('double-tap'); liked = options.doubleTapLikes === true },
     }),
   })
-  const target = { locator: (selector: string) => makeControl(selector.match(/aria-label="(\w+)"/)![1]!) } as unknown as Locator
+  const videoBox = options.videoBox ?? { x: 100, y: 100, width: 40, height: 40 }
+  const target = { locator: (selector: string) => selector === 'video'
+    ? { first() { return this }, boundingBox: async () => videoBox }
+    : makeControl(selector.match(/aria-label="(\w+)"/)![1]!) } as unknown as Locator
   const surface = makeControl('video') as unknown as Locator
-  const page = { url: () => `https://www.instagram.com/reels/${hovered && options.navigated ? 'next' : 'current'}/`,
+  const point = { x: (Math.max(0, 100, videoBox.x) + Math.min(1280, 140, videoBox.x + videoBox.width)) / 2,
+    y: (Math.max(0, 100, videoBox.y) + Math.min(800, 140, videoBox.y + videoBox.height)) / 2 }
+  const page = { url: () => reels ? `https://www.instagram.com/reels/${hovered && options.navigated ? 'next' : 'current'}/` : 'https://www.instagram.com/',
     mouse: { move: async (x: number, y: number) => {
-      assert.deepEqual({ x, y }, { x: 120, y: 120 })
+      assert.deepEqual({ x, y }, point)
       hovered = true
       options.slowMovement?.()
       if (options.lateLike === 'during-hover') liked = true
       if (options.failure) { failed = true; throw options.failure }
+    }, dblclick: async (x: number, y: number, options_: { button: string }) => {
+      assert.equal(hovered, true); assert.deepEqual({ x, y }, point); assert.equal(options_.button, 'left')
+      calls.push('double-tap'); liked = options.doubleTapLikes === true
     } },
     viewportSize: () => ({ width: 1280, height: 800 }),
-    locator: () => ({ filter: () => ({ evaluateAll: async () => {
+    locator: (selector: string) => selector === 'button:has(svg[aria-label="Like"])' ? makeControl('Like') : ({ filter: () => ({ evaluateAll: async () => {
       if (confirmationExpired && options.lateLike === 'after-confirmation') liked = true
       return failed ? options.warning ?? null : null
     } }) }),
   } as unknown as Page
   const budget = new WarmupActivityBudget({ likes: 1, saves: 0, comments: 0, profiles: 0, reels: 1, stories: 0 })
   const session = new BrowseSession(Date.now() + 60_000)
-  const run = (doubleTap = false) => engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'],
-    budget, session, note => notes.push(note), async () => true, doubleTap ? surface : undefined, undefined,
+  const run = (doubleTap = false) => { reels = doubleTap; return engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'],
+    budget, session, note => notes.push(note), async () => true, doubleTap && !options.missingSurface ? surface : undefined, undefined,
     options.native ? async (x, y, timeout) => {
       assert.equal(hovered, true, 'Cloak must move before native input')
-      assert.deepEqual({ x, y }, { x: 120, y: 120 })
+      assert.deepEqual({ x, y }, point)
       assert.ok(timeout > 0 && timeout <= 15_000)
       if (options.nativeFailure) throw options.nativeFailure
       calls.push('native-double-tap'); liked = options.doubleTapLikes === true
-    } : undefined)
+    } : undefined) }
   return { run, calls, notes, budget, session, liked: () => liked }
 }
 
-for (const doubleTapLikes of [true, false]) test(`native Reel double-tap confirms or falls back once (${doubleTapLikes})`, async () => {
+for (const doubleTapLikes of [true, false]) test(`native Reel double-tap never falls back to the Like button (${doubleTapLikes})`, async () => {
   const fixture = likeFixture({ native: true, doubleTapLikes })
   await fixture.run(true)
-  assert.deepEqual(fixture.calls, doubleTapLikes ? ['native-double-tap'] : ['native-double-tap', 'Like'])
+  assert.deepEqual(fixture.calls, ['native-double-tap'])
   assert.equal(fixture.budget.used.likes, 1)
   if (doubleTapLikes) assert.equal(fixture.notes[0]?.method, 'native_double_tap')
+  if (!doubleTapLikes) assert.equal(fixture.notes[0]?.reason, 'like_not_confirmed')
   await fixture.run(true)
-  assert.equal(fixture.calls.length, doubleTapLikes ? 1 : 2)
+  assert.equal(fixture.calls.length, 1)
 })
 
 test('native double-tap never clicks a Reel that became liked during hover', async () => {
@@ -102,28 +117,28 @@ test('uncertain native double-tap input is never retried with a Like click', asy
 })
 
 for (const lateLike of ['after-confirmation', 'during-hover', 'before-live-click'] as const)
-  test(`a late double-tap like is never undone (${lateLike})`, async () => {
+  test(`a late double-tap like never receives a Like-button click (${lateLike})`, async () => {
     const originalRandom = Math.random
     Math.random = () => 0
     try {
       const fixture = likeFixture({ lateLike })
       await fixture.run(true)
-      assert.deepEqual(fixture.calls, ['double-tap'])
-      assert.equal(fixture.liked(), true)
+      assert.deepEqual(fixture.calls, lateLike === 'during-hover' ? [] : ['double-tap'])
+      assert.equal(fixture.liked(), lateLike !== 'before-live-click')
       assert.equal(fixture.budget.used.likes, 1)
     } finally { Math.random = originalRandom }
   })
 
-for (const doubleTapLikes of [true, false]) test(`Reels double-tap confirms the like or falls back once (${doubleTapLikes})`, async () => {
+for (const doubleTapLikes of [true, false]) test(`Reels double-tap confirms or skips without a button click (${doubleTapLikes})`, async () => {
   const originalRandom = Math.random
   Math.random = () => 0
   try {
     const fixture = likeFixture({ doubleTapLikes })
     await fixture.run(true)
-    assert.deepEqual(fixture.calls, doubleTapLikes ? ['double-tap'] : ['double-tap', 'Like'])
+    assert.deepEqual(fixture.calls, ['double-tap'])
     assert.equal(fixture.budget.used.likes, 1, 'both input methods share one attempt')
     await fixture.run(true)
-    assert.equal(fixture.calls.length, doubleTapLikes ? 1 : 2, 'never double-tap an already-liked reel')
+    assert.equal(fixture.calls.length, 1, 'never double-tap an already-liked reel')
   } finally { Math.random = originalRandom }
 })
 
@@ -135,6 +150,50 @@ test('Home feed keeps its single Like click even when double-tap is supported', 
     await fixture.run()
     assert.deepEqual(fixture.calls, ['Like'])
   } finally { Math.random = originalRandom }
+})
+
+test('a missing Reels player never falls back to its Like button', async () => {
+  const fixture = likeFixture({ missingSurface: true, native: true })
+  await fixture.run(true)
+  assert.deepEqual(fixture.calls, [])
+  assert.equal(fixture.budget.used.likes, 0)
+  assert.equal(fixture.notes[0]?.reason, 'video_player_unavailable')
+})
+
+for (const native of [false, true]) test(`Reel double-clicks stay inside the video even when its player is larger (native=${native})`, async () => {
+  const fixture = likeFixture({ native, doubleTapLikes: true, videoBox: { x: 125, y: 130, width: 100, height: 150 } })
+  await fixture.run(true)
+  assert.deepEqual(fixture.calls, [native ? 'native-double-tap' : 'double-tap'])
+})
+
+test('a video outside its player cannot receive a double-click', async () => {
+  const fixture = likeFixture({ native: true, videoBox: { x: 300, y: 300, width: 100, height: 150 } })
+  await fixture.run(true)
+  assert.deepEqual(fixture.calls, [])
+  assert.equal(fixture.notes[0]?.event, 'automation.engagement.action_skipped')
+})
+
+test('an unsupported optional engagement selector is logged without ending browsing', async () => {
+  const fixture = likeFixture({ failure: new UnsupportedHumanizeSelectorError('chained >> Like') })
+  await fixture.run()
+  assert.deepEqual(fixture.calls, [])
+  assert.equal(fixture.notes[0]?.action, 'like')
+})
+
+test('the Home Like selector is one CSS path and stops matching after the button becomes Unlike', async () => {
+  const window = new Window()
+  try {
+    window.document.body.innerHTML = '<main><article><button><svg aria-label="Like"></svg></button></article>' +
+      '<article><p>Caption</p><button><svg aria-label="Like"></svg></button></article></main>'
+    const selected = window.document.querySelectorAll('button')[1]!
+    const selector = liveLikeSelector(selected as unknown as Element)
+    assert.ok(!selector.includes('>>'))
+    assert.equal(window.document.querySelector(selector), selected)
+    selected.querySelector('svg')!.setAttribute('aria-label', 'Unlike')
+    assert.equal(window.document.querySelectorAll(selector).length, 0)
+    selected.remove()
+    assert.throws(() => liveLikeSelector(selected as unknown as Element), /detached or missing/)
+  } finally { await window.happyDOM.close() }
 })
 
 for (const native of [false, true]) test(`a six-second cursor movement has time to complete the Reels double-tap (native=${native})`, async () => {
@@ -234,6 +293,8 @@ test('engagement pins the post controls, shares its cap, and reads comments with
     const calls: string[] = []
     const makeControl = (label: string) => ({
       ...visibleActionGeometry,
+      evaluate: async (fn: (node: Element) => unknown) => fn === liveLikeSelector
+        ? 'button:has(svg[aria-label="Like"])' : visibleActionGeometry.evaluate(fn),
       first() { return this }, count: async () => label === 'Unlike' ? Number(liked) : 1,
       isVisible: async () => label === 'Unlike' ? liked : label === 'Save' ? !saved : true,
       boundingBox: async () => ({ x: 100, y: 100, width: 30, height: 30 }),
@@ -255,7 +316,8 @@ test('engagement pins the post controls, shares its cap, and reads comments with
     const dialogs = { filter() { return this }, count: async () => Number(commentsOpen), last: () => panel }
     const page = {
       url: () => 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
-      locator: () => ({ filter: () => ({ evaluateAll: async () => null }) }),
+      locator: (selector: string) => selector === 'button:has(svg[aria-label="Like"])' ? makeControl('Like')
+        : ({ filter: () => ({ evaluateAll: async () => null }) }),
       getByRole: (role: string) => { assert.equal(role, 'dialog'); return dialogs },
       mouse: { move: async () => {}, wheel: async () => { calls.push('scroll-comments') } },
       keyboard: { press: async (key: string) => { assert.equal(key, 'Escape'); commentsOpen = false } },

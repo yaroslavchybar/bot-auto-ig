@@ -277,8 +277,7 @@ export async function watchReels(
     if (viewed && numeric(config.warmup_day, 1) >= 2 && budget) {
       // Instagram renders the player overlay beside the video, not around it.
       const surface = post.locator('[role="group"][aria-label="Video player"]').first()
-      await engagePost(page, post, context, topics, budget, session, log, matchesTopic,
-        await surface.isVisible() ? surface : undefined)
+      await engagePost(page, post, context, topics, budget, session, log, matchesTopic, surface)
     }
     if (viewed) watched++
     await assertInstagramReady(page)

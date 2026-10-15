@@ -13,7 +13,7 @@ test('disabled reels never access the browser', async () => {
 })
 
 for (const player of ['sibling', 'ancestor', 'missing'] as const)
-  test(`matched Reel likes use the current ${player} player or its Like-button fallback`, async () => {
+  test(`matched Reel likes double-click only the current ${player} player and never its Like button`, async () => {
     const window = new Window(), originalNow = Date.now
     let now = originalNow(), doubleTaps = 0, buttonClicks = 0
     const started = now
@@ -25,6 +25,7 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
       <button><svg aria-label="Like"></svg></button></div>
       <div id="neighbor"><video></video>${overlay}<button><svg aria-label="Unlike"></svg></button></div></main>`
     const current = window.document.querySelector('#current-reel')!
+    window.document.elementFromPoint = () => current.querySelector('[aria-label="Video player"]')
     const video = current.querySelector('video')!
     Object.defineProperties(video, { duration: { value: 2 }, currentTime: { get: () => (now - started) / 1000 },
       paused: { value: false }, ended: { value: false } })
@@ -41,6 +42,7 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
       waitFor: async () => { assert.ok(resolve(), 'the Like must be confirmed as Unlike') },
       click: async () => { buttonClicks++; like(resolve() as unknown as Element) },
       elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
+        evaluate: async (fn: (node: Element, point: unknown) => unknown, point: unknown) => fn(resolve() as unknown as Element, point),
         dblclick: async () => { doubleTaps++; like(resolve() as unknown as Element) } }),
     }) as unknown as Locator
     const post = locator(() => current)
@@ -55,6 +57,9 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
       evaluate: async (fn: (node: Element) => unknown) => fn(video as unknown as Element),
     }
     const page = { url: () => 'https://www.instagram.com/reels/current/',
+      mouse: { move: async () => {}, dblclick: async (_x: number, _y: number, options: { button: string }) => {
+        assert.equal(options.button, 'left'); doubleTaps++; like(current.querySelector('[aria-label="Video player"]') as unknown as Element)
+      } },
       viewportSize: () => ({ width: 1280, height: 800 }),
       locator: (selector: string) => selector === 'video' ? { count: async () => 1, nth: () => target }
         : { filter: () => ({ evaluateAll: async () => null }) },
@@ -65,10 +70,10 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
     try {
       await watchReels(page, 1, { warmup_day: 2, warmup_topics: ['fitness'] }, () => {}, () => false,
         session.end, session, budget, async () => true)
-      assert.equal(budget.used.likes, 1)
+      assert.equal(budget.used.likes, player === 'missing' ? 0 : 1)
       assert.equal(doubleTaps, player === 'missing' ? 0 : 1)
-      assert.equal(buttonClicks, player === 'missing' ? 1 : 0)
-      assert.equal(current.querySelector('svg')!.getAttribute('aria-label'), 'Unlike')
+      assert.equal(buttonClicks, 0)
+      assert.equal(current.querySelector('svg')!.getAttribute('aria-label'), player === 'missing' ? 'Like' : 'Unlike')
       assert.equal(window.document.querySelector('#neighbor svg')!.getAttribute('aria-label'), 'Unlike')
     } finally { Date.now = originalNow; await window.happyDOM.close() }
   })
