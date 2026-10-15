@@ -14,6 +14,28 @@ import { backToFeed } from './navigation.js'
 import { openAuthorProfile, openOwnProfile } from './profiles.js'
 import { watchStories } from './stories.js'
 
+test('revealing a grid tile uses viewport bounds after the document has scrolled', async () => {
+  const window = new Window({ width: 1280, height: 800 })
+  try {
+    const document = window.document, root = document.documentElement
+    document.body.innerHTML = '<a href="/alice/reel/top/">Top Reel</a>'
+    root.style.overflowY = 'scroll'
+    Object.defineProperties(root, { clientHeight: { value: 800 }, scrollHeight: { value: 3000 } })
+    let offset = 1200, wheels = 0
+    root.getBoundingClientRect = () => ({ top: -offset, bottom: 800 - offset, left: 0, right: 1280 }) as DOMRect
+    const target = { boundingBox: async () => ({ x: 200, y: 800 - offset, width: 300, height: 500 }),
+      evaluate: async (fn: (node: Element) => unknown) => fn(document.querySelector('a')! as unknown as Element) }
+    const page = { viewportSize: () => ({ width: 1280, height: 800 }), mouse: {
+      move: async () => {}, wheel: async (_x: number, y: number) => { wheels++; offset += y },
+    } } as unknown as Page
+    const session = new BrowseSession(Date.now() + 60_000)
+    session.wait = async () => { session.check() }
+    assert.equal(await revealForClick(page, target as unknown as Locator, session), true)
+    assert.ok(wheels > 0)
+    assert.ok(offset < 1200)
+  } finally { await window.happyDOM.close() }
+})
+
 test('fast skips keep an eased wheel glide, cover the post, and use less time', async () => {
   const originalRandom = Math.random
   Math.random = () => 0.5

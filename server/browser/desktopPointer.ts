@@ -1,6 +1,6 @@
 import WebSocket from 'ws'
 import { patchContext, resolveConfig } from 'cloakbrowser/human'
-import type { BrowserContext, Page } from 'playwright-core'
+import type { BrowserContext, CDPSession, Page } from 'playwright-core'
 import { runtimeHeaders, runtimeUrl } from '../shared/runtime.js'
 import type { Display } from './display.js'
 
@@ -18,6 +18,37 @@ export function nativeWheelFor(page: Page): NativeWheel | undefined { return nat
 export function nativeDoubleClickFor(page: Page): NativeDoubleClick | undefined { return nativeDoubleClicks.get(page) }
 export function nativeBackFor(page: Page): NativeBack | undefined { return nativeBacks.get(page) }
 export function desktopCursorFor(page: Page): Readonly<{ x: number; y: number }> | undefined { return desktopCursors.get(page) }
+
+/** X11 uses the real side button; local/headless Chromium receives the same Back button through CDP. */
+export function mouseBackFor(page: Page): NativeBack {
+  return nativeBackFor(page) ?? (async timeout => {
+    const deadline = Date.now() + timeout
+    let pending: Promise<CDPSession> | undefined, cdp: CDPSession
+    try {
+      cdp = await beforeInputDeadline(() => pending = page.context().newCDPSession(page), deadline)
+    } catch (error) {
+      void pending?.then(session => session.detach()).catch(() => {})
+      throw error
+    }
+    const viewport = page.viewportSize() ?? { width: 800, height: 600 }
+    const { x, y } = desktopCursorFor(page) ?? { x: viewport.width / 2, y: viewport.height / 2 }
+    let pressed = false
+    try {
+      await beforeInputDeadline(() => {
+        if (Date.now() >= deadline) throw new Error('Native input deadline ended')
+        pressed = true
+        return cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'back', buttons: 8, clickCount: 1 })
+      }, deadline)
+    } finally {
+      try {
+        // Queue release even after an uncertain press; never leave a held side button.
+        if (pressed) await beforeInputDeadline(() => cdp.send('Input.dispatchMouseEvent', {
+          type: 'mouseReleased', x, y, button: 'back', buttons: 0, clickCount: 1,
+        }), Date.now() + 5000)
+      } finally { void cdp.detach().catch(() => {}) }
+    }
+  })
+}
 
 // Race each CDP wait against the same deadline; late results cannot resume input.
 function beforeInputDeadline<T>(start: () => Promise<T>, deadline: number): Promise<T> {

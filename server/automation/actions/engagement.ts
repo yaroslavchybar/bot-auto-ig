@@ -2,7 +2,7 @@ import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
-import { engagementMatches, type FeedPostContext } from '../../shared/warmupTopics.js'
+import { engagementMatches, feedPostContext, type FeedPostContext } from '../../shared/warmupTopics.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { actionLocator } from './action-locator.js'
 import { revealForClick, scrollModal } from './scroll.js'
@@ -31,7 +31,7 @@ export function liveLikeSelector(button: Element): string {
 export async function engagePost(page: Page, target: Locator,
   context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[], budget: WarmupActivityBudget,
   session: BrowseSession, log: ActionLogger, matchesTopic: TopicMatcher = topicContentMatches,
-  visit: typeof visitAuthorProfile = visitAuthorProfile): Promise<void> {
+  visit: typeof visitAuthorProfile = visitAuthorProfile, likeOnly = false): Promise<void> {
   const related = topics.length > 0 && await matchesTopic(context, topics, session, log, target)
   if (!engagementMatches(context, topics, related)) return
   const optional = async (action: string, perform: () => Promise<void>) => {
@@ -78,6 +78,7 @@ export async function engagePost(page: Page, target: Locator,
       } else log({ event: 'automation.engagement.action_skipped', action: 'like', reason: 'target_unavailable' })
     }
   })
+  if (likeOnly) return
   await optional('save', async () => {
     if (budget.remaining('saves')) {
       const save = control(target, 'Save')
@@ -117,8 +118,12 @@ export async function engagePost(page: Page, target: Locator,
   })
   await optional('profile', async () => {
     // Explore dialogs return to their grid; Home/Reels can visit this matched post's author.
-    if (!budget.remaining('profiles') || session.end - Date.now() < 15_000 ||
+    if (!budget.remaining('profiles') || session.end - Date.now() < 30_000 ||
       (!isInstagramHome(page) && !/\/reels\//.test(page.url()))) return
-    if (budget.take('profiles')) await visit(page, target, log, session)
+    if (budget.take('profiles')) await visit(page, target, log, session, undefined, async (article, visiting) => {
+      budget.browsed++; budget.used.reels++
+      const context = await article.evaluate(feedPostContext)
+      await engagePost(page, article, context, topics, budget, visiting, log, matchesTopic, visit, true)
+    })
   })
 }

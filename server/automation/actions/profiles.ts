@@ -2,11 +2,12 @@ import type { Locator, Page } from 'playwright-core'
 import { BrowseSession, SessionEnded } from './session.js'
 import { random, type ActionLogger } from './shared.js'
 import { isUserHref, PROFILE_URL } from './guards.js'
-import { revealForClick, smoothScroll } from './scroll.js'
+import { revealForClick } from './scroll.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { clickAction, clickLiveAction } from './action-locator.js'
-import { nativeBackFor, type NativeBack } from '../../browser/desktopPointer.js'
+import { mouseBackFor, type NativeBack } from '../../browser/desktopPointer.js'
 import { isTemporaryUiError } from './ui-errors.js'
+import { watchProfileReels, type ProfileReelEngagement } from './profile-reels.js'
 
 const AUTHOR_PROFILE_URL = /instagram\.com\/[A-Za-z0-9._]+\/(?:reels\/)?$/
 
@@ -56,38 +57,40 @@ export async function openOwnProfile(page: Page, log: ActionLogger, session = ne
 
 /** A brief visit to the matched author, returning to the exact content route. */
 export async function visitAuthorProfile(page: Page, target: Locator, log: ActionLogger,
-  parent: BrowseSession, back: NativeBack | undefined = nativeBackFor(page)): Promise<void> {
-  const session = new BrowseSession(Math.min(parent.end - 5000, Date.now() + 20_000), () => parent.stopped())
+  parent: BrowseSession, back: NativeBack = mouseBackFor(page), engage?: ProfileReelEngagement): Promise<void> {
+  const session = new BrowseSession(Math.min(parent.end - 7500, Date.now() + 120_000), () => parent.stopped())
   session.wait = async ms => { await parent.wait(session.timeout(ms)); session.check() }
   const previous = page.url()
-  let opened = false
+  let opened = false, enteredProfile = '', switchedTab = false
   try {
     opened = await openAuthorProfile(page, target, session)
     if (!opened) return
+    enteredProfile = page.url()
     await assertInstagramReady(page, session)
     await page.locator('main header').waitFor({ state: 'visible', timeout: session.timeout(5000) })
     await session.wait(random(2000, 4000))
-    // Browse the author's grid without opening another route, so one Back restores this Reel.
-    const grid = page.locator('main a[href*="/p/"], main a[href*="/reel/"]').first()
-    let scrolls = 0
-    if (await grid.isVisible()) {
-      const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
-      await page.mouse.move(viewport.width * random(0.45, 0.7), viewport.height * random(0.4, 0.65))
-      for (let i = 0, count = Math.floor(random(2, 4)); i < count; i++) {
-        await smoothScroll(page, random(250, 500), session)
-        scrolls++
-        await session.wait(random(1500, 3000))
+    if (!new URL(enteredProfile).pathname.endsWith('/reels/')) {
+      const href = `${new URL(enteredProfile).pathname.replace(/\/$/, '')}/reels/`
+      const tab = page.locator(`main a[href="${href}"]`).first()
+      if (await tab.isVisible()) {
+        await clickLiveAction(page, tab, session)
+        switchedTab = true
+        await page.waitForURL(new URL(href, enteredProfile).href, { waitUntil: 'commit', timeout: session.timeout(5000) })
       }
     }
-    log({ event: 'automation.engagement.profile_visited', scrolls })
+    const result = await watchProfileReels(page, session, parent, log, engage)
+    log({ event: 'automation.engagement.profile_visited', ...result })
   } catch (error) {
     if (!(error instanceof SessionEnded) || parent.stopped()) throw error
     log({ event: 'automation.engagement.profile_skipped', reason: 'visit_time_used' })
   } finally {
     if (page.url() !== previous && (PROFILE_URL.test(page.url()) || AUTHOR_PROFILE_URL.test(page.url())) && !parent.stopped()) {
-      if (back) await back(parent.timeout(5000))
-      else await page.keyboard.press('Alt+ArrowLeft')
-      await page.waitForURL(previous, { timeout: parent.timeout(5000) })
+      if (switchedTab) {
+        await back(parent.timeout(5000))
+        await page.waitForURL(enteredProfile, { waitUntil: 'commit', timeout: parent.timeout(5000) })
+      }
+      await back(parent.timeout(5000))
+      await page.waitForURL(previous, { waitUntil: 'commit', timeout: parent.timeout(5000) })
       await assertInstagramReady(page, parent)
     }
   }

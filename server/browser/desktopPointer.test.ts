@@ -1,5 +1,27 @@
 import { test } from 'node:test'
 import { execFileSync } from 'node:child_process'
+import assert from 'node:assert/strict'
+import type { Page } from 'playwright-core'
+import { mouseBackFor } from './desktopPointer.js'
+
+for (const failPress of [false, true]) test(`CDP Back mouse input always releases and detaches (${failPress})`, async () => {
+  const events: unknown[] = []
+  const page = { viewportSize: () => ({ width: 800, height: 600 }), context: () => ({ newCDPSession: async () => ({
+    send: async (command: string, input: { type: string; button: string; buttons: number }) => {
+      assert.equal(command, 'Input.dispatchMouseEvent'); assert.equal(input.button, 'back')
+      events.push([input.type, input.buttons])
+      if (failPress && input.type === 'mousePressed') throw new Error('Uncertain press')
+    }, detach: async () => { events.push('detach') },
+  }) }) } as unknown as Page
+  const back = mouseBackFor(page)(5000)
+  if (failPress) await assert.rejects(back, /Uncertain press/)
+  else await back
+  assert.deepEqual(events, [['mousePressed', 8], ['mouseReleased', 0], 'detach'])
+})
+
+test('an expired Back action never attaches CDP or sends input', async () => {
+  await assert.rejects(mouseBackFor({} as Page)(0), /deadline ended/)
+})
 
 for (const action of ['wheel', 'doubleClick', 'back']) for (const reply of ['ack', 'timeout']) {
   test(`sent native ${action} waits for its socket result after the input deadline (${reply})`, () => {

@@ -10,7 +10,8 @@ import { BrowseSession, SessionEnded } from './session.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 
 function likeFixture(options: { path?: string; alreadyLiked?: boolean; missing?: boolean; confirms?: boolean;
-  failure?: Error; warning?: string; slowMovement?: () => void; lateLike?: 'during-hover' | 'before-live-click' } = {}) {
+  failure?: Error; warning?: string; slowMovement?: () => void; lateLike?: 'during-hover' | 'before-live-click';
+  related?: boolean; extras?: boolean } = {}) {
   let liked = options.alreadyLiked ?? false, failed = false
   const calls: string[] = [], notes: Record<string, unknown>[] = []
   const makeControl = (label: string) => ({
@@ -45,14 +46,15 @@ function likeFixture(options: { path?: string; alreadyLiked?: boolean; missing?:
       : selector === 'svg[data-igbot-like-target=fixture]' ? { evaluateAll: async () => {} }
         : { filter: () => ({ evaluateAll: async () => failed ? options.warning ?? null : null }) },
   } as unknown as Page
-  const budget = new WarmupActivityBudget({ likes: 1, saves: 0, comments: 0, profiles: 0, reels: 0, stories: 0 })
+  const budget = new WarmupActivityBudget({ likes: 1, saves: options.extras ? 1 : 0,
+    comments: options.extras ? 1 : 0, profiles: options.extras ? 1 : 0, reels: 0, stories: 0 })
   const session = new BrowseSession(Date.now() + 60_000)
-  const run = async (roll = 0) => {
+  const run = async (roll = 0, likeOnly = false) => {
     const originalRandom = Math.random
     Math.random = () => roll
     try {
       await engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'],
-        budget, session, note => notes.push(note), async () => true)
+        budget, session, note => notes.push(note), async () => options.related !== false, undefined, likeOnly)
     } finally { Math.random = originalRandom }
   }
   return { run, calls, notes, budget, liked: () => liked }
@@ -67,6 +69,16 @@ for (const path of ['/', '/reels/current/']) test('likes use one live Like-butto
   await fixture.run()
   assert.deepEqual(fixture.calls, ['Like'])
 })
+
+for (const related of [false, true]) for (const roll of [0.1, 0.3])
+  test(`profile Reel engagement only Likes after its own interest decision (${related}, ${roll})`, async () => {
+    const fixture = likeFixture({ path: '/reel/current/', related, extras: true })
+    await fixture.run(roll, true)
+    assert.deepEqual(fixture.calls, related && roll < 0.3 ? ['Like'] : [])
+    assert.equal(fixture.budget.used.saves + fixture.budget.used.comments + fixture.budget.used.profiles, 0)
+    await fixture.run(0, true)
+    assert.equal(fixture.budget.used.likes, related ? 1 : 0, 'profile Reels share the same daily Like cap')
+  })
 
 for (const path of ['/', '/reels/current/'])
   for (const roll of [0.299, 0.3, 0.999]) test(`30% Like chance on ${path} with roll ${roll}`, async () => {

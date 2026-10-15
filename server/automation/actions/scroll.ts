@@ -15,6 +15,8 @@ function scrollBounds(node: Element): ScrollBounds {
   const view = node.ownerDocument.defaultView!
   let parent = node.parentElement
   while (parent) {
+    // The document scrollport stays at the viewport; its element box moves above it.
+    if (parent === node.ownerDocument.scrollingElement) break
     const style = view.getComputedStyle(parent)
     if (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight) {
       const rect = parent.getBoundingClientRect()
