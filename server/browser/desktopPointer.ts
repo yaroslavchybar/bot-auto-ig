@@ -6,14 +6,17 @@ import type { Display } from './display.js'
 
 export type NativeWheel = (x: number, y: number, direction: 'up' | 'down', timeout: number) => Promise<void>
 export type NativeDoubleClick = (x: number, y: number, timeout: number) => Promise<void>
-type PointerAction = { wheel: 'up' | 'down' } | { doubleClick: true }
+export type NativeBack = (timeout: number) => Promise<void>
+type PointerAction = { wheel: 'up' | 'down' } | { doubleClick: true } | { back: true }
 const nativeWheels = new WeakMap<Page, NativeWheel>()
 const nativeDoubleClicks = new WeakMap<Page, NativeDoubleClick>()
+const nativeBacks = new WeakMap<Page, NativeBack>()
 const desktopCursors = new WeakMap<Page, Readonly<{ x: number; y: number }>>()
 
 /** Headed automation pages can send discrete notches through their leased X11 display. */
 export function nativeWheelFor(page: Page): NativeWheel | undefined { return nativeWheels.get(page) }
 export function nativeDoubleClickFor(page: Page): NativeDoubleClick | undefined { return nativeDoubleClicks.get(page) }
+export function nativeBackFor(page: Page): NativeBack | undefined { return nativeBacks.get(page) }
 export function desktopCursorFor(page: Page): Readonly<{ x: number; y: number }> | undefined { return desktopCursors.get(page) }
 
 // Race each CDP wait against the same deadline; late results cannot resume input.
@@ -123,6 +126,11 @@ export async function installDesktopPointer(
     }
     nativeWheels.set(page, (x, y, direction, timeout) => dispatch(x, y, { wheel: direction }, timeout))
     nativeDoubleClicks.set(page, (x, y, timeout) => dispatch(x, y, { doubleClick: true }, timeout))
+    nativeBacks.set(page, timeout => {
+      const viewport = page.viewportSize() ?? { width: 800, height: 600 }
+      const { x, y } = desktopCursors.get(page) ?? { x: viewport.width / 2, y: viewport.height / 2 }
+      return dispatch(x, y, { back: true }, timeout)
+    })
     void metrics.catch(() => {})
   }
   const close = () => {
@@ -130,6 +138,7 @@ export async function installDesktopPointer(
     for (const page of pages) {
       nativeWheels.delete(page)
       nativeDoubleClicks.delete(page)
+      nativeBacks.delete(page)
       desktopCursors.delete(page)
     }
     pages.clear()

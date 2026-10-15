@@ -7,7 +7,7 @@ import { assertInstagramReady } from './instagram-state.js'
 import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/warmupTopics.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { engagePost } from './engagement.js'
-import { clickAction } from './action-locator.js'
+import { clickAction, clickLiveAction } from './action-locator.js'
 import { nativeWheelFor, type NativeWheel } from '../../browser/desktopPointer.js'
 import { positionScrollCursor } from './mouse.js'
 import { publishSessionDecision } from './session-decision.js'
@@ -19,6 +19,25 @@ import {
 } from './shared.js'
 
 const REEL_URL = /\/reels\/([A-Za-z0-9_-]+)\/?/
+
+/** Only click a muted icon inside the current Reel; never toggle sound off again. */
+export async function enableReelSound(page: Page, video: Locator, session: BrowseSession, log: ActionLogger): Promise<void> {
+  try {
+    if (!await video.evaluate(node => (node as HTMLVideoElement).muted || (node as HTMLVideoElement).volume === 0,
+      undefined, { timeout: session.timeout(1000) })) return
+    const post = video.locator('xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
+    const muted = post.locator('svg[aria-label="Audio is muted"]').first()
+    if (!await muted.isVisible()) return
+    await clickLiveAction(page, muted, session)
+    await muted.waitFor({ state: 'hidden', timeout: session.timeout(1500) })
+    log({ event: 'automation.actions.reels.sound_enabled' })
+  } catch (error) {
+    session.check()
+    if (!isTemporaryUiError(error)) throw error
+    await assertInstagramReady(page, session)
+    log({ event: 'automation.actions.reels.sound_unavailable', error })
+  }
+}
 
 function reelId(url: string): string {
   return url.match(REEL_URL)?.[1] ?? ''
@@ -250,6 +269,7 @@ export async function watchReels(
     }
     // Include caption siblings while stopping before containers with neighboring reels.
     const post = video.locator('xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
+    await enableReelSound(page, video, session, log)
     const related = topics.length > 0 && await matchesTopic(context, topics, session, log, post)
     if (!feedPostMatches(context, topics, related)) {
       log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })

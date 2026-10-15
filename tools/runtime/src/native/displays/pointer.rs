@@ -45,16 +45,19 @@ struct PointerInput {
     wheel: Option<WheelDirection>,
     #[serde(default, rename = "doubleClick")]
     double_click: bool,
+    #[serde(default)]
+    back: bool,
 }
 
 #[cfg(any(target_os = "linux", test))]
 impl PointerInput {
     fn button_clicks(&self) -> Result<Option<(u8, u8)>> {
-        match (&self.wheel, self.double_click) {
-            (Some(_), true) => Err(Failure::invalid("Conflicting pointer actions")),
-            (Some(direction), false) => Ok(Some((direction.button(), 1))),
-            (None, true) => Ok(Some((1, 2))),
-            (None, false) => Ok(None),
+        match (&self.wheel, self.double_click, self.back) {
+            (Some(direction), false, false) => Ok(Some((direction.button(), 1))),
+            (None, true, false) => Ok(Some((1, 2))),
+            (None, false, true) => Ok(Some((8, 1))), // XButton1: browser Back.
+            (None, false, false) => Ok(None),
+            _ => Err(Failure::invalid("Conflicting pointer actions")),
         }
     }
 }
@@ -307,6 +310,19 @@ fn unavailable(_: impl std::fmt::Display) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn back_is_one_button_eight_click_and_rejects_conflicting_actions() {
+        let mut input: PointerInput = serde_json::from_value(json!({
+            "x": 120, "y": 250, "width": 1366, "height": 768, "back": true
+        }))
+        .unwrap();
+        assert_eq!(input.button_clicks().unwrap(), Some((8, 1)));
+        input.double_click = true;
+        assert!(input.button_clicks().is_err());
+        input.double_click = false;
+        input.wheel = Some(WheelDirection::Down);
+        assert!(input.button_clicks().is_err());
+    }
     #[test]
     fn double_click_is_two_left_clicks_and_cannot_be_combined_with_wheel_input() {
         let mut input: PointerInput = serde_json::from_value(json!({

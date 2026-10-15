@@ -163,10 +163,15 @@ test('visible-in-DOM but offscreen controls are not clicked', async () => {
 })
 
 test('opening an author adapts the selected nested link before clicking', async () => {
+  const window = new Window()
+  window.document.body.innerHTML = '<a href="/alice/">alice</a>'
+  const link = window.document.querySelector('a')!
   let currentUrl = 'https://www.instagram.com/'
   const author = {
     first() { return this },
     getAttribute: async () => '/alice/',
+    evaluate: async (fn: (node: Element) => unknown) => fn(link as unknown as Element),
+    evaluateAll: async () => {},
     boundingBox: async () => ({ x: 100, y: 100, width: 100, height: 30 }),
     isVisible: async () => true,
     elementHandle: async () => ({
@@ -180,13 +185,18 @@ test('opening an author adapts the selected nested link before clicking', async 
   const page = {
     viewportSize: () => ({ width: 1280, height: 800 }),
     url: () => currentUrl,
-    locator: () => { throw new Error('Must not resolve the selected author again') },
+    locator: (selector: string) => {
+      assert.equal(window.document.querySelector(selector), link, 'the live marker must resolve only the selected author')
+      return author
+    },
   } as unknown as Page
   const target = { locator: () => author } as unknown as Locator
   const session = new BrowseSession()
   session.wait = async () => {}
-  assert.equal(await openAuthorProfile(page, target, session), true)
-  assert.equal(currentUrl, 'https://www.instagram.com/alice/')
+  try {
+    assert.equal(await openAuthorProfile(page, target, session), true)
+    assert.equal(currentUrl, 'https://www.instagram.com/alice/')
+  } finally { await window.happyDOM.close() }
 })
 
 test('stories wait for the button tray and honor a stop while it loads', async () => {

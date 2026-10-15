@@ -10,8 +10,9 @@ import { assertInstagramReady } from './instagram-state.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { visitAuthorProfile } from './profiles.js'
 import { isInstagramHome } from './navigation.js'
-import { random, type ActionLogger } from './shared.js'
+import { chance, random, type ActionLogger } from './shared.js'
 import { isTemporaryUiError } from './ui-errors.js'
+import { readPostComments } from './comments.js'
 
 const control = (target: Locator, label: string) => target.locator(
   `button:has(svg[aria-label="${label}"]), [role="button"]:has(svg[aria-label="${label}"])`).first()
@@ -45,6 +46,8 @@ export async function engagePost(page: Page, target: Locator,
   }
   await optional('like', async () => {
     if (budget.remaining('likes') && !await target.locator('svg[aria-label="Unlike"]').count()) {
+      // Each matching post or Reel has an independent 30% Like chance.
+      if (!chance(30)) return
       const like = control(target, 'Like')
       const icon = like.locator('svg[aria-label="Like"]').first()
       if (await like.isVisible() && await revealForClick(page, icon, session)) {
@@ -99,20 +102,17 @@ export async function engagePost(page: Page, target: Locator,
       }
       return
     }
+    if (session.end - Date.now() < 8000) return
     const comments = control(target, 'Comment')
     if (!await comments.isVisible() || !await revealForClick(page, comments, session)) return
     session.check(); await assertInstagramReady(page)
     if (!budget.take('comments')) return
-    await (await actionLocator(comments, session.timeout(5000))).click({ timeout: session.timeout(5000) })
     try {
-      const panel = dialogs.last()
-      await panel.waitFor({ state: 'visible', timeout: session.timeout(8000) })
-      await assertInstagramReady(page)
-      await session.wait(random(5000, 10_000)); await scrollModal(page, panel, 1, session)
+      await readPostComments(page, comments, session)
       log({ event: 'automation.engagement.comments_read' })
-    } finally {
-      // Reading only: never focus, fill or submit the comment composer.
-      await page.keyboard.press('Escape').catch(() => {})
+    } catch (error) {
+      if (!(error instanceof SessionEnded) || session.stopped()) throw error
+      log({ event: 'automation.engagement.action_skipped', action: 'comments', reason: 'reading_time_used' })
     }
   })
   await optional('profile', async () => {

@@ -32,6 +32,7 @@ test('week-one ceilings match the requested like and follow ramp', () => {
   for (const [index, [minLikes, maxLikes, minFollows, maxFollows]] of ranges.entries()) {
     for (const roll of [0, 0.999]) {
       const plan = warmupActivityPlan(index + 1, () => roll)
+      assert.equal(plan.comments, index === 0 ? 0 : roll ? 3 : 1)
       assert.equal(plan.likes, roll ? maxLikes : minLikes)
       assert.equal(plan.follows, roll ? maxFollows : minFollows)
       assert.ok(index < 3 ? plan.stories === 0 : plan.stories <= 2)

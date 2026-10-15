@@ -5,12 +5,12 @@ export const emptyWarmupActivity = (): Required<WarmupActivityCounts> => ({ like
 export function warmupActivityPlan(day: number, random = Math.random): Required<WarmupActivityCounts> {
   const pick = (min: number, max: number) => min + Math.floor(random() * (max - min + 1))
   if (day > 7) return { likes: pick(2, 6), follows: 0, profiles: pick(1, 4), reels: 0,
-    stories: 0, saves: random() < 0.2 ? 1 : 0, comments: random() < 0.3 ? 1 : 0 }
+    stories: 0, saves: random() < 0.2 ? 1 : 0, comments: pick(1, 3) }
   const likes = day <= 1 ? 0 : day === 2 ? pick(2, 4) : day <= 4 ? pick(3, 5) : pick(4, 6)
   const followRanges = [[0, 0], [0, 0], [0, 0], [2, 4], [4, 6], [5, 7], [6, 8], [8, 10]]
   const [min, max] = followRanges[day] ?? [0, 0]
   return { likes, follows: pick(min, max), profiles: pick(2, 5), reels: 0,
-    stories: 0, saves: 0, comments: 0 }
+    stories: 0, saves: 0, comments: day <= 1 ? 0 : pick(1, 3) }
 }
 
 /** Shared by every browsing chunk and reel detour in one reservation. */

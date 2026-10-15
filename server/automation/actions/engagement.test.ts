@@ -47,8 +47,14 @@ function likeFixture(options: { path?: string; alreadyLiked?: boolean; missing?:
   } as unknown as Page
   const budget = new WarmupActivityBudget({ likes: 1, saves: 0, comments: 0, profiles: 0, reels: 0, stories: 0 })
   const session = new BrowseSession(Date.now() + 60_000)
-  const run = () => engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'],
-    budget, session, note => notes.push(note), async () => true)
+  const run = async (roll = 0) => {
+    const originalRandom = Math.random
+    Math.random = () => roll
+    try {
+      await engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'],
+        budget, session, note => notes.push(note), async () => true)
+    } finally { Math.random = originalRandom }
+  }
   return { run, calls, notes, budget, liked: () => liked }
 }
 
@@ -61,6 +67,18 @@ for (const path of ['/', '/reels/current/']) test('likes use one live Like-butto
   await fixture.run()
   assert.deepEqual(fixture.calls, ['Like'])
 })
+
+for (const path of ['/', '/reels/current/'])
+  for (const roll of [0.299, 0.3, 0.999]) test(`30% Like chance on ${path} with roll ${roll}`, async () => {
+    const fixture = likeFixture({ path })
+    await fixture.run(roll)
+    assert.deepEqual(fixture.calls, roll < 0.3 ? ['Like'] : [])
+    assert.equal(fixture.budget.used.likes, roll < 0.3 ? 1 : 0)
+    if (roll >= 0.3) {
+      await fixture.run(0)
+      assert.deepEqual(fixture.calls, ['Like'], 'a skipped Like must leave budget for the next match')
+    }
+  })
 
 for (const alreadyLiked of [true, false]) test('liked or missing controls never receive input: ' + alreadyLiked, async () => {
   const fixture = likeFixture({ alreadyLiked, missing: !alreadyLiked })
@@ -179,17 +197,19 @@ for (const related of [false, true]) test(`matched-author visits share interest 
   assert.equal(budget.used.profiles, related ? 1 : 0)
 })
 
-test('engagement pins the post controls, shares its cap, and reads comments without composing', async () => {
+for (const roll of [0.1, 0.3]) test(`engagement shares its cap and reads comments independently of Like chance (${roll})`, async () => {
   const originalRandom = Math.random
-  Math.random = () => 0.999
+  Math.random = () => roll
   try {
     let liked = false, saved = false, commentsOpen = false
     const calls: string[] = []
     const makeControl = (label: string) => ({
       ...visibleActionGeometry,
-      locator: () => makeControl('Like'),
+      locator: () => makeControl(label),
       evaluate: async (fn: (node: Element) => unknown) => fn === liveLikeSelector
-        ? 'svg[data-igbot-like-target=fixture][aria-label=Like]' : visibleActionGeometry.evaluate(fn),
+        ? 'svg[data-igbot-like-target=fixture][aria-label=Like]'
+        : fn.toString().includes('data-igbot-action-target') ? `[data-igbot-action-target=fixture-${label}]` : visibleActionGeometry.evaluate(fn),
+      evaluateAll: async () => {},
       first() { return this }, count: async () => label === 'Unlike' ? Number(liked) : 1,
       isVisible: async () => label === 'Unlike' ? liked : label === 'Save' ? !saved : true,
       boundingBox: async () => ({ x: 100, y: 100, width: 30, height: 30 }),
@@ -200,6 +220,7 @@ test('engagement pins the post controls, shares its cap, and reads comments with
         if (label === 'Like') liked = true
         if (label === 'Save') saved = true
         if (label === 'Comment') commentsOpen = true
+        if (label === 'Close') commentsOpen = false
       } }),
     })
     const target = { locator: (selector: string) => {
@@ -207,26 +228,31 @@ test('engagement pins the post controls, shares its cap, and reads comments with
       assert.ok(label, 'only scoped post controls may be queried')
       return makeControl(label)
     } } as unknown as Locator
-    const panel = { waitFor: async () => { assert.ok(commentsOpen) }, boundingBox: async () => ({ x: 100, y: 100, width: 300, height: 400 }) }
+    const panel = { waitFor: async ({ state }: { state: string }) => { assert.equal(commentsOpen, state === 'visible') },
+      isVisible: async () => commentsOpen, locator: () => makeControl('Close'),
+      evaluate: async () => ({ left: 700, right: 1000, top: 200, bottom: 600, atEnd: false }) }
     const dialogs = { filter() { return this }, count: async () => Number(commentsOpen), last: () => panel }
     const page = {
       url: () => 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
       locator: (selector: string) => selector === 'svg[data-igbot-like-target=fixture][aria-label=Like]' ? makeControl('Like')
         : selector === 'svg[data-igbot-like-target=fixture]' ? { evaluateAll: async () => {} }
+          : selector.startsWith('[data-igbot-action-target=fixture-') ? makeControl(selector.match(/fixture-(\w+)/)![1]!)
           : ({ filter: () => ({ evaluateAll: async () => null }) }),
       getByRole: (role: string) => { assert.equal(role, 'dialog'); return dialogs },
-      mouse: { move: async () => {}, wheel: async () => { calls.push('scroll-comments') } },
-      keyboard: { press: async (key: string) => { assert.equal(key, 'Escape'); commentsOpen = false } },
+      mouse: { move: async (x: number, y: number) => { assert.ok(x > 700 && x < 1000 && y > 200 && y < 600) },
+        wheel: async () => { assert.ok(commentsOpen); calls.push('scroll-comments') } },
+      keyboard: { press: async () => { throw new Error('Close comments by clicking X') } },
     } as unknown as Page
     const session = new BrowseSession(Date.now() + 60_000); session.wait = async () => { session.check() }
     const budget = new WarmupActivityBudget({ likes: 2, saves: 1, comments: 1, profiles: 0, reels: 30, stories: 3 })
     const view = () => engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'], budget, session, () => {}, async () => true)
     await view(); assert.equal(commentsOpen, false)
-    assert.ok(calls.includes('Like') && calls.includes('Save') && calls.includes('Comment') && calls.includes('scroll-comments'))
-    await view(); assert.equal(budget.used.likes, 1, 'already-liked posts must not consume another attempt')
+    assert.equal(calls.includes('Like'), roll < 0.3)
+    assert.ok(calls.includes('Save') && calls.includes('Comment') && calls.includes('scroll-comments') && calls.includes('Close'))
+    await view(); assert.equal(budget.used.likes, roll < 0.3 ? 1 : 0, 'already-liked or chance-skipped posts must not consume another attempt')
     liked = false; await view()
     liked = false; await view()
-    assert.equal(calls.filter(call => call === 'Like').length, 2)
-    assert.equal(budget.used.likes, 2); assert.equal(budget.used.saves, 1); assert.equal(budget.used.comments, 1)
+    assert.equal(calls.filter(call => call === 'Like').length, roll < 0.3 ? 2 : 0)
+    assert.equal(budget.used.likes, roll < 0.3 ? 2 : 0); assert.equal(budget.used.saves, 1); assert.equal(budget.used.comments, 1)
   } finally { Math.random = originalRandom }
 })

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import { execFileSync } from 'node:child_process'
 
-for (const action of ['wheel', 'doubleClick']) for (const reply of ['ack', 'timeout']) {
+for (const action of ['wheel', 'doubleClick', 'back']) for (const reply of ['ack', 'timeout']) {
   test(`sent native ${action} waits for its socket result after the input deadline (${reply})`, () => {
     execFileSync('bun', ['--eval', `
       import { mock } from 'bun:test'
@@ -28,19 +28,21 @@ for (const action of ['wheel', 'doubleClick']) for (const reply of ['ack', 'time
           const input = JSON.parse(data.toString())
           assert.equal(input.doubleClick, action === 'doubleClick' ? true : undefined)
           assert.equal(input.wheel, action === 'wheel' ? 'down' : undefined)
+          assert.equal(input.back, action === 'back' ? true : undefined)
           events.push(input.x)
           if (input.x === 100) received()
           else socket.send(JSON.stringify({ ready: true }))
         })
       })
-      const context = new EventEmitter(), page = { mouse: { move: async () => {} } }
+      const context = new EventEmitter(), page = { mouse: { move: async () => {} }, viewportSize: () => ({ width: 200, height: 400 }) }
       context.pages = () => [page]
       context.newCDPSession = async () => ({ send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }) })
       mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchContext: () => {} }))
-      const { installDesktopPointer, nativeWheelFor, nativeDoubleClickFor } = await import('./server/browser/desktopPointer.ts')
+      const { installDesktopPointer, nativeWheelFor, nativeDoubleClickFor, nativeBackFor } = await import('./server/browser/desktopPointer.ts')
       const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
       const input = (x, timeout) => action === 'wheel' ? nativeWheelFor(page)(x, 200, 'down', timeout)
-        : nativeDoubleClickFor(page)(x, 200, timeout)
+        : action === 'doubleClick' ? nativeDoubleClickFor(page)(x, 200, timeout)
+          : (page.viewportSize = () => ({ width: x * 2, height: 400 }), nativeBackFor(page)(timeout))
       try {
         let outcome = 'pending'
         const first = input(100, 200)

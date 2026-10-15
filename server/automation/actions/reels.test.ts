@@ -5,7 +5,7 @@ import { Window } from 'happy-dom'
 import { errors } from 'playwright-core'
 import { visibleActionGeometry } from './action-locator.test-support.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
-import { advanceReel, openReels, reelAdMarker, watchReels } from './reels.js'
+import { advanceReel, enableReelSound, openReels, reelAdMarker, watchReels } from './reels.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { liveLikeSelector } from './engagement.js'
 
@@ -13,12 +13,60 @@ test('disabled reels never access the browser', async () => {
   await watchReels({} as Page, 5, { scroll_reels: false }, () => {}, () => false, Date.now() + 60_000)
 })
 
+for (const mode of ['muted', 'unmuted', 'missing', 'timeout', 'probe-timeout', 'disconnected'] as const)
+  test('Reel sound targets only the current muted video: ' + mode, async () => {
+    const window = new Window()
+    window.document.body.innerHTML = '<main><section id="current"><video></video><button><svg aria-label="Audio is muted"></svg></button></section>' +
+      '<section id="neighbor"><video></video><button><svg aria-label="Audio is muted"></svg></button></section></main>'
+    const current = window.document.querySelector('#current')!, video = current.querySelector('video')!
+    video.muted = mode !== 'unmuted'
+    if (mode === 'missing') current.querySelector('button')!.remove()
+    const notes: Record<string, unknown>[] = []
+    let clicks = 0
+    type Node = typeof current | null
+    const locator = (resolve: () => Node): Locator => ({
+      ...visibleActionGeometry, first() { return this },
+      evaluate: async (fn: (element: Element) => unknown) => fn(resolve() as unknown as Element),
+      evaluateAll: async (fn: (nodes: Element[]) => unknown) => fn(resolve() ? [resolve() as unknown as Element] : []),
+      locator: (selector: string) => locator(() => resolve()?.querySelector(selector) ?? null),
+      isVisible: async () => !!resolve(),
+      waitFor: async () => { assert.equal(resolve(), null) },
+      elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
+        click: async () => {
+          assert.ok(current.contains(resolve())); clicks++
+          if (mode === 'timeout') throw new errors.TimeoutError('Sound toggle timed out')
+          if (mode === 'disconnected') throw new Error('Browser disconnected')
+          video.muted = false; resolve()!.setAttribute('aria-label', 'Audio is playing')
+        },
+      }),
+    }) as unknown as Locator
+    const media = { evaluate: async (fn: (element: Element) => unknown) => {
+      if (mode === 'probe-timeout') throw new errors.TimeoutError('Sound state unavailable during navigation')
+      return fn(video as unknown as Element)
+    },
+      locator: () => locator(() => current) } as unknown as Locator
+    const page = { url: () => 'https://www.instagram.com/reels/current/',
+      locator: (selector: string) => selector.startsWith('[data-igbot-action-target=') ? locator(() => window.document.querySelector(selector))
+        : { filter: () => ({ evaluateAll: async () => null }) },
+    } as unknown as Page
+    try {
+      const run = enableReelSound(page, media, new BrowseSession(Date.now() + 60_000), note => notes.push(note))
+      if (mode === 'disconnected') await assert.rejects(run, /Browser disconnected/)
+      else await run
+      assert.equal(clicks, mode === 'unmuted' || mode === 'missing' || mode === 'probe-timeout' ? 0 : 1)
+      assert.equal(window.document.querySelector('#neighbor svg')!.getAttribute('aria-label'), 'Audio is muted')
+      if (mode === 'muted') assert.equal(notes[0]?.event, 'automation.actions.reels.sound_enabled')
+      if (mode === 'timeout' || mode === 'probe-timeout') assert.equal(notes[0]?.event, 'automation.actions.reels.sound_unavailable')
+    } finally { await window.happyDOM.close() }
+  })
+
 for (const player of ['sibling', 'ancestor', 'missing'] as const)
   test(`matched Reel likes click only its own Like button with a ${player} player`, async () => {
-    const window = new Window(), originalNow = Date.now
+    const window = new Window(), originalNow = Date.now, originalRandom = Math.random
     let now = originalNow(), doubleTaps = 0, buttonClicks = 0
     const started = now
     Date.now = () => now
+    Math.random = () => 0.1
     const overlay = '<div role="group" aria-label="Video player"></div>'
     const videoHtml = player === 'ancestor' ? '<div role="group" aria-label="Video player"><video></video></div>'
       : `<video></video>${player === 'sibling' ? overlay : ''}`
@@ -78,7 +126,7 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
       assert.equal(buttonClicks, 1)
       assert.equal(current.querySelector('svg')!.getAttribute('aria-label'), 'Unlike')
       assert.equal(window.document.querySelector('#neighbor svg')!.getAttribute('aria-label'), 'Unlike')
-    } finally { Date.now = originalNow; await window.happyDOM.close() }
+    } finally { Date.now = originalNow; Math.random = originalRandom; await window.happyDOM.close() }
   })
 
 for (const fixture of [
