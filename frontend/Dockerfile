@@ -26,6 +26,7 @@ COPY --from=repo_root .node-version ./.node-version
 # Both are `import type`, erased from the bundle. Keep this in sync if the
 # frontend imports more files from outside frontend/ and convex/.
 COPY --from=repo_root server/shared/contracts.ts ./server/shared/contracts.ts
+COPY --from=repo_root server/shared/sessionDecision.ts ./server/shared/sessionDecision.ts
 # Runtime parser shared by the frontend, Convex functions, and browser startup.
 COPY --from=repo_root server/shared/proxy.ts ./server/shared/proxy.ts
 COPY --from=repo_root server/shared/pagination.ts ./server/shared/pagination.ts
