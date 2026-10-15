@@ -1,8 +1,29 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { errors, type Page } from 'playwright-core'
-import { watchStories, UNSEEN_STORY_SELECTOR } from './stories.js'
+import { hasUnseenStories, watchStories, UNSEEN_STORY_SELECTOR } from './stories.js'
+import { BrowseSession } from './session.js'
 import { visibleActionGeometry } from './action-locator.test-support.js'
+
+test('startup detects only a visible unseen Story, using a short wait within the session deadline', async () => {
+  for (const available of [true, false]) {
+    const page = { locator: (selector: string) => {
+      assert.equal(selector, `${UNSEEN_STORY_SELECTOR}:visible`)
+      return { first() { return this }, waitFor: async ({ state, timeout }: { state: string; timeout: number }) => {
+        assert.equal(state, 'visible')
+        assert.ok(timeout > 0 && timeout <= 1000)
+        if (!available) throw new errors.TimeoutError('No unseen Story')
+      } }
+    } } as unknown as Page
+    assert.equal(await hasUnseenStories(page, new BrowseSession(Date.now() + 1000)), available)
+  }
+})
+
+test('startup Story detection respects cancellation and propagates browser failures', async () => {
+  const page = { locator: () => { throw new Error('Browser disconnected') } } as unknown as Page
+  await assert.rejects(hasUnseenStories(page, new BrowseSession(Infinity, () => true)), /session ended/)
+  await assert.rejects(hasUnseenStories(page, new BrowseSession()), /Browser disconnected/)
+})
 
 async function fixture(options: { missing?: boolean; budgetMs?: number; autoplay?: boolean; seenNext?: boolean; stopDuringView?: boolean } = {}) {
   const originalNow = Date.now, originalTimeout = globalThis.setTimeout

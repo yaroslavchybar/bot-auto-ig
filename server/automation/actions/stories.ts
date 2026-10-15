@@ -10,6 +10,23 @@ import { actionLocator } from './action-locator.js'
 import { assertInstagramReady } from './instagram-state.js'
 
 export const UNSEEN_STORY_SELECTOR = 'main [role="button"][aria-label^="Story by "][aria-label$=", not seen"]:not([aria-disabled="true"])'
+
+/** Capture the initial tray before startup checks or Explore navigate away. */
+export async function hasUnseenStories(page: Page, session: BrowseSession): Promise<boolean> {
+  session.check()
+  try {
+    await page.locator(`${UNSEEN_STORY_SELECTOR}:visible`).first().waitFor({
+      state: 'visible', timeout: session.timeout(2000),
+    })
+    session.check()
+    return true
+  } catch (error) {
+    session.check()
+    if (!(error instanceof errors.TimeoutError)) throw error
+    return false
+  }
+}
+
 const storyPath = (page: Page) => {
   const path = new URL(page.url()).pathname
   const owner = /^\/stories\/([\w.]+)\//.exec(path)?.[1]

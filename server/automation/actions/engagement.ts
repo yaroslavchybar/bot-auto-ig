@@ -96,7 +96,7 @@ export async function engagePost(page: Page, target: Locator,
           await control(target, 'Unlike').waitFor({ state: 'visible', timeout: session.timeout(2000) })
           log({ event: 'automation.engagement.liked' })
         }
-      }
+      } else log({ event: 'automation.engagement.action_skipped', action: 'like', reason: 'target_unavailable' })
     }
   })
   await optional('save', async () => {

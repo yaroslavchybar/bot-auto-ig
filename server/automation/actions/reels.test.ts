@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import type { Page } from 'playwright-core'
+import type { Locator, Page } from 'playwright-core'
 import { Window } from 'happy-dom'
 import { errors } from 'playwright-core'
 import { visibleActionGeometry } from './action-locator.test-support.js'
@@ -11,6 +11,67 @@ import { BrowseSession, SessionEnded } from './session.js'
 test('disabled reels never access the browser', async () => {
   await watchReels({} as Page, 5, { scroll_reels: false }, () => {}, () => false, Date.now() + 60_000)
 })
+
+for (const player of ['sibling', 'ancestor', 'missing'] as const)
+  test(`matched Reel likes use the current ${player} player or its Like-button fallback`, async () => {
+    const window = new Window(), originalNow = Date.now
+    let now = originalNow(), doubleTaps = 0, buttonClicks = 0
+    const started = now
+    Date.now = () => now
+    const overlay = '<div role="group" aria-label="Video player"></div>'
+    const videoHtml = player === 'ancestor' ? '<div role="group" aria-label="Video player"><video></video></div>'
+      : `<video></video>${player === 'sibling' ? overlay : ''}`
+    window.document.body.innerHTML = `<main><div id="current-reel">${videoHtml}
+      <button><svg aria-label="Like"></svg></button></div>
+      <div id="neighbor"><video></video>${overlay}<button><svg aria-label="Unlike"></svg></button></div></main>`
+    const current = window.document.querySelector('#current-reel')!
+    const video = current.querySelector('video')!
+    Object.defineProperties(video, { duration: { value: 2 }, currentTime: { get: () => (now - started) / 1000 },
+      paused: { value: false }, ended: { value: false } })
+    const like = (node: Element | null) => {
+      assert.ok(node && current.contains(node), 'input must never target a preloaded neighbor')
+      current.querySelector('svg')!.setAttribute('aria-label', 'Unlike')
+    }
+    type Node = typeof current | null
+    const locator = (resolve: () => Node): Locator => ({
+      ...visibleActionGeometry,
+      first() { return this },
+      locator: (selector: string) => locator(() => resolve()?.querySelector(selector) ?? null),
+      count: async () => Number(!!resolve()), isVisible: async () => !!resolve(),
+      waitFor: async () => { assert.ok(resolve(), 'the Like must be confirmed as Unlike') },
+      click: async () => { buttonClicks++; like(resolve() as unknown as Element) },
+      elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
+        dblclick: async () => { doubleTaps++; like(resolve() as unknown as Element) } }),
+    }) as unknown as Locator
+    const post = locator(() => current)
+    const target = {
+      locator: (selector: string) => {
+        if (selector === 'xpath=ancestor::*[@role="group" and @aria-label="Video player"][1]')
+          return locator(() => video.closest('[role="group"][aria-label="Video player"]'))
+        assert.equal(selector, 'xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
+        return post
+      },
+      boundingBox: async () => ({ x: 200, y: 0, width: 400, height: 600 }),
+      evaluate: async (fn: (node: Element) => unknown) => fn(video as unknown as Element),
+    }
+    const page = { url: () => 'https://www.instagram.com/reels/current/',
+      viewportSize: () => ({ width: 1280, height: 800 }),
+      locator: (selector: string) => selector === 'video' ? { count: async () => 1, nth: () => target }
+        : { filter: () => ({ evaluateAll: async () => null }) },
+    } as unknown as Page
+    const session = new BrowseSession(now + 60_000)
+    session.wait = async ms => { now += Math.max(1, Math.ceil(ms)); session.check() }
+    const budget = new WarmupActivityBudget({ likes: 1, profiles: 0, reels: 0, stories: 0 })
+    try {
+      await watchReels(page, 1, { warmup_day: 2, warmup_topics: ['fitness'] }, () => {}, () => false,
+        session.end, session, budget, async () => true)
+      assert.equal(budget.used.likes, 1)
+      assert.equal(doubleTaps, player === 'missing' ? 0 : 1)
+      assert.equal(buttonClicks, player === 'missing' ? 1 : 0)
+      assert.equal(current.querySelector('svg')!.getAttribute('aria-label'), 'Unlike')
+      assert.equal(window.document.querySelector('#neighbor svg')!.getAttribute('aria-label'), 'Unlike')
+    } finally { Date.now = originalNow; await window.happyDOM.close() }
+  })
 
 for (const fixture of [
   { name: 'live Facebook ad redirect without an English CTA or label', current: '<a href="https://www.facebook.com/ads/ig_redirect/?d=example">Переглянути</a>', expected: 'ad_redirect' },

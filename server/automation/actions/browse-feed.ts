@@ -7,7 +7,7 @@ import { browseUntilEnd } from '../routine-schedule.js'
 import { browseHomeFeed } from './home-feed.js'
 import { openReels, watchReels } from './reels.js'
 import { watchStories } from './stories.js'
-import { assertInstagramReady, checkNotifications } from './instagram-state.js'
+import { assertInstagramReady, checkNotifications, hasUnreadNotifications } from './instagram-state.js'
 import { openDMs } from './inbox.js'
 import { backToFeed } from './navigation.js'
 import { followTopicAccounts } from './topic-follow.js'
@@ -18,7 +18,7 @@ import { random, sleep, type ActionLogger, type StopCheck } from './shared.js'
 
 export type FeedSessionContext = {
   deadline: number; remainingMinutes: number; day: number; config: Record<string, unknown>;
-  budget: WarmupActivityBudget; request: Omit<WarmupFollowRequest, 'username'>;
+  budget: WarmupActivityBudget; unseenStories: boolean; request: Omit<WarmupFollowRequest, 'username'>;
 }
 export type FeedState = { next: 'home' | 'reels'; homeSeen: Set<string>; reelsSeen: Set<string> }
 const contentDependencies = { home: browseHomeFeed, openReels, reels: watchReels, now: Date.now, random }
@@ -59,7 +59,8 @@ export async function browseContent(page: Page, end: number, config: Record<stri
 }
 
 const dependencies = { content: browseContent, stories: watchStories, check: assertInstagramReady,
-  notifications: checkNotifications, inbox: openDMs, home: backToFeed, follow: followTopicAccounts,
+  unreadNotifications: hasUnreadNotifications, notifications: checkNotifications, inbox: openDMs,
+  home: backToFeed, openReels, follow: followTopicAccounts,
   terms: topicSearchTerms, now: Date.now, random, sleep }
 
 /** One browsing flow owns startup checks, Stories, content, follows/DMs, and scheduled cleanup. */
@@ -80,18 +81,32 @@ export async function runBrowseFeedSession(page: Page, context: FeedSessionConte
     return result
   }
   await deps.check(page, session)
-  if (startupNotifications) await startupNotifications(session, day)
-  else await deps.notifications(page, log, session)
+  let unreadNotifications = false
+  try {
+    unreadNotifications = await deps.unreadNotifications(page)
+  } catch (error) {
+    session.check()
+    if (!isTemporaryUiError(error)) throw error
+    await deps.notifications(page, log, session)
+  }
+  if (unreadNotifications) {
+    if (startupNotifications) await startupNotifications(session, day)
+    else await deps.notifications(page, log, session)
+  }
   if (stopped()) return 'stopped'
   await deps.inbox(page, log, session)
   if (stopped()) return 'stopped'
-  await deps.home(page, log, session)
+  const home = config.browse_home_feed !== false
+  const stories = config.watch_stories !== false && context.unseenStories
+  if (home || stories) await deps.home(page, log, session)
   if (stopped()) return 'stopped'
-  if (config.watch_stories !== false) {
+  if (stories) {
     budget.used.stories += await deps.stories(page, Infinity, log, stopped, { minSeconds: 2, maxSeconds: 5,
       deadline: Math.min(deadline, deps.now() + deps.random(60_000, 180_000)) })
     if (!stopped()) await deps.check(page, session)
   }
+  if (stopped()) return 'stopped'
+  if (!home && config.scroll_reels !== false) await deps.openReels(page, log, session)
   if (stopped()) return 'stopped'
   const topics = warmupTopics(config.warmup_topics)
   if (day >= 3 && day <= 7 && topics.length && budget.remaining('follows') &&

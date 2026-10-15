@@ -24,6 +24,7 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
     locator: (selector: string) => { assert.match(selector, /^xpath=ancestor::/); return { getByRole: () => close }; } };
   const controls = new Map<string, unknown>();
   const page = {
+    url: () => 'https://www.instagram.com/',
     getByRole: (role: string, opts: { name: string }) => role === 'heading'
       ? title
       : {

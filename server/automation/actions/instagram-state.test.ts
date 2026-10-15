@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Window } from 'happy-dom'
 import type { Page } from 'playwright-core'
-import { assertInstagramReady, checkNotifications } from './instagram-state.js'
+import { assertInstagramReady, checkNotifications, hasUnreadNotifications } from './instagram-state.js'
 import { BrowseSession } from './session.js'
 import { ElementNotVisibleError } from 'cloakbrowser/human'
 import { dismissMetaAccountPopup, dismissPopups } from './navigation.js'
@@ -152,6 +152,34 @@ test('login and checkpoint URLs stop before any DOM action', async () => {
     )
 })
 
+test('unread detection uses the visible Notifications badge, ignoring Messages and hidden markers', async () => {
+  const window = new Window()
+  try {
+    const badge = '<div data-badge style="background: rgb(255, 48, 64); border-radius: 50px; visibility: visible; opacity: 1"></div>'
+    for (const variant of ['unread', 'read', 'messages', 'hidden', 'offscreen', 'transparent', 'hidden-control', 'caption']) {
+      window.document.body.innerHTML = `<a id="notifications" style="--ig-badge: 255, 48, 64"><div><svg aria-label="Notifications"></svg></div>${badge}</a>` +
+        `<a><svg aria-label="Messages"></svg>${badge}</a><article>${badge}</article>`
+      const control = window.document.querySelector('#notifications')!
+      const dot = control.querySelector('[data-badge]')!
+      if (['read', 'messages', 'caption'].includes(variant)) dot.remove()
+      if (variant === 'hidden') dot.setAttribute('style', `${dot.getAttribute('style')}; visibility: hidden`)
+      if (variant === 'transparent') dot.setAttribute('style', `${dot.getAttribute('style')}; opacity: 0`)
+      if (variant === 'hidden-control') control.setAttribute('hidden', '')
+      for (const node of window.document.querySelectorAll('[data-badge]')) {
+        const top = variant === 'offscreen' ? -20 : 20
+        node.getBoundingClientRect = () => ({ x: 40, y: top, left: 40, right: 51, top, bottom: top + 11,
+          width: 11, height: 11, toJSON: () => ({}) })
+      }
+      const page = { locator: (selector: string) => ({ filter: () => ({
+        evaluateAll: async (fn: (nodes: Element[]) => boolean) => fn(
+          [...window.document.querySelectorAll(selector)].filter(node => !node.hasAttribute('hidden')) as unknown as Element[],
+        ),
+      }) }) } as unknown as Page
+      assert.equal(await hasUnreadNotifications(page), variant === 'unread', variant)
+    }
+  } finally { await window.happyDOM.close() }
+})
+
 function notificationFixture(
   options: {
     failures?: number
@@ -161,6 +189,7 @@ function notificationFixture(
     checkpoint?: boolean
     stubbornPanel?: boolean
     resetFailure?: boolean
+    url?: string
   } = {},
 ) {
   const clicks: string[] = []
@@ -203,7 +232,7 @@ function notificationFixture(
     },
   }
   const page = {
-    url: () => 'https://www.instagram.com/',
+    url: () => options.url ?? 'https://www.instagram.com/',
     keyboard: {
       press: async (key: string) => {
         assert.equal(key, 'Escape')
@@ -211,7 +240,8 @@ function notificationFixture(
         if (!options.stubbornPanel) opened = false
       },
     },
-    goto: async () => {
+    goto: async (url: string) => {
+      assert.equal(url, options.url ?? 'https://www.instagram.com/')
       if (options.resetFailure) throw new errors.TimeoutError('Home reset timed out')
       clicks.push('notification-reset'); opened = false
       return null
@@ -289,8 +319,8 @@ test('a notification close control that disappears falls back to Escape', async 
   assert.deepEqual(f.clicks, ['notifications', 'escape'])
 })
 
-test('a notification panel that survives Escape is cleared by bounded Home navigation', async () => {
-  const f = notificationFixture({ closeFailure: true, stubbornPanel: true })
+test('a notification panel that survives Escape resets its current route without visiting Home', async () => {
+  const f = notificationFixture({ closeFailure: true, stubbornPanel: true, url: 'https://www.instagram.com/reels/' })
   assert.equal(await checkNotifications(f.page, () => {}, f.session), true)
   assert.deepEqual(f.clicks, ['notifications', 'escape', 'notification-reset'])
 })

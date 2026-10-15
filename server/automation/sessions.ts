@@ -7,6 +7,8 @@ import { BrowseSession, SessionEnded } from './actions/session.js'
 import { runExploreWarmup } from './actions/explore-warmup.js'
 import { runBrowseFeedSession } from './actions/browse-feed.js'
 import { assertInstagramReady } from './actions/instagram-state.js'
+import { hasUnseenStories } from './actions/stories.js'
+import { isInstagramHome } from './actions/navigation.js'
 import type { ActionLogger, StopCheck } from './actions/shared.js'
 
 const defaults = {
@@ -51,7 +53,7 @@ export type SessionActivity = (session: {
 }) => Promise<SessionResult['reason']>
 
 const dependencies = { begin: warmupBeginRun, finish: warmupFinishRun, explore: runExploreWarmup,
-  browse: runBrowseFeedSession, check: assertInstagramReady, now: Date.now }
+  browse: runBrowseFeedSession, check: assertInstagramReady, unseenStories: hasUnseenStories, now: Date.now }
 
 /** One reservation owns both phases: optional Explore warm-up, then the shared browsing flow. */
 export async function runBrowsingSession(profileId: string, automationId: string, input: Record<string, unknown>, page: Page,
@@ -77,12 +79,20 @@ export async function runBrowsingSession(profileId: string, automationId: string
   let reason: SessionResult['reason'] = 'stopped', minutes = 0
   try {
     if (!stopped()) {
-      await deps.check(page, new BrowseSession(deadline, stopped))
+      const session = new BrowseSession(deadline, stopped)
+      await deps.check(page, session)
+      if (config.watch_stories && !isInstagramHome(page)) {
+        await page.goto('https://www.instagram.com/', {
+          waitUntil: 'domcontentloaded', timeout: session.timeout(15_000),
+        })
+        await deps.check(page, session)
+      }
+      const unseenStories = config.watch_stories && await deps.unseenStories(page, session)
       log({ event: 'automation.session.daily_plan', day, activityPlan: budget.plan, activityUsed: budget.used })
       // Explore receives part of this reservation, leaving time for the common browsing flow.
       await deps.explore(page, Math.min(deadline, deps.now() + (deadline - deps.now()) * 0.3), config, budget, log, stopped)
       if (!stopped()) reason = await deps.browse(page, {
-        deadline, day, config, budget, request: { profileId, runId, date: plan.date },
+        deadline, day, config, budget, unseenStories, request: { profileId, runId, date: plan.date },
         remainingMinutes: Math.max(0, Math.min(plan.remainingMinutes ?? plan.minutes, (midnight - started) / 60_000) - (deps.now() - started) / 60_000),
       }, log, shouldStop, activity, startupNotifications)
     }

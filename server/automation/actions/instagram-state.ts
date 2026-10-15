@@ -50,6 +50,26 @@ export const notificationsHeading = (page: Page) =>
     .filter({ visible: true })
     .first()
 
+const notificationControls = (page: Page) => page.locator(
+  'a:has(svg[aria-label="Notifications"]), [role="button"]:has(svg[aria-label="Notifications"])',
+).filter({ visible: true })
+
+/** The unread dot has no accessible label; Instagram colors it with --ig-badge. */
+export async function hasUnreadNotifications(page: Page): Promise<boolean> {
+  return notificationControls(page).evaluateAll(controls => controls.some(control => {
+    const view = control.ownerDocument.defaultView!
+    const color = view.getComputedStyle(control).getPropertyValue('--ig-badge').trim() || '255, 48, 64'
+    const badgeColor = `rgb(${color})`.replace(/\s/g, '')
+    return [...control.querySelectorAll('div, span')].some(node => {
+      const rect = node.getBoundingClientRect(), style = view.getComputedStyle(node)
+      return rect.width > 0 && rect.width <= 32 && rect.height > 0 && rect.height <= 24 &&
+        rect.bottom > 0 && rect.top < view.innerHeight && rect.right > 0 && rect.left < view.innerWidth &&
+        style.visibility === 'visible' && style.display !== 'none' && style.opacity !== '0' &&
+        style.backgroundColor.replace(/\s/g, '') === badgeColor
+    })
+  }))
+}
+
 /** Icon labels stay stable when Instagram expands the sidebar and duplicates its link names. */
 export async function openNotifications(
   page: Page,
@@ -62,12 +82,7 @@ export async function openNotifications(
   for (let attempt = 0; attempt < 2 && Date.now() < deadline; attempt++) {
     session.check()
     if (await heading.isVisible()) return true
-    const link = page
-      .locator(
-        'a:has(svg[aria-label="Notifications"]), [role="button"]:has(svg[aria-label="Notifications"])',
-      )
-      .filter({ visible: true })
-      .first()
+    const link = notificationControls(page).first()
     if (!(await link.isVisible())) return false
     try {
       await clickAction(link, timeout(5_000))
@@ -88,6 +103,7 @@ export async function openNotifications(
 export async function closeNotifications(page: Page, session = new BrowseSession()): Promise<void> {
   const heading = notificationsHeading(page)
   if (session.stopped() || !(await heading.isVisible())) return
+  const returnUrl = page.url()
   const panel = heading.locator(
     'xpath=ancestor::*[.//*[self::button or @role="button"][@aria-label="Close" or .//*[@aria-label="Close"] or normalize-space(.)="Close"]][1]',
   )
@@ -111,7 +127,7 @@ export async function closeNotifications(page: Page, session = new BrowseSession
       if (!isTemporaryUiError(retryError)) throw retryError
       await assertInstagramReady(page, session)
       // A panel that survives Escape must be cleared before browsing underneath it.
-      await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
+      await page.goto(returnUrl, { waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
       await heading.waitFor({ state: 'hidden', timeout: session.timeout(3_000) })
     }
   }

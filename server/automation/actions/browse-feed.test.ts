@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import type { Page } from 'playwright-core'
+import { errors, type Page } from 'playwright-core'
 import { browseContent, runBrowseFeedSession, type FeedSessionContext, type FeedState } from './browse-feed.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { SessionEnded } from './session.js'
@@ -9,12 +9,14 @@ function setup(day = 8) {
   let now = Date.now()
   const start = now, calls: string[] = []
   const budget = new WarmupActivityBudget({ likes: 4, profiles: 3, follows: 2, reels: 0, stories: 0 })
-  const context: FeedSessionContext = { day, deadline: start + 600_000, remainingMinutes: 20,
+  const context: FeedSessionContext = { day, deadline: start + 600_000, remainingMinutes: 20, unseenStories: true,
     config: { watch_stories: true }, budget, request: { profileId: 'profile', runId: 'run', date: '2026-10-14' } }
   const deps: NonNullable<Parameters<typeof runBrowseFeedSession>[6]> = {
     now: () => now, random: min => min, sleep: async ms => { now += ms },
     check: async () => { calls.push('check') }, notifications: async () => { calls.push('notifications'); return true },
+    unreadNotifications: async () => true,
     inbox: async () => { calls.push('inbox'); return true }, home: async () => { calls.push('home') },
+    openReels: async () => { calls.push('open-reels'); return true },
     stories: async (_page, count, _log, _stop, timing) => {
       calls.push('stories'); assert.equal(count, Infinity)
       assert.equal(timing.deadline! - now, 60_000); now += 60_000; return 12
@@ -46,6 +48,87 @@ test('due follow-back scanning replaces the single startup notification visit', 
     assert.equal(session.end, s.context.deadline); assert.equal(day, 8); s.calls.push('follow-back')
   })
   assert.deepEqual(s.calls.filter(call => call !== 'check'), ['follow-back', 'inbox', 'home', 'stories', 'content'])
+})
+
+test('no unread notification badge skips both startup visits but still checks the inbox', async () => {
+  for (const followBack of [false, true]) {
+    const s = setup()
+    s.deps.unreadNotifications = async () => false
+    s.deps.notifications = async () => { throw new Error('No unread notifications') }
+    await s.run(undefined, followBack ? async () => { throw new Error('No unread follow-back scan') } : undefined)
+    assert.deepEqual(s.calls, ['check', 'inbox', 'home', 'stories', 'check', 'content'])
+  }
+})
+
+test('temporary unread detection errors recover through one brief notification check', async () => {
+  const s = setup()
+  s.deps.unreadNotifications = async () => { throw new Error('locator.evaluateAll: Execution context was destroyed, most likely because of a navigation') }
+  assert.equal(await s.run(undefined, async () => { throw new Error('Recovery must not open a second notification visit') }), 'finished')
+  assert.deepEqual(s.calls, ['check', 'notifications', 'inbox', 'home', 'stories', 'check', 'content'])
+})
+
+test('an unavailable notification panel after detection recovery still allows browsing', async () => {
+  const s = setup()
+  s.deps.unreadNotifications = async () => { throw new errors.TimeoutError('Navigation still settling') }
+  s.deps.notifications = async () => { s.calls.push('notifications'); return false }
+  assert.equal(await s.run(), 'finished')
+  assert.equal(s.calls.filter(call => call === 'notifications').length, 1)
+  assert.ok(s.calls.includes('inbox') && s.calls.includes('content'))
+})
+
+test('non-temporary unread detection errors propagate without attempting notification recovery', async () => {
+  const s = setup(), error = new Error('Browser disconnected')
+  s.deps.unreadNotifications = async () => { throw error }
+  await assert.rejects(s.run(), error)
+  assert.deepEqual(s.calls, ['check'])
+})
+
+test('cancellation during unread detection prevents notification recovery and further startup work', async () => {
+  const s = setup()
+  let stopped = false
+  s.deps.unreadNotifications = async () => { stopped = true; throw new errors.TimeoutError('Interrupted navigation') }
+  await assert.rejects(s.run(undefined, undefined, () => stopped), SessionEnded)
+  assert.deepEqual(s.calls, ['check'])
+})
+
+test('non-temporary failures from notification recovery continue to propagate', async () => {
+  const s = setup(), error = new Error('Instagram checkpoint needs attention')
+  s.deps.unreadNotifications = async () => { throw new errors.TimeoutError('Navigation still settling') }
+  s.deps.notifications = async () => { throw error }
+  await assert.rejects(s.run(), error)
+  assert.deepEqual(s.calls, ['check'])
+})
+
+test('Reels-only startup goes from notifications and inbox straight to Reels without Home or Stories', async () => {
+  const s = setup()
+  s.context.config = { browse_home_feed: false, scroll_reels: true, watch_stories: true }
+  s.context.unseenStories = false
+  assert.equal(await s.run(), 'finished')
+  assert.deepEqual(s.calls, ['check', 'notifications', 'inbox', 'open-reels', 'content'])
+  assert.equal(s.context.budget.used.stories, 0)
+})
+
+test('Reels-only startup returns Home for initially unseen Stories before opening Reels', async () => {
+  const s = setup()
+  s.context.config = { browse_home_feed: false, scroll_reels: true, watch_stories: true }
+  assert.equal(await s.run(), 'finished')
+  assert.deepEqual(s.calls, ['check', 'notifications', 'inbox', 'home', 'stories', 'check', 'open-reels', 'content'])
+  assert.equal(s.context.budget.used.stories, 12)
+})
+
+test('disabled Stories do not cause a Home detour even with an initial unseen marker', async () => {
+  const s = setup()
+  s.context.config = { browse_home_feed: false, scroll_reels: true, watch_stories: false }
+  await s.run()
+  assert.deepEqual(s.calls, ['check', 'notifications', 'inbox', 'open-reels', 'content'])
+})
+
+test('disabled browsing surfaces do not force a Home or Reels visit at startup', async () => {
+  const s = setup()
+  s.context.config = { browse_home_feed: false, scroll_reels: false }
+  s.context.unseenStories = false
+  await s.run()
+  assert.ok(!s.calls.some(call => ['home', 'open-reels', 'stories'].includes(call)))
 })
 
 test('startup stop prevents inbox, Stories and browsing', async () => {
