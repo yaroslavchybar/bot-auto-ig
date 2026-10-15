@@ -68,15 +68,15 @@ export async function clickAction(target: Locator, timeout = 10_000): Promise<vo
 }
 
 /** Give Cloak a single live CSS target instead of an unsupported chained locator. */
-export async function clickLiveAction(page: Page, target: Locator, session: BrowseSession): Promise<void> {
+export async function clickLiveAction(page: Page, target: Locator, session: BrowseSession, maxTimeout = 5000): Promise<void> {
   const selector = await target.evaluate(node => {
     if (!node.isConnected) throw new Error('Action target is detached or missing')
     const marker = `igbot-${node.ownerDocument.defaultView!.crypto.randomUUID()}`
     node.setAttribute('data-igbot-action-target', marker)
     return `[data-igbot-action-target=${marker}]`
-  }, undefined, { timeout: session.timeout(5000) })
+  }, undefined, { timeout: session.timeout(maxTimeout) })
   try {
-    const timeout = session.timeout(5000)
+    const timeout = session.timeout(maxTimeout)
     const options = { timeout, human_config: { scroll_target_zone: [0, 1], mouse_overshoot_chance: 0 } }
     await (await actionLocator(page.locator(selector), timeout)).click(options)
   } finally {

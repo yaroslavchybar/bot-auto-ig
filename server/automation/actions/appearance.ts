@@ -28,7 +28,8 @@ export async function setSessionAppearance(page: Page, timezone: string | undefi
   if (!theme) { log({ event: 'automation.session.appearance', outcome: 'skipped', reason: 'proxy_timezone_unknown' }); return }
   const root = page.locator(`html.__fb-${theme}-mode`)
   if (await root.isVisible()) { log({ event: 'automation.session.appearance', theme, timezone, outcome: 'unchanged' }); return }
-  const setting = new BrowseSession(Math.min(parent.end, deps.now() + 10_000), () => parent.stopped())
+  // Several humanized cursor moves must finish before the switch can be clicked.
+  const setting = new BrowseSession(Math.min(parent.end, deps.now() + 30_000), () => parent.stopped())
   const menu = page.locator('a:has(svg[aria-label="Settings"])').filter({ visible: true }).first()
   const moreMenu = page.getByRole('dialog').filter({ visible: true }).last()
   const panel = page.getByRole('dialog').filter({ hasText: 'Switch appearance', visible: true }).last()
@@ -43,20 +44,20 @@ export async function setSessionAppearance(page: Page, timezone: string | undefi
       await deps.check(page, setting)
       await menu.waitFor({ state: 'visible', timeout: setting.timeout(3000) })
       opened = true
-      await deps.click(page, menu, setting)
-      await deps.click(page, panel.getByRole('button', { name: /Switch appearance$/ }).first(), setting)
+      await deps.click(page, menu, setting, 10_000)
+      await deps.click(page, panel.getByRole('button', { name: /Switch appearance$/ }).first(), setting, 10_000)
       const toggle = panel.getByRole('switch')
       await toggle.waitFor({ state: 'visible', timeout: setting.timeout(3000) })
       const checked = await toggle.getAttribute('aria-checked')
       if (checked !== 'true' && checked !== 'false') throw new errors.TimeoutError('Appearance switch state is unavailable')
       if ((checked === 'true') !== (theme === 'dark')) {
         // Use the row; clicking its nested input did not reliably change the saved appearance.
-        await deps.click(page, panel.getByRole('button', { name: 'Dark mode', exact: true }), setting)
+        await deps.click(page, panel.getByRole('button', { name: 'Dark mode', exact: true }), setting, 10_000)
       }
       await root.waitFor({ state: 'visible', timeout: setting.timeout(2000) })
     } finally {
       if (opened && !parent.stopped() && await moreMenu.isVisible()) {
-        await deps.click(page, menu, parent)
+        await deps.click(page, menu, parent, 10_000)
         await moreMenu.waitFor({ state: 'hidden', timeout: parent.timeout(2000) })
       }
     }

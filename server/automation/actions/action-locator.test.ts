@@ -2,8 +2,9 @@ import { visibleActionGeometry } from './action-locator.test-support.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { Window } from 'happy-dom'
-import type { Locator } from 'playwright-core'
-import { actionLocator, clickAction } from './action-locator.js'
+import type { Locator, Page } from 'playwright-core'
+import { actionLocator, clickAction, clickLiveAction } from './action-locator.js'
+import { BrowseSession } from './session.js'
 import { ElementNotVisibleError, resolveConfig } from 'cloakbrowser/human'
 
 for (const method of ['click', 'dblclick', 'fill', 'hover'] as const) {
@@ -225,6 +226,37 @@ test('a session timeout recalculated after selection does not count selection tw
     await action.click({ timeout: 1100 - now })
     assert.equal(disposed, true)
   } finally { Date.now = originalNow }
+})
+
+for (const [maxTimeout, sessionMs, movementMs, expected] of [
+  [undefined, 30_000, 1000, 5000], [10_000, 30_000, 6000, 10_000], [10_000, 3000, 1000, 3000],
+] as const) test(`live clicks allow a custom movement budget within the session (${maxTimeout}, ${sessionMs})`, async () => {
+  const window = new Window(), originalNow = Date.now
+  let now = 1000, clicks = 0
+  Date.now = () => now
+  try {
+    window.document.body.innerHTML = '<button>Dark mode</button>'
+    const node = window.document.querySelector('button')!
+    const target = {
+      evaluate: async (fn: (element: Element) => unknown, _arg: unknown, options: { timeout: number }) => {
+        assert.equal(options.timeout, expected)
+        return fn(node as unknown as Element)
+      },
+      elementHandle: async () => ({ ...visibleActionGeometry,
+        hover: async (options: { timeout: number }) => { assert.equal(options.timeout, expected); now += movementMs },
+        click: async (options: { timeout: number }) => { assert.equal(options.timeout, expected - movementMs); clicks++ },
+        dispose: async () => {},
+      }),
+      evaluateAll: async (fn: (elements: Element[]) => unknown) => fn([node as unknown as Element]),
+    } as unknown as Locator
+    const page = { locator: (selector: string) => {
+      assert.equal(window.document.querySelector(selector), node)
+      return target
+    } } as unknown as Page
+    await clickLiveAction(page, target, new BrowseSession(now + sessionMs), maxTimeout)
+    assert.equal(clicks, 1)
+    assert.equal(node.hasAttribute('data-igbot-action-target'), false)
+  } finally { Date.now = originalNow; await window.happyDOM.close() }
 })
 
 test('Cloak emits mouse movement onto the pinned button before mouse-down', async () => {

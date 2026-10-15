@@ -19,6 +19,7 @@ test('appearance follows proxy local time, daylight saving and exact day/night b
 })
 
 function fixture(dark: boolean, time = '2026-10-15T12:00:00Z', panelVisible = true) {
+  let now = Date.parse(time)
   let opened = false, submenu = false, stopped = false
   const clicks: string[] = [], notes: Record<string, unknown>[] = []
   type Target = 'menu' | 'panel' | 'dialogs' | 'appearance' | 'switch' | 'dark' | 'root-light' | 'root-dark'
@@ -38,7 +39,7 @@ function fixture(dark: boolean, time = '2026-10-15T12:00:00Z', panelVisible = tr
     getByRole: () => locate('dialogs'),
   } as unknown as Page
   const deps: NonNullable<Parameters<typeof setSessionAppearance>[4]> = {
-    now: () => Date.parse(time), check: async () => {},
+    now: () => now, check: async () => {},
     click: async (_page, target) => {
       const kind = (target as unknown as { kind: Target }).kind
       clicks.push(kind)
@@ -55,7 +56,8 @@ function fixture(dark: boolean, time = '2026-10-15T12:00:00Z', panelVisible = tr
     try { await setSessionAppearance(page, timezone, parent, note => notes.push(note), deps) }
     finally { Date.now = originalNow }
   }
-  return { run, deps, clicks, notes, opened: () => opened, dark: () => dark, stop: () => { stopped = true } }
+  return { run, deps, clicks, notes, advance: (ms: number) => { now += ms },
+    opened: () => opened, dark: () => dark, stop: () => { stopped = true } }
 }
 
 for (const dark of [false, true]) test(`startup sets the desired saved theme and closes its menu (${dark})`, async () => {
@@ -66,6 +68,21 @@ for (const dark of [false, true]) test(`startup sets the desired saved theme and
   assert.equal(s.notes[0]?.outcome, 'switched')
   await s.run(); assert.equal(s.clicks.length, 4, 'already-correct themes receive no further clicks')
   assert.equal(s.notes.at(-1)?.outcome, 'unchanged')
+})
+
+test('slow humanized menu clicks still reach the theme switch and close More', async () => {
+  const s = fixture(false, '2026-10-15T20:00:00Z'), click = s.deps.click
+  s.deps.click = async (...args) => {
+    const [, , session, maxTimeout] = args
+    assert.equal(session.timeout(maxTimeout!), 10_000)
+    s.advance(6000)
+    session.check()
+    await click(...args)
+  }
+  await s.run()
+  assert.deepEqual(s.clicks, ['menu', 'appearance', 'dark', 'menu'])
+  assert.equal(s.dark(), true); assert.equal(s.opened(), false)
+  assert.equal(s.notes.at(-1)?.outcome, 'switched')
 })
 
 test('unknown proxy timezone leaves the page untouched', async () => {
