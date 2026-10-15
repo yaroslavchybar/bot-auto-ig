@@ -13,6 +13,7 @@ function setup(day = 8) {
     config: { watch_stories: true }, budget, request: { profileId: 'profile', runId: 'run', date: '2026-10-14' } }
   const deps: NonNullable<Parameters<typeof runBrowseFeedSession>[6]> = {
     now: () => now, random: min => min, sleep: async ms => { now += ms },
+    waitForOutreach: async (_page, until) => { now = until; return true },
     check: async () => { calls.push('check') }, notifications: async () => { calls.push('notifications'); return true },
     unreadNotifications: async () => true,
     inbox: async () => { calls.push('inbox'); return true }, home: async () => { calls.push('home') },
@@ -160,6 +161,13 @@ test('outreach and cleanup use the same deadline, budget and seen sets as conten
   await s.run(async session => {
     assert.equal(session.remainingMinutes, 19)
     assert.equal(session.deadline, s.context.deadline)
+    let guarded = false
+    s.deps.waitForOutreach = async (_page, until, config, parent) => {
+      guarded = true; assert.equal(config, s.context.config); assert.equal(parent.end, session.deadline)
+      assert.equal(until, s.now() + 1000); s.advance(1000); return true
+    }
+    assert.equal(await session.waitForOutreach!(s.now() + 1000), true)
+    assert.ok(guarded)
     s.calls.push('unfollow')
     await session.browse(1); s.calls.push('follow'); s.advance(30_000)
     await session.browse(1); s.calls.push('dm'); s.advance(30_000)

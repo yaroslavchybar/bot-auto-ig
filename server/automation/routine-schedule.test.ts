@@ -86,6 +86,29 @@ test('a stop during the transition pause prevents opening a recipient', async ()
   assert.equal(s.sent(), 0);
 });
 
+test('the outreach pause delegates to content-aware waiting before opening a recipient', async () => {
+  const s = setup(1), session = s.session(5, 5)
+  let waits = 0
+  session.waitForOutreach = async until => {
+    waits++; s.events.push('wait-on-related-content')
+    assert.ok(until <= session.deadline)
+    await s.controls.sleep(until - s.controls.now())
+    return true
+  }
+  await scheduleRoutine(session, s.controls)
+  assert.equal(waits, 1)
+  assert.deepEqual(s.events.slice(0, 3), ['browse', 'wait-on-related-content', 'send'])
+})
+
+test('an unskippable ad ends the pause early instead of idling before outreach', async () => {
+  const s = setup(1), session = s.session(5, 5)
+  let readyAt = 0
+  session.waitForOutreach = async () => { readyAt = s.controls.now(); return false }
+  await scheduleRoutine(session, s.controls)
+  assert.equal(s.sendTimes[0], readyAt)
+  assert.equal(s.sent(), 1)
+})
+
 test('the transition pause cannot overrun the session deadline', async () => {
   const s = setup(3), session = s.session(1, 1);
   session.browse = async () => { await s.controls.sleep(55_000); return 'finished'; };

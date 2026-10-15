@@ -72,7 +72,10 @@ export async function scheduleRoutine(
     let completed = 0;
     while (completed < batch && !stopped()) {
       while (!stopped() && now() < Math.min(nextSendAt, session.deadline)) {
-        await controls.sleep(Math.min(1000, nextSendAt - now(), session.deadline - now()));
+        if (session.waitForOutreach) {
+          if (!await session.waitForOutreach(Math.min(nextSendAt, session.deadline))) break;
+        }
+        else await controls.sleep(Math.min(1000, nextSendAt - now(), session.deadline - now()));
       }
       if (stopped() || session.deadline - now() < 20_000) break;
       const current = await controls.target();

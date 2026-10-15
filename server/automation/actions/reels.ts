@@ -1,11 +1,11 @@
 import type { Locator, Page } from 'playwright-core'
 import { isTemporaryUiError } from './ui-errors.js'
-import { BrowseSession } from './session.js'
+import { BrowseSession, SessionEnded } from './session.js'
 import { viewVideo } from './viewing.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/warmupTopics.js'
-import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
+import { createTopicMatcher, decideTopic, captureTopicScreenshot, topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { engagePost } from './engagement.js'
 import { clickAction, clickLiveAction } from './action-locator.js'
 import { nativeWheelFor, type NativeWheel } from '../../browser/desktopPointer.js'
@@ -202,6 +202,63 @@ export async function advanceReel(page: Page, session: BrowseSession, log: Actio
   } catch (error) {
     return failed('Reel advancement failed', error)
   }
+}
+
+const outreachDependencies = { video: inViewVideo, advance: advanceReel, check: assertInstagramReady,
+  matches: createTopicMatcher(decideTopic, captureTopicScreenshot, 0.8), now: Date.now }
+
+/** Linger on non-ad Reels: require an 80% match only when interests are configured. */
+export async function waitForReelOutreach(page: Page, until: number, config: Record<string, unknown>,
+  parent: BrowseSession, log: ActionLogger, deps = outreachDependencies): Promise<boolean> {
+  const end = Math.min(until, parent.end), topics = warmupTopics(config.warmup_topics)
+  while (deps.now() < end) {
+    parent.check()
+    if (!/\/reels\//.test(page.url())) { await parent.wait(end - deps.now()); return true }
+    await deps.check(page, parent)
+    const video = await deps.video(page, parent)
+    if (!video) return false
+    const before = reelId(page.url())
+    let ad = false, linger = false
+    try {
+      ad = Boolean(await video.evaluate(reelAdMarker, undefined, { timeout: parent.timeout(1000) }))
+      linger = !ad && !topics.length
+      if (!ad && topics.length) {
+        const context = await video.evaluate(reelPostContext)
+        const post = video.locator('xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
+        linger = await deps.matches(context, topics, new BrowseSession(end, () => parent.stopped()), log, post)
+      }
+    } catch (error) {
+      parent.check()
+      if (!(error instanceof SessionEnded) && !isTemporaryUiError(error)) throw error
+      await deps.check(page, parent)
+      linger = false
+    }
+    parent.check()
+    if (!/\/reels\//.test(page.url())) return false
+    // A late decision may never hold or advance a different Reel.
+    if (before !== reelId(page.url())) continue
+    if (linger && !ad) {
+      while (deps.now() < end && before === reelId(page.url())) {
+        parent.check()
+        try {
+          ad = Boolean(await video.evaluate(reelAdMarker, undefined, { timeout: parent.timeout(1000) }))
+        } catch (error) {
+          parent.check()
+          if (!isTemporaryUiError(error)) throw error
+          await deps.check(page, parent)
+          linger = false
+          break
+        }
+        if (ad) break
+        await parent.wait(Math.min(500, end - deps.now()))
+      }
+      if (linger && !ad) continue
+    }
+    log({ event: 'automation.actions.reels.outreach_skip', reason: ad ? 'ad' : 'below_80_percent_or_unknown' })
+    // Use the parent deadline so even an ad discovered at the pause boundary can be skipped.
+    if (!await deps.advance(page, parent, log)) return false
+  }
+  return true
 }
 
 // Browse until the session deadline; a finite count is only used by bounded callers.

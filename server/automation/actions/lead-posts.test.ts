@@ -71,7 +71,8 @@ function fixture(mode: 'public' | 'private' | 'empty' = 'public') {
     scroll: async () => { calls.push('scroll') },
     video: async () => { calls.push('watch-video'); return true },
     capture: async target => {
-      assert.equal(await target.getAttribute('id'), 'media', 'only the main media goes to Luna')
+      assert.equal(await target.evaluate(node => node.tagName), 'ARTICLE', 'capture the opened post container, as Reels does')
+      assert.equal(await target.locator('#media').count(), 1)
       calls.push('capture'); return Buffer.from('jpeg')
     },
     decide: async () => { calls.push('classify'); return { person: true, confidence: 0.9 } },

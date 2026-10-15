@@ -118,7 +118,8 @@ export async function browseLeadPosts(page: Page, username: string, parent: Brow
         const source = await media.getAttribute('src')
         let decision
         try {
-          decision = await deps.decide(await deps.capture(media, session), session.timeout(5000))
+          // Match Reels capture: screenshot the opened post container, not its image element.
+          decision = await deps.decide(await deps.capture(article, session), session.timeout(5000))
         } catch (error) {
           session.check()
           await deps.check(page, session)

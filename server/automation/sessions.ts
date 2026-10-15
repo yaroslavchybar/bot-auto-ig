@@ -50,6 +50,7 @@ export type SessionResult = { minutes: number; reason: 'finished' | 'stopped' | 
 export type SessionActivity = (session: {
   deadline: number; remainingMinutes: number; day?: number;
   browse: (minutes: number) => Promise<SessionResult['reason']>;
+  waitForOutreach?: (until: number) => Promise<boolean>;
 }) => Promise<SessionResult['reason']>
 
 const dependencies = { begin: warmupBeginRun, finish: warmupFinishRun, explore: runExploreWarmup,

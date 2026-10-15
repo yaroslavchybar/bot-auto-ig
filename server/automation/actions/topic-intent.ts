@@ -82,7 +82,8 @@ export async function captureTopicScreenshot(target: Locator, session: BrowseSes
 }
 
 /** Reuse the same item's decision for viewing and engagement; never cache across changing DOM items. */
-export function createTopicMatcher(request = decideTopic, capture = captureTopicScreenshot): TopicMatcher {
+export function createTopicMatcher(request = decideTopic, capture = captureTopicScreenshot,
+  minimumConfidence = TOPIC_CONFIDENCE): TopicMatcher {
   const cache = new WeakMap<TopicContext, Map<string, Promise<boolean>>>()
   return (context, topics, session, log, target) => {
     session.check()
@@ -106,16 +107,17 @@ export function createTopicMatcher(request = decideTopic, capture = captureTopic
         const decision = await request({ topics, screenshot }, captureSession.timeout(TOPIC_DECISION_TIMEOUT))
         captureSession.check()
         session.check()
+        const related = decision.related && decision.confidence >= minimumConfidence
         report({ kind: 'interest', status: 'complete',
-          confidence: decision.confidence, related: decision.related })
+          confidence: decision.confidence, related })
         log({
           event: 'automation.warmup.topic_decision',
           model: TOPIC_MODEL,
-          related: decision.related,
+          related,
           confidence: decision.confidence,
           input: 'screenshot',
         })
-        return decision.related
+        return related
       } catch {
         report({ kind: 'interest', status: 'unavailable' })
         if (session.stopped())

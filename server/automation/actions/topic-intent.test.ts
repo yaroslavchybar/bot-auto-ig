@@ -74,6 +74,17 @@ test('provider probability controls screenshot matching', async () => {
   }
 })
 
+test('the outreach matcher requires 80% without raising the normal browsing threshold', async () => {
+  for (const confidence of [0.69, 0.7, 0.79, 0.8, 1]) {
+    const request = async () => ({ confidence, related: confidence >= 0.7 })
+    const normal = createTopicMatcher(request, async () => image)
+    const outreach = createTopicMatcher(request, async () => image, 0.8)
+    const session = new BrowseSession(), post = context()
+    assert.equal(await normal(post, ['fitness'], session, log, target), confidence >= 0.7)
+    assert.equal(await outreach(post, ['fitness'], session, log, target), confidence >= 0.8)
+  }
+})
+
 test('malformed decisions, provider failures and missing credentials are rejected', async () => {
   for (const result of [
     response('0.9'),
