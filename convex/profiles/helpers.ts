@@ -319,16 +319,10 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	return await ctx.db.get(args.profileId);
 }
 
-async function releaseIgAccount(ctx: any, profileId: any) {
-  const account = await ctx.db.query('igAccounts')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).first();
-  if (account) await ctx.db.patch(account._id, {
-    profileId: undefined,
-    status: account.status === 'invalid' ? 'invalid' : 'available',
-    error: account.status === 'invalid' ? account.error : undefined,
-    retryAfter: undefined,
-    browserLoggedInAt: undefined,
-  });
+async function deleteIgAccount(ctx: MutationCtx, profileId: Id<'profiles'>) {
+  const accounts = await ctx.db.query('igAccounts')
+    .withIndex('by_profile', q => q.eq('profileId', profileId)).collect();
+  for (const account of accounts) await ctx.db.delete(account._id);
 }
 
 export async function removeProfileByNameRow(ctx: any, name: string) {
@@ -346,7 +340,7 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
     .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
     .collect())
     await ctx.db.delete(assignment._id)
-  await releaseIgAccount(ctx, existing._id)
+  await deleteIgAccount(ctx, existing._id)
   const setup = await ctx.db
     .query('modelSetupStates')
     .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
@@ -368,7 +362,7 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
     .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
     .collect())
     await ctx.db.delete(assignment._id)
-  await releaseIgAccount(ctx, profileId)
+  await deleteIgAccount(ctx, profileId)
   const setup = await ctx.db
     .query('modelSetupStates')
     .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))

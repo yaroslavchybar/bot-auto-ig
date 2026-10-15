@@ -29,6 +29,8 @@ Connection status reflects the browser login. There is no separate mobile login,
 reconnect, device state, or mobile logout. Browser cookies are refreshed whenever
 the saved profile opens and closes. To refresh an expired Instagram session,
 open that browser profile and sign in again. Account credentials stay encrypted.
+Deleting a profile also deletes its linked encrypted IG credentials when browser
+and profile-folder cleanup finishes. Credentials are not returned to Available.
 
 The **Create Profile** dialog selects a model and a count. It uses unused
 credentials and saved **Work** proxies, respecting each proxy's profile limit.

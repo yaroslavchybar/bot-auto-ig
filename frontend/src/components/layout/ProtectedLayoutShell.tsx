@@ -54,6 +54,7 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
   const breadcrumb = routeMeta.breadcrumb ?? 'Profiles Manager'
   const appChrome = routeMeta.appChrome ?? 'default'
   const showVncCount = pathname === '/vnc'
+  const showVncSession = pathname.startsWith('/vnc/session/')
   const showScraperTabs = pathname === '/scraper'
   const showProxyTabs = pathname === '/proxies'
   const pageHeaderSlotId = PAGE_HEADER_SLOT_IDS[pathname]
@@ -78,18 +79,22 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
         <AppSidebar />
         <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent">
           <header className="relative z-10 flex h-16 shrink-0 items-center gap-2 border-b border-line-soft bg-panel-subtle group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-            <div className="flex min-w-0 items-center gap-2 px-4">
+            <div className={cn('flex min-w-0 items-center gap-2 px-4', showVncSession && 'flex-1')}>
               <SidebarTrigger className="-ml-1 size-8 text-muted-copy hover:text-ink md:hidden" />
-              <Breadcrumb className="min-w-0">
-                <BreadcrumbList>
-                  <BreadcrumbItem className="flex items-center gap-2">
-                    <BreadcrumbPage className="page-title-gradient text-lg font-medium">
-                      {breadcrumb}
-                    </BreadcrumbPage>
-                    {showVncCount ? <VncActiveCount /> : null}
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
+              {showVncSession ? (
+                <div id="vnc-session-header-slot" className="flex min-w-0 flex-1" />
+              ) : (
+                <Breadcrumb className="min-w-0">
+                  <BreadcrumbList>
+                    <BreadcrumbItem className="flex items-center gap-2">
+                      <BreadcrumbPage className="page-title-gradient text-lg font-medium">
+                        {breadcrumb}
+                      </BreadcrumbPage>
+                      {showVncCount ? <VncActiveCount /> : null}
+                    </BreadcrumbItem>
+                  </BreadcrumbList>
+                </Breadcrumb>
+              )}
             </div>
             {showScraperTabs ? <ScraperHeaderTabs /> : null}
             {showProxyTabs ? <ProxyHeaderTabs /> : null}

@@ -1,14 +1,15 @@
 import { test } from 'node:test'
 import { execFileSync } from 'node:child_process'
 
-for (const reply of ['ack', 'timeout']) {
-  test(`sent native wheel waits for its socket result after the wheel deadline (${reply})`, () => {
+for (const action of ['wheel', 'doubleClick']) for (const reply of ['ack', 'timeout']) {
+  test(`sent native ${action} waits for its socket result after the input deadline (${reply})`, () => {
     execFileSync('bun', ['--eval', `
       import { mock } from 'bun:test'
       import assert from 'node:assert/strict'
       import { EventEmitter } from 'node:events'
       import { WebSocketServer } from 'ws'
       const reply = ${JSON.stringify(reply)}
+      const action = ${JSON.stringify(action)}
       const originalSetTimeout = globalThis.setTimeout, transportTimeouts = []
       globalThis.setTimeout = (fn, ms, ...args) => {
         if (ms === 5000) transportTimeouts.push(ms)
@@ -25,6 +26,8 @@ for (const reply of ['ack', 'timeout']) {
         socket.send(JSON.stringify({ ready: true }))
         socket.on('message', data => {
           const input = JSON.parse(data.toString())
+          assert.equal(input.doubleClick, action === 'doubleClick' ? true : undefined)
+          assert.equal(input.wheel, action === 'wheel' ? 'down' : undefined)
           events.push(input.x)
           if (input.x === 100) received()
           else socket.send(JSON.stringify({ ready: true }))
@@ -34,15 +37,17 @@ for (const reply of ['ack', 'timeout']) {
       context.pages = () => [page]
       context.newCDPSession = async () => ({ send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }) })
       mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchContext: () => {} }))
-      const { installDesktopPointer, nativeWheelFor } = await import('./server/browser/desktopPointer.ts')
+      const { installDesktopPointer, nativeWheelFor, nativeDoubleClickFor } = await import('./server/browser/desktopPointer.ts')
       const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
+      const input = (x, timeout) => action === 'wheel' ? nativeWheelFor(page)(x, 200, 'down', timeout)
+        : nativeDoubleClickFor(page)(x, 200, timeout)
       try {
         let outcome = 'pending'
-        const first = nativeWheelFor(page)(100, 200, 'down', 200)
+        const first = input(100, 200)
         const settled = first.then(() => { outcome = 'ack' }, error => { outcome = error.message })
         await firstReceived
-        const expired = assert.rejects(nativeWheelFor(page)(200, 200, 'down', 20), /deadline ended/)
-        const next = nativeWheelFor(page)(300, 200, 'down', 1000)
+        const expired = assert.rejects(input(200, 20), /deadline ended/)
+        const next = input(300, 1000)
         const nextResult = reply === 'ack' ? next : assert.rejects(next, /disconnected/)
         void nextResult.catch(() => {})
         await new Promise(resolve => originalSetTimeout(resolve, 250))
@@ -96,11 +101,11 @@ for (const stalledStage of ['attach', 'metrics']) {
       } })
       context.newCDPSession = async page => page === blocked && stalledStage === 'attach' ? stalled : sessionFor(page)
       mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchContext: () => {} }))
-      const { installDesktopPointer, nativeWheelFor } = await import('./server/browser/desktopPointer.ts')
+      const { installDesktopPointer, nativeWheelFor, nativeDoubleClickFor } = await import('./server/browser/desktopPointer.ts')
       const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
       let guard
       try {
-        const first = assert.rejects(nativeWheelFor(blocked)(100, 200, 'down', 60), /deadline ended/)
+        const first = assert.rejects(nativeDoubleClickFor(blocked)(100, 200, 60), /deadline ended/)
         const queued = assert.rejects(nativeWheelFor(healthy)(200, 200, 'down', 20), /deadline ended/)
         const next = nativeWheelFor(healthy)(300, 200, 'up', 500)
         await Promise.race([
@@ -154,7 +159,7 @@ for (const ending of ['close', 'timeout']) {
         const position = JSON.parse(data.toString())
         assert.equal(position.width, 800)
         assert.equal(position.height, 600)
-        events.push(position.wheel ? 'wheel:' + position.wheel : 'native:' + position.x)
+        events.push(position.doubleClick ? 'double-click' : position.wheel ? 'wheel:' + position.wheel : 'native:' + position.x)
         if (timeoutMove) {
           originalSetTimeout(() => socket.send(JSON.stringify({ ready: true }), () => {}), 150)
           return
@@ -176,7 +181,7 @@ for (const ending of ['close', 'timeout']) {
         context.on('page', page => captured.set(page, page.mouse.move.bind(page.mouse)))
       },
     }))
-    const { installDesktopPointer, nativeWheelFor, desktopCursorFor } = await import('./server/browser/desktopPointer.ts')
+    const { installDesktopPointer, nativeWheelFor, nativeDoubleClickFor, desktopCursorFor } = await import('./server/browser/desktopPointer.ts')
     const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
     try {
       await captured.get(restored)(100, 200)
@@ -189,6 +194,8 @@ for (const ending of ['close', 'timeout']) {
       await nativeWheelFor(restored)(100, 200, 'down', 5000)
       await nativeWheelFor(fresh)(300, 400, 'up', 5000)
       assert.deepEqual(events.slice(-2), ['wheel:down', 'wheel:up'], 'one request per discrete notch')
+      await nativeDoubleClickFor(fresh)(300, 400, 5000)
+      assert.equal(events.at(-1), 'double-click', 'two native clicks share one atomic transport request')
       const beforeExpiry = events.length
       await assert.rejects(nativeWheelFor(fresh)(300, 400, 'down', 0), /deadline ended/)
       assert.equal(events.length, beforeExpiry, 'expired notches do not send input')
@@ -216,6 +223,8 @@ for (const ending of ['close', 'timeout']) {
       close()
       assert.equal(nativeWheelFor(restored), undefined)
       assert.equal(nativeWheelFor(fresh), undefined)
+      assert.equal(nativeDoubleClickFor(restored), undefined)
+      assert.equal(nativeDoubleClickFor(fresh), undefined)
       assert.equal(desktopCursorFor(restored), undefined)
       assert.equal(desktopCursorFor(fresh), undefined)
       assert.equal(context.listenerCount('page'), 1, 'native page listener is removed')

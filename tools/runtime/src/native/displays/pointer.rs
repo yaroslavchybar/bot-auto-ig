@@ -43,6 +43,20 @@ struct PointerInput {
     #[serde(flatten)]
     position: Position,
     wheel: Option<WheelDirection>,
+    #[serde(default, rename = "doubleClick")]
+    double_click: bool,
+}
+
+#[cfg(any(target_os = "linux", test))]
+impl PointerInput {
+    fn button_clicks(&self) -> Result<Option<(u8, u8)>> {
+        match (&self.wheel, self.double_click) {
+            (Some(_), true) => Err(Failure::invalid("Conflicting pointer actions")),
+            (Some(direction), false) => Ok(Some((direction.button(), 1))),
+            (None, true) => Ok(Some((1, 2))),
+            (None, false) => Ok(None),
+        }
+    }
 }
 
 // Chrome's client area contains the toolbar above the viewport. Use real X11
@@ -124,10 +138,25 @@ pub async fn upgrade(
                     // Never redirect an old connection to a newly reused display port.
                     state.check_session(&session, false).await?;
                     let input: PointerInput = serde_json::from_str(&input)?;
+                    let clicks = input.button_clicks()?;
                     pointer = tokio::task::spawn_blocking(move || {
                         pointer.move_to(input.position)?;
-                        if let Some(direction) = input.wheel {
-                            pointer.wheel_notch(direction)?;
+                        if let Some((button, count)) = clicks {
+                            use rand::Rng;
+                            let mut random = rand::thread_rng();
+                            for index in 0..count {
+                                let delay = if index == 0 {
+                                    0
+                                } else {
+                                    random.gen_range(80..=140)
+                                };
+                                let hold = if button == 1 {
+                                    random.gen_range(40..=70)
+                                } else {
+                                    0
+                                };
+                                pointer.button_click(button, delay, hold)?;
+                            }
                         }
                         Ok::<_, Failure>(pointer)
                     })
@@ -234,19 +263,34 @@ impl Pointer {
         Ok(())
     }
 
-    // A discrete wheel step uses one X11 button press/release, never a pixel delta.
-    fn wheel_notch(&mut self, direction: WheelDirection) -> Result<()> {
+    // XTEST queues release before acknowledgements; its delay supplies the button hold.
+    fn button_click(&mut self, button: u8, delay: u32, hold: u32) -> Result<()> {
         use x11rb::{
             connection::Connection,
             protocol::{xproto, xtest::ConnectionExt},
         };
         let connection = &self.connection;
-        let button = direction.button();
         let press = connection
-            .xtest_fake_input(xproto::BUTTON_PRESS_EVENT, button, 0, self.root, 0, 0, 0)
+            .xtest_fake_input(
+                xproto::BUTTON_PRESS_EVENT,
+                button,
+                delay,
+                self.root,
+                0,
+                0,
+                0,
+            )
             .map_err(unavailable)?;
         let release = connection
-            .xtest_fake_input(xproto::BUTTON_RELEASE_EVENT, button, 0, self.root, 0, 0, 0)
+            .xtest_fake_input(
+                xproto::BUTTON_RELEASE_EVENT,
+                button,
+                hold,
+                self.root,
+                0,
+                0,
+                0,
+            )
             .map_err(unavailable)?;
         // Queue release before waiting for acknowledgements, including a rejected press.
         press.check().map_err(unavailable)?;
@@ -263,6 +307,17 @@ fn unavailable(_: impl std::fmt::Display) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn double_click_is_two_left_clicks_and_cannot_be_combined_with_wheel_input() {
+        let mut input: PointerInput = serde_json::from_value(json!({
+            "x": 120, "y": 250, "width": 1366, "height": 768, "doubleClick": true
+        }))
+        .unwrap();
+        assert_eq!(input.button_clicks().unwrap(), Some((1, 2)));
+        input.wheel = Some(WheelDirection::Down);
+        assert!(input.button_clicks().is_err());
+    }
+
     #[test]
     fn wheel_input_accepts_only_discrete_directions() {
         for (direction, button) in [("up", 4), ("down", 5)] {

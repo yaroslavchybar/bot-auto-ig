@@ -174,13 +174,13 @@ test('duplicate remote copy notifications create only one local clipboard write'
   } finally { h.cleanup() }
 })
 
-test('blocked automatic copy points to the manual panel', async () => {
+test('blocked automatic copy asks for browser clipboard permission', async () => {
   const h = setup()
   h.clipboard.writeText = async () => { throw new Error('Permission denied') }
   try {
     h.remoteCopy('remote text')
     await flush()
-    assert.match(h.errors[0], /Copy to my PC/)
+    assert.match(h.errors[0], /allow clipboard access in your browser/)
   } finally { h.cleanup() }
 })
 

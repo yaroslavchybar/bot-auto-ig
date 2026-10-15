@@ -56,7 +56,7 @@ test('login retries and setup starts are rounded up, reject invalid times, and a
   )
 })
 
-test('encrypted IG credentials are deduplicated, assigned, and released with the profile', async () => {
+test('encrypted IG credentials are deduplicated, assigned, and deleted with the profile', async () => {
   const t = createConvexTest()
   const encrypted = { usernameHash: 'a'.repeat(64), ciphertext: 'v1.encrypted-only' }
   expect(await t.mutation(internal.igAccounts.importEncryptedInternal,
@@ -84,7 +84,8 @@ test('encrypted IG credentials are deduplicated, assigned, and released with the
   await t.mutation(internal.igAccounts.setStateInternal, { id: account._id, status: 'connected' })
   await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: 'IG profile' })
   await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile!._id })
-  expect((await t.query(internal.igAccounts.availableInternal, { count: 1 })).page[0]?._id).toBe(account._id)
+  expect(await t.query(internal.igAccounts.byIdInternal, { id: account._id })).toBeNull()
+  expect((await t.query(internal.igAccounts.availableInternal, { count: 1 })).page).toEqual([])
 })
 
 test('allocation can scan past unreadable available credentials', async () => {
@@ -272,7 +273,7 @@ test('browser login records a connected browser account and starts model setup',
   expect((await t.query(internal.igAccounts.byIdInternal, { id: account._id }))?.browserLoggedInAt).toBe(browserLoggedInAt)
   await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: 'scheduled' })
   await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
-  expect((await t.query(internal.igAccounts.byIdInternal, { id: account._id }))?.browserLoggedInAt).toBeUndefined()
+  expect(await t.query(internal.igAccounts.byIdInternal, { id: account._id })).toBeNull()
   vi.unstubAllEnvs()
 })
 

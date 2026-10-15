@@ -5,20 +5,24 @@ import { runtimeHeaders, runtimeUrl } from '../shared/runtime.js'
 import type { Display } from './display.js'
 
 export type NativeWheel = (x: number, y: number, direction: 'up' | 'down', timeout: number) => Promise<void>
+export type NativeDoubleClick = (x: number, y: number, timeout: number) => Promise<void>
+type PointerAction = { wheel: 'up' | 'down' } | { doubleClick: true }
 const nativeWheels = new WeakMap<Page, NativeWheel>()
+const nativeDoubleClicks = new WeakMap<Page, NativeDoubleClick>()
 const desktopCursors = new WeakMap<Page, Readonly<{ x: number; y: number }>>()
 
 /** Headed automation pages can send discrete notches through their leased X11 display. */
 export function nativeWheelFor(page: Page): NativeWheel | undefined { return nativeWheels.get(page) }
+export function nativeDoubleClickFor(page: Page): NativeDoubleClick | undefined { return nativeDoubleClicks.get(page) }
 export function desktopCursorFor(page: Page): Readonly<{ x: number; y: number }> | undefined { return desktopCursors.get(page) }
 
 // Race each CDP wait against the same deadline; late results cannot resume input.
-function beforeWheelDeadline<T>(start: () => Promise<T>, deadline: number): Promise<T> {
+function beforeInputDeadline<T>(start: () => Promise<T>, deadline: number): Promise<T> {
   const remaining = deadline - Date.now()
-  if (remaining <= 0) return Promise.reject(new Error('Native wheel deadline ended'))
+  if (remaining <= 0) return Promise.reject(new Error('Native input deadline ended'))
   if (!Number.isFinite(remaining)) return start()
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Native wheel deadline ended')), remaining)
+    const timer = setTimeout(() => reject(new Error('Native input deadline ended')), remaining)
     Promise.resolve().then(start).then(value => {
       clearTimeout(timer)
       resolve(value)
@@ -95,13 +99,13 @@ export async function installDesktopPointer(
     pages.add(page)
     const move = page.mouse.move.bind(page.mouse)
     const metrics = context.newCDPSession(page)
-    const input = async (x: number, y: number, wheel?: 'up' | 'down', deadline = Infinity) => {
-      const session = await beforeWheelDeadline(() => metrics, deadline)
-      const { cssLayoutViewport } = await beforeWheelDeadline(() => session.send('Page.getLayoutMetrics'), deadline)
-      if (Date.now() >= deadline) throw new Error('Native wheel deadline ended')
+    const input = async (x: number, y: number, action?: PointerAction, deadline = Infinity) => {
+      const session = await beforeInputDeadline(() => metrics, deadline)
+      const { cssLayoutViewport } = await beforeInputDeadline(() => session.send('Page.getLayoutMetrics'), deadline)
+      if (Date.now() >= deadline) throw new Error('Native input deadline ended')
       // Once sent, keep the queue until the transport result; expiry cannot undo input.
       await request({ x, y, width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight,
-        ...(wheel ? { wheel } : {}) })
+        ...action })
       desktopCursors.set(page, { x, y })
     }
     // Page.getLayoutMetrics is real geometry; window.screen* is fingerprint-spoofed.
@@ -111,18 +115,21 @@ export async function installDesktopPointer(
         await move(x, y, options)
       })
     }
-    nativeWheels.set(page, (x, y, direction, timeout) => {
+    const dispatch = (x: number, y: number, action: PointerAction, timeout: number) => {
       const deadline = Date.now() + timeout
       const previous = queue
-      const work = enqueue(() => input(x, y, direction, deadline))
-      return beforeWheelDeadline(() => previous, deadline).then(() => work)
-    })
+      const work = enqueue(() => input(x, y, action, deadline))
+      return beforeInputDeadline(() => previous, deadline).then(() => work)
+    }
+    nativeWheels.set(page, (x, y, direction, timeout) => dispatch(x, y, { wheel: direction }, timeout))
+    nativeDoubleClicks.set(page, (x, y, timeout) => dispatch(x, y, { doubleClick: true }, timeout))
     void metrics.catch(() => {})
   }
   const close = () => {
     context.off('page', attach)
     for (const page of pages) {
       nativeWheels.delete(page)
+      nativeDoubleClicks.delete(page)
       desktopCursors.delete(page)
     }
     pages.clear()

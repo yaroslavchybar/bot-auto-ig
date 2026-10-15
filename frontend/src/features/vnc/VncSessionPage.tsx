@@ -1,13 +1,14 @@
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from '@/lib/router'
 import { ApiError, apiFetch } from '@/lib/api'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useHeaderSlot } from '@/components/layout/useHeaderSlot'
 import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useVncSessions } from './hooks/useVncSessions'
 import { decodeRouteParam, sessionKey, type DisplaySession } from './utils/liveSessions'
-import { VncClipboardButton } from './components/VncClipboard'
 
 const VncViewer = lazy(() =>
   import('@/features/vnc/components/VncViewer').then((module) => ({
@@ -243,12 +244,9 @@ function VncMobileLayout({
   const isInteractive = handoff.controlState === 'unlocked'
   return (
     <div className="relative flex h-full flex-col overflow-auto bg-shell font-sans">
-      <VncMobileHeader session={session} onBack={onBack} />
+      <VncSessionHeader session={session} onBack={onBack} />
 
       <div className="min-h-0 flex-1 space-y-2 p-2">
-        <div className="flex gap-2">
-          <VncClipboardButton vncPort={session.vncPort} interactive={isInteractive} />
-        </div>
         <div className="h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border border-line-soft bg-black">
           <Suspense fallback={<div className="h-full w-full bg-overlay" />}>
             <VncViewer
@@ -261,27 +259,6 @@ function VncMobileLayout({
         </div>
 
         <ControlToggle handoff={handoff} onBack={onBack} />
-      </div>
-    </div>
-  )
-}
-
-function VncMobileHeader({ session, onBack }: { session: DisplaySession; onBack: () => void }) {
-  return (
-    <div className="z-10 flex shrink-0 items-center justify-between border-b border-line-soft bg-panel-subtle px-3 py-2 shadow-xs select-none">
-      <div className="flex min-w-0 items-center gap-3">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="mr-2 h-3.5 w-3.5" />
-          Back
-        </Button>
-        <div className="min-w-0">
-          <h2 className="truncate page-title-gradient text-sm font-bold tracking-wider uppercase">
-            {session.profileName}
-          </h2>
-          <span className="font-mono text-[10px] text-subtle-copy">
-            {session.automationId} / :{session.displayNum}
-          </span>
-        </div>
       </div>
     </div>
   )
@@ -385,7 +362,7 @@ function VncDesktopLayout({
 }) {
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-shell font-sans">
-      <VncDesktopHeader session={session} isInteractive={isInteractive} onBack={onBack} />
+      <VncSessionHeader session={session} onBack={onBack} />
       <VncDesktopPanels
         session={session}
         isInteractive={isInteractive}
@@ -396,35 +373,29 @@ function VncDesktopLayout({
   )
 }
 
-function VncDesktopHeader({
-  session,
-  isInteractive,
-  onBack,
-}: {
-  session: DisplaySession
-  isInteractive: boolean
-  onBack: () => void
-}) {
-  return (
-    <div className="z-10 flex shrink-0 items-center justify-between border-b border-line-soft bg-panel-subtle px-3 py-1.5 shadow-xs select-none">
-      <div className="flex items-center gap-3">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="mr-2 h-3.5 w-3.5" />
-          Back to Grid
-        </Button>
-        <div className="flex items-baseline gap-2">
-          <h2 className="page-title-gradient text-xs font-bold tracking-wider uppercase">
-            {session.profileName}
-          </h2>
-          <span className="font-mono text-[10px] text-subtle-copy">
-            {session.automationId} / :{session.displayNum}
-          </span>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <VncClipboardButton vncPort={session.vncPort} interactive={isInteractive} />
+function VncSessionHeader({ session, onBack }: { session: DisplaySession; onBack: () => void }) {
+  const headerSlot = useHeaderSlot('vnc-session-header-slot')
+  const controls = (
+    <div className="flex min-w-0 items-center gap-3 select-none">
+      <Button variant="outline" onClick={onBack} className="shrink-0">
+        <ArrowLeft className="mr-2 h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Back to Grid</span>
+        <span className="sm:hidden">Back</span>
+      </Button>
+      <div className="flex min-w-0 items-baseline gap-2">
+        <h2 className="truncate page-title-gradient text-xs font-bold tracking-wider uppercase">
+          {session.profileName}
+        </h2>
+        <span className="hidden shrink-0 font-mono text-[10px] text-subtle-copy lg:inline">
+          {session.automationId} / :{session.displayNum}
+        </span>
       </div>
     </div>
+  )
+  return headerSlot ? (
+    createPortal(controls, headerSlot)
+  ) : (
+    <div className="shrink-0 border-b border-line-soft bg-panel-subtle px-3 py-1.5">{controls}</div>
   )
 }
 

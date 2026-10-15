@@ -87,10 +87,6 @@ export function RoutineInterests({
         <label htmlFor="routine-interest" className="font-medium">
           Interests
         </label>
-        <p className="text-sm text-muted-foreground">
-          Add one idea at a time. AI clarifies each interest and uses it to find and match content.
-          A post can match any one interest.
-        </p>
         <div className="flex gap-2">
           <Input
             id="routine-interest"
@@ -175,10 +171,6 @@ export function RoutineInterests({
           ))}
         </ul>
       )}
-      <p className="text-sm text-muted-foreground">
-        Explore searches for related content during days 1–4 to shape recommendations. Reels and
-        feed matching use the image and visible caption, not keyword overlap.
-      </p>
     </div>
   )
 }

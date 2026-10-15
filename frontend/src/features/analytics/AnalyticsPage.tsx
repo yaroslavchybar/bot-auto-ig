@@ -9,8 +9,6 @@ import {
   Flame,
   Users,
   ArrowUpRight,
-  Clock,
-  CheckCircle2,
   UserRound,
   UserCheck,
 } from 'lucide-react'
@@ -203,28 +201,10 @@ export function AnalyticsPage() {
                 icon={<Users className="size-5" />}
               />
               <Stat
-                label="Pending enrichment"
-                value={data.leads?.pending ?? null}
-                detail="Waiting or being processed"
-                icon={<Clock className="size-5" />}
-              />
-              <Stat
-                label="Enriched leads"
-                value={data.leads?.enriched ?? null}
-                detail="Classification completed"
-                icon={<CheckCircle2 className="size-5" />}
-              />
-              <Stat
                 label="Male leads"
                 value={data.leads?.male ?? null}
                 detail="Enriched and classified as male"
                 icon={<UserRound className="size-5" />}
-              />
-              <Stat
-                label="Ready to assign"
-                value={data.leads?.ready ?? null}
-                detail="Classified leads, still unassigned"
-                icon={<UserPlus className="size-5" />}
               />
               <Stat
                 label="Assigned to profiles"
@@ -268,11 +248,6 @@ export function AnalyticsPage() {
                 </p>
               </Panel>
             </div>
-            <p className="text-xs text-subtle-copy">
-              Lead counts show current inventory. Activity uses UTC.
-              {data.period !== 'today' &&
-                ` History tracked since ${data.historySince}; earlier days may be incomplete.`}
-            </p>
           </>
         )}
       </div>

@@ -89,7 +89,7 @@ export function attachClipboardBridge({
       rfb.sendKey(0xffe3, 'ControlLeft', false)
       for (const code of held) rfb.sendKey(modifierKeysym(code), code, true)
     } catch {
-      if (current()) onError('Could not paste — use the Clipboard panel or allow clipboard access')
+      if (current()) onError('Could not paste — allow clipboard access in your browser')
     } finally {
       if (pending === controller) pending = null
     }
@@ -134,7 +134,7 @@ export function attachClipboardBridge({
         await clipboard.writeText(text)
         if (version === activityVersion) lastCopied = text
       } catch {
-        if (isActive()) onError('Automatic copy blocked — use Copy to my PC in the Clipboard panel')
+        if (isActive()) onError('Automatic copy blocked — allow clipboard access in your browser')
       }
     })
   }

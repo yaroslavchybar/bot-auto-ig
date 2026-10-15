@@ -8,8 +8,10 @@ import { BrowseSession, SessionEnded } from './session.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 
 function likeFixture(options: { doubleTapLikes?: boolean; failure?: Error; warning?: string; slowMovement?: () => void;
+  native?: boolean; covered?: boolean; navigated?: boolean; nativeFailure?: Error;
   lateLike?: 'after-confirmation' | 'during-hover' | 'before-live-click' } = {}) {
   let liked = false, failed = false, confirmationExpired = false
+  let hovered = false
   const calls: string[] = [], notes: Record<string, unknown>[] = []
   const makeControl = (label: string) => ({
     ...visibleActionGeometry, first() { return this },
@@ -23,9 +25,16 @@ function likeFixture(options: { doubleTapLikes?: boolean; failure?: Error; warni
     },
     elementHandle: async () => ({
       ...visibleActionGeometry, dispose: async () => {},
+      evaluate: async (fn: (node: unknown, point: unknown) => unknown, point: unknown) => {
+        const node = { isConnected: true, parentElement: null, contains: (hit: unknown) => hit === node,
+          ownerDocument: { defaultView: { innerWidth: 1280, innerHeight: 800 },
+            elementFromPoint: () => options.covered ? {} : node } }
+        return fn(node, point)
+      },
       hover: async () => {
+        hovered = true
         options.slowMovement?.()
-        if (label === 'Like' && options.lateLike === 'during-hover') liked = true
+        if ((label === 'Like' || options.native) && options.lateLike === 'during-hover') liked = true
         if (options.failure) { failed = true; throw options.failure }
       },
       click: async () => { calls.push(label); liked = true },
@@ -34,7 +43,14 @@ function likeFixture(options: { doubleTapLikes?: boolean; failure?: Error; warni
   })
   const target = { locator: (selector: string) => makeControl(selector.match(/aria-label="(\w+)"/)![1]!) } as unknown as Locator
   const surface = makeControl('video') as unknown as Locator
-  const page = { url: () => 'https://www.instagram.com/reels/current/',
+  const page = { url: () => `https://www.instagram.com/reels/${hovered && options.navigated ? 'next' : 'current'}/`,
+    mouse: { move: async (x: number, y: number) => {
+      assert.deepEqual({ x, y }, { x: 120, y: 120 })
+      hovered = true
+      options.slowMovement?.()
+      if (options.lateLike === 'during-hover') liked = true
+      if (options.failure) { failed = true; throw options.failure }
+    } },
     viewportSize: () => ({ width: 1280, height: 800 }),
     locator: () => ({ filter: () => ({ evaluateAll: async () => {
       if (confirmationExpired && options.lateLike === 'after-confirmation') liked = true
@@ -44,9 +60,46 @@ function likeFixture(options: { doubleTapLikes?: boolean; failure?: Error; warni
   const budget = new WarmupActivityBudget({ likes: 1, saves: 0, comments: 0, profiles: 0, reels: 1, stories: 0 })
   const session = new BrowseSession(Date.now() + 60_000)
   const run = (doubleTap = false) => engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'],
-    budget, session, note => notes.push(note), async () => true, doubleTap ? surface : undefined)
+    budget, session, note => notes.push(note), async () => true, doubleTap ? surface : undefined, undefined,
+    options.native ? async (x, y, timeout) => {
+      assert.equal(hovered, true, 'Cloak must move before native input')
+      assert.deepEqual({ x, y }, { x: 120, y: 120 })
+      assert.ok(timeout > 0 && timeout <= 15_000)
+      if (options.nativeFailure) throw options.nativeFailure
+      calls.push('native-double-tap'); liked = options.doubleTapLikes === true
+    } : undefined)
   return { run, calls, notes, budget, session, liked: () => liked }
 }
+
+for (const doubleTapLikes of [true, false]) test(`native Reel double-tap confirms or falls back once (${doubleTapLikes})`, async () => {
+  const fixture = likeFixture({ native: true, doubleTapLikes })
+  await fixture.run(true)
+  assert.deepEqual(fixture.calls, doubleTapLikes ? ['native-double-tap'] : ['native-double-tap', 'Like'])
+  assert.equal(fixture.budget.used.likes, 1)
+  if (doubleTapLikes) assert.equal(fixture.notes[0]?.method, 'native_double_tap')
+  await fixture.run(true)
+  assert.equal(fixture.calls.length, doubleTapLikes ? 1 : 2)
+})
+
+test('native double-tap never clicks a Reel that became liked during hover', async () => {
+  const fixture = likeFixture({ native: true, lateLike: 'during-hover' })
+  await fixture.run(true)
+  assert.deepEqual(fixture.calls, [])
+  assert.equal(fixture.liked(), true)
+})
+
+for (const obstruction of ['covered', 'navigated'] as const) test(`native double-tap skips a ${obstruction} Reel`, async () => {
+  const fixture = likeFixture({ native: true, [obstruction]: true })
+  await fixture.run(true)
+  assert.deepEqual(fixture.calls, [])
+  assert.equal(fixture.notes[0]?.event, 'automation.engagement.action_skipped')
+})
+
+test('uncertain native double-tap input is never retried with a Like click', async () => {
+  const fixture = likeFixture({ native: true, nativeFailure: new Error('Desktop pointer timed out') })
+  await assert.rejects(fixture.run(true), /Desktop pointer timed out/)
+  assert.deepEqual(fixture.calls, [])
+})
 
 for (const lateLike of ['after-confirmation', 'during-hover', 'before-live-click'] as const)
   test(`a late double-tap like is never undone (${lateLike})`, async () => {
@@ -78,22 +131,34 @@ test('Home feed keeps its single Like click even when double-tap is supported', 
   const originalRandom = Math.random
   Math.random = () => 0
   try {
-    const fixture = likeFixture({ doubleTapLikes: true })
+    const fixture = likeFixture({ doubleTapLikes: true, native: true })
     await fixture.run()
     assert.deepEqual(fixture.calls, ['Like'])
   } finally { Math.random = originalRandom }
 })
 
-test('a six-second cursor movement has time to complete the Reels double-tap', async () => {
+for (const native of [false, true]) test(`a six-second cursor movement has time to complete the Reels double-tap (native=${native})`, async () => {
   const originalRandom = Math.random, originalNow = Date.now
   let now = originalNow()
   Math.random = () => 0; Date.now = () => now
   try {
-    const fixture = likeFixture({ doubleTapLikes: true, slowMovement: () => { now += 6000 } })
+    const fixture = likeFixture({ native, doubleTapLikes: true, slowMovement: () => { now += 6000 } })
     await fixture.run(true)
-    assert.deepEqual(fixture.calls, ['double-tap'])
+    assert.deepEqual(fixture.calls, [native ? 'native-double-tap' : 'double-tap'])
     assert.equal(fixture.notes[0]?.event, 'automation.engagement.liked')
   } finally { Math.random = originalRandom; Date.now = originalNow }
+})
+
+test('native double-tap cannot start after cursor movement exhausts its action deadline', async () => {
+  const originalNow = Date.now
+  let now = originalNow()
+  Date.now = () => now
+  try {
+    const fixture = likeFixture({ native: true, slowMovement: () => { now += 15_001 } })
+    await fixture.run(true)
+    assert.deepEqual(fixture.calls, [])
+    assert.equal(fixture.notes[0]?.event, 'automation.engagement.action_skipped')
+  } finally { Date.now = originalNow }
 })
 
 test('a temporary Like failure is logged and does not end browsing or refund its attempt', async () => {
