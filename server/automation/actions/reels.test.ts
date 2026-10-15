@@ -7,13 +7,14 @@ import { visibleActionGeometry } from './action-locator.test-support.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { advanceReel, openReels, reelAdMarker, watchReels } from './reels.js'
 import { BrowseSession, SessionEnded } from './session.js'
+import { liveLikeSelector } from './engagement.js'
 
 test('disabled reels never access the browser', async () => {
   await watchReels({} as Page, 5, { scroll_reels: false }, () => {}, () => false, Date.now() + 60_000)
 })
 
 for (const player of ['sibling', 'ancestor', 'missing'] as const)
-  test(`matched Reel likes double-click only the current ${player} player and never its Like button`, async () => {
+  test(`matched Reel likes click only its own Like button with a ${player} player`, async () => {
     const window = new Window(), originalNow = Date.now
     let now = originalNow(), doubleTaps = 0, buttonClicks = 0
     const started = now
@@ -36,6 +37,8 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
     type Node = typeof current | null
     const locator = (resolve: () => Node): Locator => ({
       ...visibleActionGeometry,
+      evaluate: async (fn: (node: Element) => unknown) => fn === liveLikeSelector
+        ? fn(resolve() as unknown as Element) : visibleActionGeometry.evaluate(fn),
       first() { return this },
       locator: (selector: string) => locator(() => resolve()?.querySelector(selector) ?? null),
       count: async () => Number(!!resolve()), isVisible: async () => !!resolve(),
@@ -57,12 +60,11 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
       evaluate: async (fn: (node: Element) => unknown) => fn(video as unknown as Element),
     }
     const page = { url: () => 'https://www.instagram.com/reels/current/',
-      mouse: { move: async () => {}, dblclick: async (_x: number, _y: number, options: { button: string }) => {
-        assert.equal(options.button, 'left'); doubleTaps++; like(current.querySelector('[aria-label="Video player"]') as unknown as Element)
-      } },
+      mouse: { dblclick: async () => { doubleTaps++; throw new Error('Reels must use the Like button') } },
       viewportSize: () => ({ width: 1280, height: 800 }),
       locator: (selector: string) => selector === 'video' ? { count: async () => 1, nth: () => target }
-        : { filter: () => ({ evaluateAll: async () => null }) },
+        : selector.startsWith('html:nth-child(') ? locator(() => window.document.querySelector(selector))
+          : { filter: () => ({ evaluateAll: async () => null }) },
     } as unknown as Page
     const session = new BrowseSession(now + 60_000)
     session.wait = async ms => { now += Math.max(1, Math.ceil(ms)); session.check() }
@@ -70,10 +72,10 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
     try {
       await watchReels(page, 1, { warmup_day: 2, warmup_topics: ['fitness'] }, () => {}, () => false,
         session.end, session, budget, async () => true)
-      assert.equal(budget.used.likes, player === 'missing' ? 0 : 1)
-      assert.equal(doubleTaps, player === 'missing' ? 0 : 1)
-      assert.equal(buttonClicks, 0)
-      assert.equal(current.querySelector('svg')!.getAttribute('aria-label'), player === 'missing' ? 'Like' : 'Unlike')
+      assert.equal(budget.used.likes, 1)
+      assert.equal(doubleTaps, 0)
+      assert.equal(buttonClicks, 1)
+      assert.equal(current.querySelector('svg')!.getAttribute('aria-label'), 'Unlike')
       assert.equal(window.document.querySelector('#neighbor svg')!.getAttribute('aria-label'), 'Unlike')
     } finally { Date.now = originalNow; await window.happyDOM.close() }
   })
