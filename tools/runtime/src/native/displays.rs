@@ -460,7 +460,7 @@ async fn linux_lease(
         let child = tokio::process::Command::new("fluxbox").args(["-display", &format!(":{number}")]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).process_group(0).kill_on_drop(true).spawn().map_err(|_| Failure::unavailable("Could not start window manager"))?;
         let pid = child.id().unwrap(); children.push((pid, child)); state.processes.track_resource(pid).await?;
         socket.send(Message::Text(json!({"ready": true, "display": session.info}).to_string().into())).await.map_err(|_| Failure::unavailable("Display owner disconnected"))?;
-        let _ = state.api.events.send(json!({"type": "display_allocated", "automationId": automation, "profileName": name, "vncPort": session.info.vnc_port, "displayNum": number}));
+        let _ = state.api.events.send(json!({"type": "display_allocated", "id": session.info.id, "automationId": automation, "profileName": name, "vncPort": session.info.vnc_port, "displayNum": number}));
         let mut health = tokio::time::interval(Duration::from_secs(2));
         let owner = lifetime(&mut socket); tokio::pin!(owner);
         loop { tokio::select! { _ = &mut owner => break, _ = health.tick() => { if children.iter_mut().any(|(_, child)| !matches!(child.try_wait(), Ok(None))) { break; } } } }

@@ -1,4 +1,11 @@
+import {
+  isSessionDecision,
+  type SessionDecision,
+} from '../../../../../server/shared/sessionDecision'
+
 export type DisplaySession = {
+  id?: string
+  decision?: SessionDecision | null
   automationId: string
   profileName: string
   vncPort: number
@@ -7,6 +14,9 @@ export type DisplaySession = {
 }
 
 type DisplayEvent = {
+  id?: unknown
+  displayId?: unknown
+  decision?: unknown
   type?: unknown
   status?: unknown
   automationId?: unknown
@@ -61,10 +71,10 @@ export function normalizeSessions(input: unknown): DisplaySession[] {
     const vncPort = toNumber(item.vncPort)
     const displayNum = toNumber(item.displayNum)
 
-    if (!automationId || !profileName || vncPort === null || displayNum === null)
-      continue
+    if (!automationId || !profileName || vncPort === null || displayNum === null) continue
 
     const session: DisplaySession = {
+      ...(typeof item.id === 'string' ? { id: item.id } : {}),
       automationId,
       profileName,
       vncPort,
@@ -90,16 +100,42 @@ export function normalizeSessions(input: unknown): DisplaySession[] {
   return out
 }
 
-export function applyDisplayEvent(
-  sessions: DisplaySession[],
-  event: unknown,
+/** Periodic display snapshots must not erase a newer decision from the same lease. */
+export function mergeSessionSnapshot(
+  current: DisplaySession[],
+  incoming: unknown,
 ): DisplaySession[] {
+  return normalizeSessions(incoming).map((session) => {
+    const previous =
+      session.id &&
+      current.find((item) => item.id === session.id && sessionKey(item) === sessionKey(session))
+    return previous ? { ...session, decision: previous.decision } : session
+  })
+}
+
+export function applyDisplayEvent(sessions: DisplaySession[], event: unknown): DisplaySession[] {
   if (!event || typeof event !== 'object') return sessions
 
   const item = event as DisplayEvent
   const eventType = String(item.type || '')
   const automationId = getEventAutomationId(item)
   const profileName = String(item.profileName ?? '').trim()
+
+  if (eventType === 'session_decision') {
+    if (
+      typeof item.displayId !== 'string' ||
+      (item.decision !== null && !isSessionDecision(item.decision))
+    )
+      return sessions
+    const decision = item.decision as SessionDecision | null
+    return sessions.map((session) =>
+      session.id === item.displayId &&
+      session.automationId === automationId &&
+      session.profileName === profileName
+        ? { ...session, decision }
+        : session,
+    )
+  }
 
   if (eventType === 'display_allocated') {
     const vncPort = toNumber(item.vncPort)
@@ -110,6 +146,7 @@ export function applyDisplayEvent(
     }
 
     const nextSession: DisplaySession = {
+      ...(typeof item.id === 'string' ? { id: item.id } : {}),
       automationId,
       profileName,
       vncPort,
@@ -118,22 +155,21 @@ export function applyDisplayEvent(
     }
     const key = sessionKey(nextSession)
 
-    return [...sessions.filter((session) => sessionKey(session) !== key), nextSession]
-      .sort((a, b) => {
+    return [...sessions.filter((session) => sessionKey(session) !== key), nextSession].sort(
+      (a, b) => {
         if (a.automationId !== b.automationId) {
           return a.automationId.localeCompare(b.automationId)
         }
 
         return a.profileName.localeCompare(b.profileName)
-      })
+      },
+    )
   }
 
   if (eventType === 'display_released' || eventType === 'profile_completed') {
     if (!automationId || !profileName) return sessions
 
-    return sessions.filter(
-      (session) => sessionKey(session) !== `${automationId}:${profileName}`,
-    )
+    return sessions.filter((session) => sessionKey(session) !== `${automationId}:${profileName}`)
   }
 
   if (eventType === 'automation_status' && automationId && String(item.status || '') === 'idle') {

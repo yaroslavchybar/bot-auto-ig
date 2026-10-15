@@ -80,6 +80,7 @@ fn matches_topic(value: &serde_json::Value, topic: &str) -> bool {
                     | "display_released"
                     | "profile_completed"
                     | "automation_status"
+                    | "session_decision"
             )
 }
 #[cfg(test)]
@@ -93,6 +94,7 @@ mod tests {
             "display_released",
             "profile_completed",
             "automation_status",
+            "session_decision",
         ] {
             assert!(matches_topic(&json!({"type":kind}), "displays"));
         }

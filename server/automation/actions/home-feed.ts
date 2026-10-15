@@ -24,6 +24,7 @@ import { assertInstagramReady } from './instagram-state.js'
 import { feedPostContext, feedPostMatches, warmupTopics } from '../../shared/warmupTopics.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { engagePost } from './engagement.js'
+import { publishSessionDecision } from './session-decision.js'
 
 // Ads get scrolled past, never engaged with. Header labels are checked separately.
 // Structural markers: ad redirect links and tracking
@@ -48,6 +49,7 @@ async function isAdPost(target: Locator): Promise<boolean> {
 
 /** Advance just past this post, leaving the next author available for inspection. */
 async function advanceFeedPost(page: Page, target: Locator, session: BrowseSession, budget?: WarmupActivityBudget, skip = false): Promise<void> {
+  publishSessionDecision(page, null)
   const box = await target.boundingBox().catch(() => null)
   const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
   const distance = box ? Math.max(50, box.y + box.height - viewport.height * 0.25) : 450

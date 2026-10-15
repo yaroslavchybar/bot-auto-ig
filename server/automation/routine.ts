@@ -32,6 +32,7 @@ import { isTransientDomIssue } from '../shared/domErrors.js'
 import { isTemporaryUiError } from './actions/ui-errors.js'
 import { logOperation } from '../shared/logger.js'
 import { DecisionRefusedError } from './actions/openrouter-decision.js'
+import { beginSessionDecision } from './actions/session-decision.js'
 
 const dependencies = {
   ready: routineReady,
@@ -221,6 +222,7 @@ export async function runRoutineSession(
                 if (!isDm) {
                   if (typeof token !== 'string' || !token) return 'blocked'
                   let decision
+                  const reportScreening = beginSessionDecision(page, { kind: 'profile', status: 'checking', username: attempt.username })
                   try {
                     decision = await timed('screening', () => deps.screenLead(
                       page,
@@ -228,6 +230,7 @@ export async function runRoutineSession(
                       new BrowseSession(deadline, shouldStop),
                     ))
                   } catch (error) {
+                    reportScreening({ kind: 'profile', status: 'unavailable', username: attempt.username })
                     log({
                       event: 'automation.lead_screening_failed',
                       leadId: attempt.leadId,
@@ -248,6 +251,8 @@ export async function runRoutineSession(
                     scope.add({ result: refused ? 'screening_refused' : 'screening_failed' })
                     return shouldStop() ? 'unavailable' : 'blocked'
                   }
+                  reportScreening({ kind: 'profile', status: 'complete', username: attempt.username,
+                    category: decision.category, confidence: decision.confidence })
                   const accepted = await timed('screeningSave', () => deps.finishScreening(
                     automation._id,
                     profileId,

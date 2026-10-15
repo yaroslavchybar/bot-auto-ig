@@ -478,6 +478,20 @@ async fn public_events_are_native_and_filter_topics_without_a_bun_worker() {
     .await
     .unwrap();
     assert_eq!(received, payload);
+    let decision = json!({"type":"session_decision", "displayId":"lease-1",
+        "decision":{"kind":"interest","status":"complete","confidence":0.87,"related":true}});
+    state.events.send(decision.clone()).unwrap();
+    let received = tokio::time::timeout(Duration::from_secs(1), async {
+        while let Some(Ok(message)) = socket.next().await {
+            if message.is_text() {
+                return serde_json::from_str::<Value>(&message.into_text().unwrap()).unwrap();
+            }
+        }
+        panic!("Native event feed ended")
+    })
+    .await
+    .unwrap();
+    assert_eq!(received, decision);
     socket.close(None).await.unwrap();
 }
 

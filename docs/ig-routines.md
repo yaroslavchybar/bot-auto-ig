@@ -1,5 +1,7 @@
 # Daily IG routines
 
+The live browser header shows the current content's Interest match confidence and the AI profile category during follow screening. Results use the existing classifier calls, clear on navigation or advancement, and stay scoped to the current display lease. Profile categories are AI estimates, not verified personal attributes.
+
 A session has one reservation, deadline, and shared activity budget. On days 1–4, Explore warm-up uses up to 30% of the available time to seed the selected interests, then returns to the common browsing flow. Notifications/follow-back checks, inbox, unseen Stories, follow/DM batches, and unfollow cleanup belong to that flow. Home feed and Reels are sibling actions; when both are enabled, the flow alternates them in time slices. Seen post/Reel identities persist across slices. Content actions do not navigate into other activities. Likes, saves, comment reading, and brief matched-author visits share the engagement module. Random profile wandering, unrelated liker/commenter visits, separate outreach likes, standalone Story nodes, and carousel probability/count settings are removed.
 
 ```mermaid

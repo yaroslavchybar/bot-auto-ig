@@ -39,6 +39,7 @@ import { executeGraphProfile } from './graph-runner.js'
 import logger, { logOperation, addLogContext } from '../shared/logger.js'
 import type { ActionLogger } from './actions/shared.js'
 import { captureConsole } from '../logs/console.js'
+import { attachSessionDecisions } from './actions/session-decision.js'
 import { routineDueAt, loadFullRuntimeSnapshot } from './readiness.js'
 export { loadFullRuntimeSnapshot } from './readiness.js'
 
@@ -282,6 +283,7 @@ async function withProfile(
     let session: BrowserSession | undefined
     let closed = false
     let markedRunning = false
+    let detachDecisions = () => {}
     const close = async () => {
       if (!session || closed) return
       await session.close()
@@ -299,6 +301,13 @@ async function withProfile(
         automationId: automationId,
       })
       addLogContext({ displayNum: session.display?.displayNum, vncPort: session.display?.vncPort })
+      if (session.display) {
+        const display = session.display
+        detachDecisions = attachSessionDecisions(session.page, decision => {
+          void event('session_decision', { automationId, profileName: profile.name,
+            displayId: display.id, decision }).catch(() => {})
+        })
+      }
       await run(session, { close })
       if (shouldStop()) addLogContext({ outcome: 'cancelled' })
       await event('profile_completed', {
@@ -318,6 +327,7 @@ async function withProfile(
       })
       throw error
     } finally {
+      detachDecisions()
       await close().catch(() => undefined)
       if (markedRunning)
         await profilesSyncStatus(profile.name, 'idle', false).catch(

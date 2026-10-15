@@ -13,5 +13,5 @@ export function createSessionSnapshotGuard() {
 
 export function isSessionEvent(event: unknown): boolean {
   if (!event || typeof event !== 'object' || !('type' in event)) return false
-  return ['display_allocated', 'display_released', 'profile_completed', 'automation_status'].includes(String(event.type))
+  return ['display_allocated', 'display_released', 'profile_completed', 'automation_status', 'session_decision'].includes(String(event.type))
 }

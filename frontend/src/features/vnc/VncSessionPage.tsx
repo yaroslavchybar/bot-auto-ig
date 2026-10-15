@@ -9,6 +9,7 @@ import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useVncSessions } from './hooks/useVncSessions'
 import { decodeRouteParam, sessionKey, type DisplaySession } from './utils/liveSessions'
+import { SessionDecisionBadge } from './components/SessionDecisionBadge'
 
 const VncViewer = lazy(() =>
   import('@/features/vnc/components/VncViewer').then((module) => ({
@@ -377,8 +378,8 @@ function VncSessionHeader({ session, onBack }: { session: DisplaySession; onBack
   const headerSlot = useHeaderSlot('vnc-session-header-slot')
   const controls = (
     <div className="flex min-w-0 items-center gap-3 select-none">
-      <Button variant="outline" onClick={onBack} className="shrink-0">
-        <ArrowLeft className="mr-2 h-3.5 w-3.5" />
+      <Button variant="ghost" onClick={onBack} className="-ml-2 shrink-0 text-muted-copy hover:text-ink">
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
         <span className="hidden sm:inline">Back to Grid</span>
         <span className="sm:hidden">Back</span>
       </Button>
@@ -390,6 +391,7 @@ function VncSessionHeader({ session, onBack }: { session: DisplaySession; onBack
           {session.automationId} / :{session.displayNum}
         </span>
       </div>
+      <SessionDecisionBadge decision={session.decision} />
     </div>
   )
   return headerSlot ? (

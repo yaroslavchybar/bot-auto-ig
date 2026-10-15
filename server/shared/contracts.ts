@@ -47,6 +47,7 @@ export type WebSocketEventType =
   | 'profile_started'
   | 'task_started'
   | 'task_progress'
+  | 'session_decision'
   | 'task_completed'
   | 'checkpoint'
   | 'profile_completed'
@@ -57,6 +58,8 @@ export type WebSocketEventType =
   | 'display_released'
 
 type EventFields = {
+  displayId?: string
+  decision?: import('./sessionDecision.js').SessionDecision | null
   dueAt?: number
   automationId?: string
   id?: string

@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import type { Locator } from 'playwright-core'
+import type { Locator, Page } from 'playwright-core'
+import { EventEmitter } from 'node:events'
+import { attachSessionDecisions } from './session-decision.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { captureTopicScreenshot, createTopicMatcher, decideTopic, TOPIC_MODEL, type TopicContext } from './topic-intent.js'
 
@@ -17,6 +19,29 @@ const response = (noul: unknown, type = 'noul') =>
   Response.json({ answers: { matches_topic: { type, noul } } })
 const fetcher = (result: Response): typeof fetch => (async () => result) as typeof fetch
 const log = () => {}
+
+test('live Interest results reuse the classifier call and report unavailable decisions', async () => {
+  const frame = {}
+  const page = Object.assign(new EventEmitter(), { mainFrame: () => frame }) as unknown as Page
+  const source = { page: () => page } as Locator
+  const updates: unknown[] = []
+  const detach = attachSessionDecisions(page, decision => updates.push(decision))
+  let requests = 0
+  const match = createTopicMatcher(async () => {
+    requests++
+    return { related: true, confidence: 0.87 }
+  }, async () => image)
+  try {
+    const post = context()
+    for (let i = 0; i < 2; i++) await match(post, ['fitness'], new BrowseSession(), log, source)
+    assert.equal(requests, 1)
+    assert.deepEqual(updates, [{ kind: 'interest', status: 'checking' },
+      { kind: 'interest', status: 'complete', confidence: 0.87, related: true }])
+    const failed = createTopicMatcher(async () => { throw new Error('Unavailable') }, async () => image)
+    await failed(context(), ['fitness'], new BrowseSession(), log, source)
+    assert.deepEqual(updates.at(-1), { kind: 'interest', status: 'unavailable' })
+  } finally { detach() }
+})
 
 test('Decisions request uses the requested model and the lead-screening JPEG format', async () => {
   const request = (async (url: unknown, options: RequestInit) => {

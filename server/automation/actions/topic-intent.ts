@@ -2,6 +2,7 @@ import type { FeedPostContext } from '../../shared/warmupTopics.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import type { ActionLogger } from './shared.js'
 import { requestOpenRouterDecision } from './openrouter-decision.js'
+import { beginSessionDecision } from './session-decision.js'
 
 export const TOPIC_MODEL = 'openai/gpt-6-luna-decisions'
 export const TOPIC_CONFIDENCE = 0.7
@@ -95,6 +96,8 @@ export function createTopicMatcher(request = decideTopic, capture = captureTopic
     const previous = decisions.get(key)
     if (previous) return previous
     const pending = (async () => {
+      const page = target.page()
+      const report = beginSessionDecision(page, { kind: 'interest', status: 'checking' })
       try {
         const deadline = Math.min(session.end, Date.now() + TOPIC_DECISION_TIMEOUT)
         const captureSession = new BrowseSession(deadline, () => session.stopped())
@@ -103,6 +106,8 @@ export function createTopicMatcher(request = decideTopic, capture = captureTopic
         const decision = await request({ topics, screenshot }, captureSession.timeout(TOPIC_DECISION_TIMEOUT))
         captureSession.check()
         session.check()
+        report({ kind: 'interest', status: 'complete',
+          confidence: decision.confidence, related: decision.related })
         log({
           event: 'automation.warmup.topic_decision',
           model: TOPIC_MODEL,
@@ -112,6 +117,7 @@ export function createTopicMatcher(request = decideTopic, capture = captureTopic
         })
         return decision.related
       } catch {
+        report({ kind: 'interest', status: 'unavailable' })
         if (session.stopped())
           throw new SessionEnded('Browsing session ended')
         log({

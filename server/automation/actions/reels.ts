@@ -10,6 +10,7 @@ import { engagePost } from './engagement.js'
 import { clickAction } from './action-locator.js'
 import { nativeWheelFor, type NativeWheel } from '../../browser/desktopPointer.js'
 import { positionScrollCursor } from './mouse.js'
+import { publishSessionDecision } from './session-decision.js'
 import {
   numeric,
   random,
@@ -143,6 +144,7 @@ async function waitForSettle(page: Page, session: BrowseSession): Promise<boolea
 export async function advanceReel(page: Page, session: BrowseSession, log: ActionLogger = () => {},
   wheel: NativeWheel | undefined = nativeWheelFor(page)): Promise<boolean> {
   session.check()
+  publishSessionDecision(page, null)
   const before = reelId(page.url())
   const changed = () => { const id = reelId(page.url()); return !!id && id !== before }
   let stage = 'next_button'

@@ -11,7 +11,7 @@ import { apiFetch } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useDocumentVisibility } from '@/hooks/use-document-visibility'
-import { applyDisplayEvent, normalizeSessions, type DisplaySession } from '../utils/liveSessions'
+import { applyDisplayEvent, mergeSessionSnapshot, type DisplaySession } from '../utils/liveSessions'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 import { createSessionSnapshotGuard, isSessionEvent } from '../utils/sessionSnapshot'
 
@@ -39,7 +39,7 @@ function useVncSessionSource(enabled: boolean) {
     try {
       const data = await apiFetch<DisplaySession[]>('/api/displays', { signal: controller.signal })
       if (!controller.signal.aborted && snapshots.isCurrent(snapshot))
-        setSessions(normalizeSessions(data))
+        setSessions((current) => mergeSessionSnapshot(current, data))
     } catch (cause) {
       if (!controller.signal.aborted) handleError(cause, 'VNC sessions')
     } finally {
@@ -53,7 +53,8 @@ function useVncSessionSource(enabled: boolean) {
   const handleSocketEvent = useCallback(
     (event: unknown) => {
       if (!isSessionEvent(event)) return
-      snapshots.invalidate()
+      // Snapshot merging preserves scores; only membership changes invalidate the fetch.
+      if ((event as { type: string }).type !== 'session_decision') snapshots.invalidate()
       setSessions((current) => applyDisplayEvent(current, event))
     },
     [snapshots],
@@ -66,6 +67,14 @@ function useVncSessionSource(enabled: boolean) {
     eventsOnly: true,
     pauseWhenHidden: true,
   })
+
+  const decisionStreamAvailable = active && connected
+  const [previousDecisionStream, setPreviousDecisionStream] = useState(decisionStreamAvailable)
+  if (previousDecisionStream !== decisionStreamAvailable) {
+    setPreviousDecisionStream(decisionStreamAvailable)
+    if (!decisionStreamAvailable)
+      setSessions(current => current.map(session => ({ ...session, decision: null })))
+  }
 
   useEffect(() => {
     if (!active) {
