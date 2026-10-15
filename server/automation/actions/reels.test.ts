@@ -277,6 +277,35 @@ test('off-topic reels can make browsing progress without any completed watches',
   } finally { await f.window.happyDOM.close() }
 })
 
+for (const mode of ['related', 'unrelated', 'empty', 'ad'] as const)
+  test(`sound is checked only after a positive interest decision (${mode})`, async () => {
+    const f = reelAdvanceFixture(1024, 600, { offTopic: true }), originalNow = Date.now
+    let now = originalNow()
+    Date.now = () => now
+    const started = now, events: string[] = []
+    const video = f.window.document.querySelector('#current')!
+    Object.defineProperties(video, {
+      muted: { get: () => { events.push('sound'); return false } },
+      currentTime: { get: () => (now - started) / 1000 },
+      paused: { value: false }, ended: { value: false },
+    })
+    if (mode === 'ad') {
+      const ad = f.window.document.createElement('a')
+      ad.href = 'https://www.facebook.com/ads/ig_redirect/'
+      ad.getBoundingClientRect = () => ({ width: 200, height: 48, top: 100, bottom: 148, left: 200, right: 400 }) as DOMRect
+      video.parentElement!.append(ad)
+    }
+    f.session.wait = async ms => { now += Math.max(1, Math.ceil(ms)); f.session.check() }
+    try {
+      await watchReels(f.page, 1, { warmup_topics: mode === 'empty' ? [] : ['Fishing'] }, () => {},
+        () => f.stats().clicks >= 1, f.session.end, f.session, undefined, async () => {
+          events.push('classify'); return mode === 'related'
+        })
+      assert.deepEqual(events, mode === 'related' ? ['classify', 'sound'] : mode === 'unrelated' ? ['classify'] : [])
+      assert.equal(f.stats().clicks, mode === 'unrelated' || mode === 'ad' ? 1 : 0)
+    } finally { Date.now = originalNow; await f.window.happyDOM.close() }
+  })
+
 for (const ad of [false, true]) test(`off-topic Reels pause briefly before skipping while ads advance immediately (ad=${ad})`, async () => {
   const f = reelAdvanceFixture(1024, 600, { offTopic: true })
   const waits: number[] = [], decisions: number[] = []

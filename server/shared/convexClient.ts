@@ -434,7 +434,7 @@ export async function warmupBeginRun(input: {
   sessionMaxMinutes: number
   restMinMinutes: number
   restMaxMinutes: number
-}): Promise<{ date: string; minutes: number; remainingMinutes?: number; day?: number;
+}): Promise<{ date: string; minutes: number; remainingMinutes?: number; day?: number; timezone?: string;
   activityPlan?: import('./warmupPlan.js').WarmupActivityCounts; activityUsed?: import('./warmupPlan.js').WarmupActivityCounts }> {
   return convexFetch('/api/warmup/begin', { method: 'POST', body: input })
 }

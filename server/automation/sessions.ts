@@ -10,6 +10,7 @@ import { assertInstagramReady } from './actions/instagram-state.js'
 import { hasUnseenStories } from './actions/stories.js'
 import { isInstagramHome } from './actions/navigation.js'
 import type { ActionLogger, StopCheck } from './actions/shared.js'
+import { setSessionAppearance } from './actions/appearance.js'
 
 const defaults = {
   warmup_min_minutes: 10, warmup_max_minutes: 20,
@@ -54,7 +55,8 @@ export type SessionActivity = (session: {
 }) => Promise<SessionResult['reason']>
 
 const dependencies = { begin: warmupBeginRun, finish: warmupFinishRun, explore: runExploreWarmup,
-  browse: runBrowseFeedSession, check: assertInstagramReady, unseenStories: hasUnseenStories, now: Date.now }
+  browse: runBrowseFeedSession, check: assertInstagramReady, appearance: setSessionAppearance,
+  unseenStories: hasUnseenStories, now: Date.now }
 
 /** One reservation owns both phases: optional Explore warm-up, then the shared browsing flow. */
 export async function runBrowsingSession(profileId: string, automationId: string, input: Record<string, unknown>, page: Page,
@@ -82,6 +84,7 @@ export async function runBrowsingSession(profileId: string, automationId: string
     if (!stopped()) {
       const session = new BrowseSession(deadline, stopped)
       await deps.check(page, session)
+      await deps.appearance(page, plan.timezone, session, log)
       if (config.watch_stories && !isInstagramHome(page)) {
         await page.goto('https://www.instagram.com/', {
           waitUntil: 'domcontentloaded', timeout: session.timeout(15_000),

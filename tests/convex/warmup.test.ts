@@ -25,6 +25,21 @@ test('assigns one budget, retries the reservation, and blocks competing runs', a
   expect(await state()).toMatchObject({ day: 1, todayMinutes: 40, minutesUsedToday: 0, runsToday: 0 })
 })
 
+test.each([
+  ['ua', 'Europe/Kyiv'], ['US', 'America/New_York'], ['zz', undefined], [undefined, undefined],
+])('session appearance timezone comes from its assigned proxy country (%s)', async (country, timezone) => {
+  const { t, args, begin } = await setup()
+  await t.run(async ctx => {
+    const proxy = 'http://proxy.example:8080'
+    await ctx.db.insert('proxies', { name: 'Work proxy', proxy, proxyType: 'http', country, createdAt: Date.now() })
+    await ctx.db.insert('proxies', { name: 'Other proxy', proxy: 'http://other.example:8080', proxyType: 'http', country: 'jp', createdAt: Date.now() })
+    await ctx.db.patch(args.profileId, { proxy, proxyType: 'http' })
+  })
+  const plan = await begin()
+  expect('timezone' in plan ? plan.timezone : undefined).toBe(timezone)
+  expect(await begin()).toEqual(plan)
+})
+
 test('day one reserves only browsing and preserves the plan across retries', async () => {
   const { t, args } = await setup()
   const input = args

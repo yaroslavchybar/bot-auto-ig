@@ -20,6 +20,7 @@ function setup(day = 8, minutes = 10) {
       activityPlan: { likes: 4, profiles: 3, follows: 2, reels: 0, stories: 0, saves: 1, comments: 1 } }),
     finish: async input => { finishes.push(input) },
     check: async () => { calls.push('check') },
+    appearance: async () => {},
     unseenStories: async () => false,
     explore: async (_page, end, config, budget) => {
       if (day > 4 || !config.warmup_topics || !(config.warmup_topics as string[]).length) return
@@ -52,6 +53,19 @@ test('session reserves once, runs Explore before browsing, and accounts for both
   assert.equal(s.finishes[0].activity.likes, 1)
   assert.equal(s.finishes[0].activity.reels, 12)
   assert.equal(s.finishes[0].activity.stories, 7)
+})
+
+test('startup receives the reserved proxy timezone and sets appearance before Stories or browsing', async () => {
+  const s = setup(8), begin = s.deps.begin
+  s.deps.begin = async (...args) => ({ ...await begin(...args), timezone: 'America/New_York' })
+  s.deps.appearance = async (_page, timezone, session) => {
+    assert.equal(timezone, 'America/New_York')
+    assert.equal(session.end, Date.parse('2026-10-14T12:10:00Z'))
+    assert.deepEqual(s.calls, ['check']); s.calls.push('appearance')
+  }
+  s.deps.unseenStories = async () => { assert.ok(s.calls.includes('appearance')); return false }
+  await s.run()
+  assert.ok(s.calls.indexOf('appearance') < s.calls.indexOf('browse'))
 })
 
 test('initial unseen Stories are detected before Explore and retained for startup navigation', async () => {

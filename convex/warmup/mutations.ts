@@ -4,6 +4,8 @@ import { planFromConfig, randomMinutes, todayDate, warmupActivityValidator } fro
 import { emptyWarmupActivity, warmupActivityPlan } from '../../server/shared/warmupPlan'
 import { recordActivity } from '../analyticsActivity'
 import { routineLists } from '../routinePolicy'
+import { proxyKey } from '../../server/shared/proxy'
+import { proxyCountryZones } from '../proxyCountryZones'
 
 /** Assign today's budget once and reserve one session, capped by remaining time. */
 export const beginRunInternal = internalMutation({
@@ -55,7 +57,10 @@ export const beginRunInternal = internalMutation({
       await ctx.db.patch(state._id, { activityPlan, activityUsed, followAttempts: state.followAttempts ?? [] })
       state = (await ctx.db.get(state._id))!
     }
-    const activity = { day: state.day, activityPlan: state.activityPlan!, activityUsed: state.activityUsed ?? emptyWarmupActivity() }
+    const key = proxyKey(profile.proxy, profile.proxyType)
+    const proxy = key ? await ctx.db.query('proxies').withIndex('by_proxy', q => q.eq('proxy', key)).first() : null
+    const timezone = proxy?.country ? proxyCountryZones[proxy.country.toLowerCase()] : undefined
+    const activity = { day: state.day, activityPlan: state.activityPlan!, activityUsed: state.activityUsed ?? emptyWarmupActivity(), timezone }
     if (state.recentRunIds?.includes(args.runId)) return { date, minutes: 0 }
     if (state.activeRun) {
       return { date, minutes: state.activeRun.id === args.runId ? state.activeRun.minutes : 0,
