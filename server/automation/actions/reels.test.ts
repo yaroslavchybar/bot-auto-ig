@@ -39,6 +39,7 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
       ...visibleActionGeometry,
       evaluate: async (fn: (node: Element) => unknown) => fn === liveLikeSelector
         ? fn(resolve() as unknown as Element) : visibleActionGeometry.evaluate(fn),
+      evaluateAll: async (fn: (nodes: Element[]) => unknown) => fn(resolve() ? [resolve() as unknown as Element] : []),
       first() { return this },
       locator: (selector: string) => locator(() => resolve()?.querySelector(selector) ?? null),
       count: async () => Number(!!resolve()), isVisible: async () => !!resolve(),
@@ -63,7 +64,7 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
       mouse: { dblclick: async () => { doubleTaps++; throw new Error('Reels must use the Like button') } },
       viewportSize: () => ({ width: 1280, height: 800 }),
       locator: (selector: string) => selector === 'video' ? { count: async () => 1, nth: () => target }
-        : selector.startsWith('html:nth-child(') ? locator(() => window.document.querySelector(selector))
+        : selector.startsWith('svg[data-igbot-like-target=') ? locator(() => window.document.querySelector(selector))
           : { filter: () => ({ evaluateAll: async () => null }) },
     } as unknown as Page
     const session = new BrowseSession(now + 60_000)

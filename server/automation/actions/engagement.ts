@@ -16,16 +16,14 @@ import { isTemporaryUiError } from './ui-errors.js'
 const control = (target: Locator, label: string) => target.locator(
   `button:has(svg[aria-label="${label}"]), [role="button"]:has(svg[aria-label="${label}"])`).first()
 
-/** A single CSS selector works with Cloak and stops matching if Like becomes Unlike. */
+/** Aim at the heart itself; this selector stops matching if Like becomes Unlike. */
 export function liveLikeSelector(button: Element): string {
   if (!button.isConnected) throw new Error('Action target is detached or missing')
-  const path: string[] = []
-  for (let node: Element | null = button; node; node = node.parentElement) {
-    let index = 1
-    for (let sibling = node.previousElementSibling; sibling; sibling = sibling.previousElementSibling) index++
-    path.unshift(`${node.localName}:nth-child(${index})`)
-  }
-  return `${path.join(' > ')}:has(svg[aria-label="Like"])`
+  const icon = button.querySelector('svg[aria-label="Like"]')
+  if (!icon) throw new Error('Action target is detached or missing')
+  const marker = `igbot-${button.ownerDocument.defaultView!.crypto.randomUUID()}`
+  icon.setAttribute('data-igbot-like-target', marker)
+  return `svg[data-igbot-like-target=${marker}][aria-label=Like]`
 }
 
 /** Likes and occasional extras share one daily budget; never use comment or neighboring-post controls. */
@@ -48,20 +46,29 @@ export async function engagePost(page: Page, target: Locator,
   await optional('like', async () => {
     if (budget.remaining('likes') && !await target.locator('svg[aria-label="Unlike"]').count()) {
       const like = control(target, 'Like')
-      if (await like.isVisible() && await revealForClick(page, like, session)) {
+      const icon = like.locator('svg[aria-label="Like"]').first()
+      if (await like.isVisible() && await revealForClick(page, icon, session)) {
         session.check(); await assertInstagramReady(page)
         if (budget.take('likes')) {
           const timeout = session.timeout(15_000), deadline = Date.now() + timeout
-          await (await actionLocator(like, timeout)).hover({ timeout })
+          const humanConfig = { scroll_target_zone: [0, 1], mouse_overshoot_chance: 0 }
+          const hoverOptions = { timeout, human_config: humanConfig }
+          await (await actionLocator(icon, timeout)).hover(hoverOptions)
           session.check(); await assertInstagramReady(page)
           if (await control(target, 'Unlike').isVisible() || !await like.isVisible()) return
           // Resolve a fresh Like through one CSS selector; Cloak rejects the original chained locator.
           const selector = await like.evaluate(liveLikeSelector, undefined, { timeout: session.timeout(Math.max(1, deadline - Date.now())) })
-          const remaining = deadline - Date.now()
-          if (remaining <= 0) throw new errors.TimeoutError('Like click timed out while moving to its target')
-          // Resolve Like again after hovering; a pinned handle could now be Unlike.
-          const clickOptions = { timeout: session.timeout(remaining), human_config: { scroll_target_zone: [0, 1] } }
-          await page.locator(selector).click(clickOptions)
+          try {
+            const remaining = deadline - Date.now()
+            if (remaining <= 0) throw new errors.TimeoutError('Like click timed out while moving to its target')
+            // The temporary marker survives unrelated DOM changes, but still requires Like.
+            const clickOptions = { timeout: session.timeout(remaining), human_config: humanConfig }
+            await page.locator(selector).click(clickOptions)
+          } finally {
+            await page.locator(selector.replace('[aria-label=Like]', '')).evaluateAll(icons => {
+              for (const icon of icons) icon.removeAttribute('data-igbot-like-target')
+            }).catch(() => {})
+          }
           await control(target, 'Unlike').waitFor({ state: 'visible', timeout: session.timeout(2000) })
           log({ event: 'automation.engagement.liked', method: 'like_button' })
         }

@@ -15,18 +15,21 @@ function likeFixture(options: { path?: string; alreadyLiked?: boolean; missing?:
   const calls: string[] = [], notes: Record<string, unknown>[] = []
   const makeControl = (label: string) => ({
     ...visibleActionGeometry, first() { return this },
+    locator: (selector: string) => { assert.equal(selector, 'svg[aria-label="Like"]'); return makeControl('Like') },
     evaluate: async (fn: (node: Element) => unknown) => fn === liveLikeSelector
-      ? 'button:has(svg[aria-label="Like"])' : visibleActionGeometry.evaluate(fn),
+      ? 'svg[data-igbot-like-target=fixture][aria-label=Like]' : visibleActionGeometry.evaluate(fn),
     count: async () => label === 'Unlike' ? Number(liked) : Number(!options.missing),
     isVisible: async () => label === 'Unlike' ? liked : !liked && !options.missing,
     waitFor: async () => { if (!liked) throw new errors.TimeoutError('Like was not confirmed') },
-    click: async () => {
+    click: async (clickOptions: { human_config: { mouse_overshoot_chance: number } }) => {
+      assert.equal(clickOptions.human_config.mouse_overshoot_chance, 0)
       if (options.lateLike === 'before-live-click') liked = true
       if (liked) throw new errors.TimeoutError('The live Like locator no longer matches')
       calls.push(label); liked = options.confirms !== false
     },
     elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {},
-      hover: async () => {
+      hover: async (hoverOptions: { human_config: { mouse_overshoot_chance: number } }) => {
+        assert.equal(hoverOptions.human_config.mouse_overshoot_chance, 0)
         options.slowMovement?.()
         if (options.lateLike === 'during-hover') liked = true
         if (options.failure) { failed = true; throw options.failure }
@@ -38,8 +41,9 @@ function likeFixture(options: { path?: string; alreadyLiked?: boolean; missing?:
   const page = { url: () => 'https://www.instagram.com' + (options.path ?? '/reels/current/'),
     viewportSize: () => ({ width: 1280, height: 800 }),
     mouse: { dblclick: async () => { throw new Error('Never double-click for engagement') } },
-    locator: (selector: string) => selector === 'button:has(svg[aria-label="Like"])' ? makeControl('Like')
-      : { filter: () => ({ evaluateAll: async () => failed ? options.warning ?? null : null }) },
+    locator: (selector: string) => selector === 'svg[data-igbot-like-target=fixture][aria-label=Like]' ? makeControl('Like')
+      : selector === 'svg[data-igbot-like-target=fixture]' ? { evaluateAll: async () => {} }
+        : { filter: () => ({ evaluateAll: async () => failed ? options.warning ?? null : null }) },
   } as unknown as Page
   const budget = new WarmupActivityBudget({ likes: 1, saves: 0, comments: 0, profiles: 0, reels: 0, stories: 0 })
   const session = new BrowseSession(Date.now() + 60_000)
@@ -120,15 +124,21 @@ test('an optional Like still propagates account warnings and cancellation', asyn
   await assert.rejects(likeFixture({ failure: new Error('Browser disconnected') }).run(), /Browser disconnected/)
 })
 
-test('the live Like selector is one CSS path and stops matching after the button becomes Unlike', async () => {
+test('the live Like selector targets the heart inside a padded button and stops matching Unlike', async () => {
   const window = new Window()
   try {
     window.document.body.innerHTML = '<main><article><button><svg aria-label="Like"></svg></button></article>' +
-      '<article><p>Caption</p><button><svg aria-label="Like"></svg></button></article></main>'
+      '<article><p>Caption</p><button style="width:80px;padding:20px"><svg aria-label="Like" width="24" height="24"></svg></button></article></main>'
     const selected = window.document.querySelectorAll('button')[1]!
     const selector = liveLikeSelector(selected as unknown as Element)
     assert.ok(!selector.includes('>>'))
-    assert.equal(window.document.querySelector(selector), selected)
+    assert.equal(window.document.querySelector(selector), selected.querySelector('svg'))
+    window.document.body.prepend(window.document.createElement('div'))
+    selected.prepend(window.document.createElement('span'))
+    assert.equal(window.document.querySelector(selector), selected.querySelector('svg'))
+    const moduleUrl = new URL('./stealthDom.js', import.meta.resolve('cloakbrowser/human'))
+    const { buildSnapshotJs } = await import(moduleUrl.href)
+    assert.equal(window.eval(buildSnapshotJs(selector)).r, 'ok', 'Cloak must resolve the generated selector')
     selected.querySelector('svg')!.setAttribute('aria-label', 'Unlike')
     assert.equal(window.document.querySelectorAll(selector).length, 0)
     selected.remove()
@@ -177,8 +187,9 @@ test('engagement pins the post controls, shares its cap, and reads comments with
     const calls: string[] = []
     const makeControl = (label: string) => ({
       ...visibleActionGeometry,
+      locator: () => makeControl('Like'),
       evaluate: async (fn: (node: Element) => unknown) => fn === liveLikeSelector
-        ? 'button:has(svg[aria-label="Like"])' : visibleActionGeometry.evaluate(fn),
+        ? 'svg[data-igbot-like-target=fixture][aria-label=Like]' : visibleActionGeometry.evaluate(fn),
       first() { return this }, count: async () => label === 'Unlike' ? Number(liked) : 1,
       isVisible: async () => label === 'Unlike' ? liked : label === 'Save' ? !saved : true,
       boundingBox: async () => ({ x: 100, y: 100, width: 30, height: 30 }),
@@ -200,8 +211,9 @@ test('engagement pins the post controls, shares its cap, and reads comments with
     const dialogs = { filter() { return this }, count: async () => Number(commentsOpen), last: () => panel }
     const page = {
       url: () => 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
-      locator: (selector: string) => selector === 'button:has(svg[aria-label="Like"])' ? makeControl('Like')
-        : ({ filter: () => ({ evaluateAll: async () => null }) }),
+      locator: (selector: string) => selector === 'svg[data-igbot-like-target=fixture][aria-label=Like]' ? makeControl('Like')
+        : selector === 'svg[data-igbot-like-target=fixture]' ? { evaluateAll: async () => {} }
+          : ({ filter: () => ({ evaluateAll: async () => null }) }),
       getByRole: (role: string) => { assert.equal(role, 'dialog'); return dialogs },
       mouse: { move: async () => {}, wheel: async () => { calls.push('scroll-comments') } },
       keyboard: { press: async (key: string) => { assert.equal(key, 'Escape'); commentsOpen = false } },
