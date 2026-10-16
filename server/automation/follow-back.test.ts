@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { Window } from 'happy-dom';
 import type { Page } from 'playwright-core';
 import { readFollowNotifications, notificationTimeUpperBound, followsUs, ownUsername } from './follow-back.js';
-import { followButton, followingButton } from './follow.js';
+import { followButton, followingButton, messageButton } from './follow.js';
 import { BrowseSession } from './actions/session.js';
 
 async function notifications(html: string, options: { stopped?: boolean; since?: number; loading?: boolean } = {}) {
@@ -96,11 +96,12 @@ for (const wording of ['This profile is private', 'This account is private']) te
 test('relationship selectors support humanized clicks without role or chained engines', () => {
   const selectors: string[] = [];
   const page = { locator: (selector: string) => { selectors.push(selector); } } as unknown as Page;
-  followButton(page); followingButton(page);
+  followButton(page); followingButton(page); messageButton(page);
   for (const selector of selectors) {
     assert.ok(selector.startsWith('xpath=//main//header/'));
     assert.ok(!selector.includes('>>'));
     assert.ok(!selector.includes('internal:role'));
+    assert.ok(selector.includes('not(ancestor::ul or ancestor::*[@role="list"])'));
   }
   assert.ok(selectors[0].includes('="follow"')); assert.ok(selectors[0].includes('="follow back"'));
   assert.ok(selectors[1].includes('="requested"')); assert.ok(selectors[1].includes('="following down chevron icon"'));

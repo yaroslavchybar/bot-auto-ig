@@ -82,13 +82,14 @@ export default defineSchema({
     unfollowAt: v.optional(v.number()),
     dmBlocked: v.optional(v.boolean()),
     dmEligible: v.optional(v.boolean()),
+    lastDmCheckDate: v.optional(v.string()),
     dmStartedAt: v.optional(v.number()),
     dmStartedDate: v.optional(v.string()),
   })
     .index('by_username', ['username'])
     .index('by_ig_id', ['igId'])
     .index('by_classification', ['classification'])
-    .index('by_dm_pending', ['senderId', 'dmEligible', 'dmStartedAt', 'unfollowAt'])
+    .index('by_dm_revisit', ['senderId', 'followed', 'dmStartedAt', 'lastDmCheckDate'])
     .index('by_enrichment', ['enrichmentStatus', 'screeningRefused'])
     .index('by_follow_due', ['senderId', 'followed', 'followDate'])
     .index('by_unfollow_due', ['senderId', 'followed', 'unfollowAt']),

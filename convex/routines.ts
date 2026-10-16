@@ -383,55 +383,28 @@ const outreachArgs = { automationId: v.id('automations'), profileId: v.id('profi
 function pendingDm(lead: Doc<'leads'>, profileId: Id<'profiles'>, now: number) {
   return (
     lead.senderId === profileId && lead.followed && !lead.dmSent && !lead.dmBlocked &&
-    lead.dmStartedAt === undefined && lead.followDate !== undefined && dayKey(lead.followDate) < dayKey(now) &&
+    lead.dmStartedAt === undefined && lead.followDate !== undefined &&
     (lead.unfollowAt ?? lead.followDate + followDelay) > now
   )
 }
 
-/** Only scan once per day, and only while an outreach follow is awaiting a reply. */
-export const notifications = internalQuery({
-  args: outreachArgs,
+/** Save the live profile check before authorizing a DM; pending requests wait until tomorrow. */
+export const recordDmCheck = internalMutation({
+  args: { ...outreachArgs, leadId: v.id('leads'), date: v.string(), canMessage: v.boolean() },
   handler: async (ctx, args) => {
-    const e = await eligibility(ctx, args.automationId, args.profileId);
-    const date = dayKey();
-    if (!e || !e.maintenance || !e.policy.outreachEnabled || !e.profile.outreachReady ||
-      (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
-      !profileOutreachRoutes(e.policy, args.profileId).length || e.state?.lastNotificationsDate === date)
-      return null;
-    const pending = await ctx.db.query('leads').withIndex('by_unfollow_due', (q) =>
-      q.eq('senderId', args.profileId).eq('followed', true).gt('unfollowAt', Date.now()),
-      )
-      .filter((q) => q.and(q.lt(q.field('followDate'), Date.parse(date)), q.eq(q.field('dmSent'), false),
-        q.neq(q.field('dmBlocked'), true), q.eq(q.field('dmStartedAt'), undefined),
-        ),
-      ).first();
-    return pending ? { date, since: Math.max(e.state?.outreachStartedAt ?? 0,
-      e.state?.lastNotificationsAt ? e.state.lastNotificationsAt - 86_400_000 : 0,
-          ),
-        } : null;
-  },
-});
-
-/** Batch notification evidence rather than making a Convex call for each row. */
-export const recordNotifications = internalMutation({
-  args: { ...outreachArgs, date: v.string(), usernames: v.array(v.string()) },
-  handler: async (ctx, args) => {
-    if (args.usernames.length > 1000) throw new Error('Too many notification rows');
-    const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!e || !e.maintenance || !e.policy.outreachEnabled || args.date !== dayKey()) return;
-    const routes = profileOutreachRoutes(e.policy, args.profileId);
     const now = Date.now();
-    for (const username of new Set(args.usernames.map((name) => name.toLowerCase()))) {
-      const leads = await ctx.db.query('leads').withIndex('by_username', (q) => q.eq('username', username)).collect();
-      for (const lead of leads) {
-        if (pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
-          routes.some((route) => route.leadListId === lead.outreachListId) && !lead.dmEligible)
-          await ctx.db.patch(lead._id, { dmEligible: true });
-      }
-    }
-    const state = await ensureProgress(ctx, args.profileId);
-    if (state.lastNotificationsDate !== args.date)
-      await ctx.db.patch(state._id, { lastNotificationsDate: args.date, lastNotificationsAt: now });
+    const lead = await ctx.db.get(args.leadId);
+    const e = await eligibility(ctx, args.automationId, args.profileId);
+    if (!lead || !e || !e.maintenance || !e.policy.outreachEnabled || !e.profile.outreachReady ||
+      (e.profile.igAccountId && e.igAccount?.status !== 'connected') || args.date !== dayKey(now) ||
+      !pendingDm(lead, args.profileId, now) || !lead.classification ||
+      !(e.policy.allowedCategories ?? ['male']).includes(lead.classification) ||
+      lead.outreachAutomationId !== args.automationId || !lead.outreachListId ||
+      !(await ctx.db.get(lead.outreachListId)) ||
+      !profileOutreachRoutes(e.policy, args.profileId).some(route => route.leadListId === lead.outreachListId))
+      return false;
+    await ctx.db.patch(lead._id, { lastDmCheckDate: args.date, dmEligible: args.canMessage });
+    return args.canMessage;
   },
 });
 
@@ -443,8 +416,8 @@ export const dmTasks = internalQuery({
       (e.profile.igAccountId && e.igAccount?.status !== 'connected')) return [];
     const routes = profileOutreachRoutes(e.policy, args.profileId);
     const tasks = [];
-    for await (const lead of ctx.db.query('leads').withIndex('by_dm_pending', (q) =>
-      q.eq('senderId', args.profileId).eq('dmEligible', true).eq('dmStartedAt', undefined).gt('unfollowAt', Date.now()),
+    for await (const lead of ctx.db.query('leads').withIndex('by_dm_revisit', (q) =>
+      q.eq('senderId', args.profileId).eq('followed', true).eq('dmStartedAt', undefined).lt('lastDmCheckDate', dayKey()),
       )) {
       const route = routes.find((route) => route.leadListId === lead.outreachListId);
       if (
@@ -463,7 +436,7 @@ export const dmTasks = internalQuery({
   },
 });
 
-/** Atomically authorize the first and only press of Send, after live follower verification. */
+/** Atomically authorize the first and only press of Send, after a live Message-button check. */
 export const beginSend = internalMutation({
   args: { ...outreachArgs, leadId: v.id('leads'), date: v.string(), now: v.optional(v.number()) },
   handler: async (ctx, args) => {
@@ -472,7 +445,7 @@ export const beginSend = internalMutation({
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!lead || !e || !e.maintenance || !lead.classification ||
       !(e.policy.allowedCategories ?? ['male']).includes(lead.classification) ||
-      !lead.dmEligible || !pendingDm(lead, args.profileId, now) ||
+      !lead.dmEligible || lead.lastDmCheckDate !== args.date || !pendingDm(lead, args.profileId, now) ||
       dayKey(now) !== args.date || !e.policy.outreachEnabled || !e.profile.outreachReady ||
       (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
       lead.outreachAutomationId !== args.automationId || !lead.outreachListId ||
@@ -560,6 +533,7 @@ export const recordFollow = internalMutation({
     if (!args.followed && (lead.unfollowAt ?? (lead.followDate ?? Infinity) + followDelay) > now) throw new Error('Follow is not due for removal');
     await ctx.db.patch(lead._id, { followed: args.followed, ...(args.followed ? {
       followDate: lead.followStartedAt ?? now, unfollowAt: lead.unfollowAt ?? now + (lead.unfollowDays ?? 7) * 86_400_000,
+      lastDmCheckDate: dayKey(now), dmEligible: false,
     } : { dmEligible: false, followStartedAt: undefined }),
     });
     if (args.followed) {

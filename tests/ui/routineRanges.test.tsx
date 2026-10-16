@@ -298,7 +298,7 @@ test('Outreach settings expose gradual daily follow limits instead of DM limits'
   expect(document.body.textContent).toContain('Daily follows')
   expect(document.body.textContent).toContain('Initial follows per day')
   expect(document.body.textContent).toContain('Max follows per day')
-  expect(document.body.textContent).toContain('Notifications are checked daily')
+  expect(document.body.textContent).toContain('DM immediately when Message is available')
   expect(document.body.textContent).not.toContain('Initial DMs per day')
 })
 

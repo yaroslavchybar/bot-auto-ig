@@ -2,7 +2,7 @@ import { visibleActionGeometry } from './actions/action-locator.test-support.js'
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Window } from 'happy-dom';
-import type { Page } from 'playwright-core';
+import { errors, type Page } from 'playwright-core';
 
 import { messageComposer, unsendMessage } from './follow.js';
 
@@ -165,5 +165,30 @@ test('message composer prefers visible named fields and isolates overlay fallbac
     } finally {
       await window.happyDOM.close();
     }
+  }
+});
+
+
+test('DM readiness requires an approved Following relationship and a visible Message button', async () => {
+  const { canMessageFollowedProfile } = await import('./follow.js');
+  for (const [relationship, messageVisible, expected] of [
+    ['Follow', true, false],
+    ['Requested', true, false],
+    ['Requested', false, false],
+    ['Following', false, false],
+    ['Following', true, true],
+  ] as const) {
+    let messageChecks = 0;
+    const message = { waitFor: async () => {
+      messageChecks++;
+      if (!messageVisible) throw new errors.TimeoutError('Message unavailable');
+    } };
+    const following = {
+      or() { return this; }, waitFor: async () => {},
+      isVisible: async () => relationship !== 'Follow', innerText: async () => relationship,
+    };
+    const page = { locator: (selector: string) => selector.includes('="message"') ? message : following } as unknown as Page;
+    assert.equal(await canMessageFollowedProfile(page), expected, relationship + '/' + messageVisible);
+    if (relationship === 'Requested') assert.equal(messageChecks, 0, 'pending requests never open Message');
   }
 });

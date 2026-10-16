@@ -489,12 +489,9 @@ export const routineTarget = (automationId: string, profileId: string) =>
     method: 'POST',
     body: { automationId, profileId },
   })
-export const routineNotifications = (automationId: string, profileId: string) =>
-  convexFetch<{ date: string; since: number } | null>('/api/routines/notifications', { method: 'POST', body: { automationId, profileId },
-  })
-export const routineRecordNotifications = (automationId: string, profileId: string, date: string, usernames: string[],
-) =>
-  convexFetch('/api/routines/record-notifications', { method: 'POST', body: { automationId, profileId, date, usernames },
+export const routineRecordDmCheck = (automationId: string, profileId: string, leadId: string, date: string, canMessage: boolean) =>
+  convexFetch<boolean>('/api/routines/record-dm-check', {
+    method: 'POST', body: { automationId, profileId, leadId, date, canMessage }, maxRetries: 0,
   })
 export const routineDmTasks = (automationId: string, profileId: string) =>
   convexFetch<Array<{ leadId: string; username: string; fullName?: string; message: string; date: string }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })

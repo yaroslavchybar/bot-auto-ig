@@ -129,7 +129,7 @@ export function RoutinePopup({
   const [postsMin, postsMax] = warmupPostRange(policy)
   const warmupSummary = `Browse ${span(num('warmup_min_minutes'), num('warmup_max_minutes'))} min a day in ${span(num('session_min_minutes'), num('session_max_minutes'))} min sessions, resting ${span(num('rest_min_minutes'), num('rest_max_minutes'))} min between them. Outreach starts from day 8 with ${OUTREACH_MIN_POSTS} posts. Posting continues to the ${span(postsMin, postsMax)} post target.`
   const outreachSummary = policy.outreachEnabled
-    ? `Outreach from day 8 with ${OUTREACH_MIN_POSTS} posts: ${policy.initialDms} follows a day, growing up to ${policy.maxDms}. DMs wait for a follow-back.`
+    ? `Outreach from day 8 with ${OUTREACH_MIN_POSTS} posts: ${policy.initialDms} follows a day, growing up to ${policy.maxDms}. DMs follow immediately when available; pending requests are checked daily.`
     : 'Off. No outreach follows or DMs.'
 
   // Binds a min/max activity pair. Bounds come from the two settings' definitions.
@@ -443,9 +443,9 @@ export function RoutinePopup({
                   </SettingsGroup>
                   <p className="text-sm text-muted-copy">
                     Follow public or private accounts first. Public accounts with posts can receive
-                    one like. Notifications are checked daily; DMs start the next day only after a
-                    follow-back, before unfollowing. DMs have no separate daily limit and use the
-                    existing session time.
+                    one like. DM immediately when Message is available after following. Pending private
+                    requests and existing followed leads without a DM are checked daily until
+                    messaging is available or unfollow is due. DMs use the existing session time.
                   </p>
                   <SettingsGroup title="Unfollow">
                     {routineRange(

@@ -27,7 +27,6 @@ export function registerRoutineRoutes(http: HttpRouter) {
   })
 
   for (const [path, endpoint] of [
-    ['/api/routines/notifications', internal.routines.notifications],
     ['/api/routines/dm-tasks', internal.routines.dmTasks],
   ] as const) http.route({ path, method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
@@ -35,13 +34,12 @@ export function registerRoutineRoutes(http: HttpRouter) {
       automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
     }));
   }) });
-  http.route({ path: '/api/routines/record-notifications', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+  http.route({ path: '/api/routines/record-dm-check', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
-    await ctx.runMutation(internal.routines.recordNotifications, {
+    return jsonResponse(await ctx.runMutation(internal.routines.recordDmCheck, {
       automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
-      date: String(b.date), usernames: b.usernames,
-    });
-    return jsonResponse({ ok: true });
+      leadId: b.leadId as Id<'leads'>, date: String(b.date), canMessage: b.canMessage === true,
+    }));
   }) });
   http.route({ path: '/api/routines/dismiss-dm', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
