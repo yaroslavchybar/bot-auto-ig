@@ -14,6 +14,7 @@ function setup(day = 8) {
   const deps: NonNullable<Parameters<typeof runBrowseFeedSession>[6]> = {
     now: () => now, random: min => min, sleep: async ms => { now += ms },
     waitForOutreach: async (_page, until) => { now = until; return true },
+    visitDuringPause: async () => { calls.push('pause-visit') },
     check: async () => { calls.push('check') }, notifications: async () => { calls.push('notifications'); return true },
     unreadNotifications: async () => true,
     inbox: async () => { calls.push('inbox'); return true }, home: async () => { calls.push('home') },
@@ -41,6 +42,17 @@ test('notifications, inbox and unseen Stories run once before the common browsin
   assert.deepEqual(s.calls, ['check', 'notifications', 'inbox', 'home', 'stories', 'check', 'content'])
   assert.equal(s.context.budget.used.stories, 12)
   assert.equal(s.now(), s.context.deadline)
+})
+
+test('pause visits share the browsing session deadline and selected destination', async () => {
+  const s = setup()
+  const until = s.now() + 90_000
+  s.deps.visitDuringPause = async (_page, destination, end, parent) => {
+    assert.equal(destination, 'dms'); assert.equal(end, until); assert.equal(parent.end, s.context.deadline)
+    s.calls.push('pause-visit')
+  }
+  await s.run(async session => { await session.visitDuringPause!('dms', until); return 'finished' })
+  assert.equal(s.calls.filter(call => call === 'pause-visit').length, 1)
 })
 
 test('due follow-back scanning replaces the single startup notification visit', async () => {

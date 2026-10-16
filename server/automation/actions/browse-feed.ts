@@ -9,6 +9,7 @@ import { openReels, waitForReelOutreach, watchReels } from './reels.js'
 import { watchStories } from './stories.js'
 import { assertInstagramReady, checkNotifications, hasUnreadNotifications } from './instagram-state.js'
 import { openDMs } from './inbox.js'
+import { visitOutreachPausePage } from './outreach-pause.js'
 import { backToFeed } from './navigation.js'
 import { followTopicAccounts } from './topic-follow.js'
 import { topicSearchTerms } from './topic-search.js'
@@ -61,7 +62,7 @@ export async function browseContent(page: Page, end: number, config: Record<stri
 const dependencies = { content: browseContent, stories: watchStories, check: assertInstagramReady,
   unreadNotifications: hasUnreadNotifications, notifications: checkNotifications, inbox: openDMs,
   home: backToFeed, openReels, follow: followTopicAccounts,
-  terms: topicSearchTerms, waitForOutreach: waitForReelOutreach, now: Date.now, random, sleep }
+  terms: topicSearchTerms, waitForOutreach: waitForReelOutreach, visitDuringPause: visitOutreachPausePage, now: Date.now, random, sleep }
 
 /** One browsing flow owns startup checks, Stories, content, follows/DMs, and scheduled cleanup. */
 export async function runBrowseFeedSession(page: Page, context: FeedSessionContext, log: ActionLogger, shouldStop: StopCheck,
@@ -126,7 +127,9 @@ export async function runBrowseFeedSession(page: Page, context: FeedSessionConte
   if (stopped()) return 'stopped'
   const available = { deadline, day,
     remainingMinutes: Math.max(0, context.remainingMinutes - (deps.now() - started) / 60_000), browse,
-    waitForOutreach: (until: number) => deps.waitForOutreach(page, until, config, session, log) }
+    waitForOutreach: (until: number) => deps.waitForOutreach(page, until, config, session, log),
+    visitDuringPause: (destination: 'profile' | 'dms', until: number) =>
+      deps.visitDuringPause(page, destination, until, session, log) }
   // The routine callback schedules follow/DM batches and unfollows through this same browse function.
   return activity ? activity(available) : browseUntilEnd(available, {
     now: deps.now, stopped: shouldStop, random: deps.random, sleep: deps.sleep, log,

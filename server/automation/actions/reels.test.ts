@@ -310,7 +310,7 @@ for (const mode of ['related', 'unrelated', 'empty', 'ad'] as const)
     } finally { Date.now = originalNow; await f.window.happyDOM.close() }
   })
 
-for (const ad of [false, true]) test(`off-topic Reels pause briefly before skipping while ads advance immediately (ad=${ad})`, async () => {
+for (const ad of [false, true]) test(`Reels pause before classification and skip rejected content immediately (ad=${ad})`, async () => {
   const f = reelAdvanceFixture(1024, 600, { offTopic: true })
   const waits: number[] = [], decisions: number[] = []
   const budget = new WarmupActivityBudget({ likes: 1, profiles: 0, reels: 0, stories: 0 })
@@ -324,12 +324,16 @@ for (const ad of [false, true]) test(`off-topic Reels pause briefly before skipp
   f.session.wait = async ms => { waits.push(ms); f.session.check() }
   try {
     await watchReels(f.page, 1, { warmup_topics: ['Fishing'] }, () => {}, () => f.stats().clicks >= 1,
-      f.session.end, f.session, budget, async () => { decisions.push(1); return false })
+      f.session.end, f.session, budget, async () => {
+        assert.equal(waits.length, 1, 'pause happens before the screenshot/classification')
+        assert.ok(waits[0] >= 500 && waits[0] <= 1200)
+        decisions.push(1); return false
+      })
     assert.equal(f.stats().clicks, 1)
     if (ad) assert.deepEqual(waits, [100], 'ads only wait for frame stability after advancing')
     else {
-      assert.ok(waits[0] >= 500 && waits[0] <= 1200, 'off-topic decision pauses 0.5–1.2 seconds')
-      assert.deepEqual(waits.slice(1), [100], 'no additional dwell beyond frame stability')
+      assert.ok(waits[0] >= 500 && waits[0] <= 1200, 'capture waits 0.5–1.2 seconds')
+      assert.deepEqual(waits.slice(1), [100], 'rejected content only waits for frame stability after advancing')
     }
     assert.equal(decisions.length, ad ? 0 : 1, 'ads skip before any AI request')
     assert.equal(budget.used.reels, 0); assert.equal(budget.used.likes, 0)

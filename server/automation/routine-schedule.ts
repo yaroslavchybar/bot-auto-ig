@@ -53,10 +53,11 @@ export async function scheduleRoutine(
     const remainingMs = session.deadline - now();
     const browsingOnly = !available || sent >= quota || remainingMs < 20_000;
     if (browsingOnly) return browseUntilEnd(session, controls);
-    // Reserve about 90 seconds per remaining DM; shorten browsing when time is tight.
+    // Keep the initial browse flexible, then browse for 3–5 minutes between batches.
     const spareMs = remainingMs - (quota - sent) * 90_000;
-    const browsingMs = Math.min(remainingMs - 20_000,
-      Math.max(retryBrowsing ? 60_000 : 10_000, Math.min(random(30_000, 90_000), spareMs)));
+    const browsingMs = sent > 0 ? Math.min(remainingMs, random(180_000, 300_000))
+      : Math.min(remainingMs - 20_000,
+        Math.max(retryBrowsing ? 60_000 : 10_000, Math.min(random(30_000, 90_000), spareMs)));
     const reason = await browse(browsingMs);
     if (reason === 'skipped' || reason === 'stopped' || stopped()) return reason;
     if (reason === 'stalled') {
@@ -67,6 +68,8 @@ export async function scheduleRoutine(
     retryBrowsing = false;
     // Finish the browsing transition before opening the first recipient profile.
     nextSendAt = Math.max(nextSendAt, now() + random(10_000, 20_000));
+    if (session.visitDuringPause && session.deadline - now() >= 20_000 && random(0, 1) < 0.2)
+      await session.visitDuringPause(random(0, 1) < 0.5 ? 'profile' : 'dms', Math.min(nextSendAt, session.deadline));
     const batch = Math.min(quota - sent, sent === 0 ? firstBatchSize : Math.floor(random(3, 6)));
     log({ event: 'automation.routine.outreach_batch', message: `Outreach batch: up to ${batch}; session target ${sent}/${quota}` });
     let completed = 0;
@@ -83,10 +86,7 @@ export async function scheduleRoutine(
       const result = await controls.send();
       if (result === 'unavailable') { available = false; break; }
       if (result === 'sent' || result === 'followed') { sent++; completed++; }
-      // Keep a random pause, but reserve enough time for the remaining target.
-      const secondsPerDm = (session.deadline - now()) / 1000 / Math.max(1, quota - sent);
-      const maxPause = Math.max(30, Math.min(90, Math.floor(secondsPerDm - 30)));
-      nextSendAt = now() + Math.floor(random(30, maxPause + 1)) * 1000;
+      nextSendAt = now() + Math.floor(random(10, 31)) * 1000;
     }
   }
   return stopped() ? 'stopped' : 'finished';

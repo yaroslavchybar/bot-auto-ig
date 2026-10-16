@@ -326,10 +326,10 @@ export async function watchReels(
     }
     // Include caption siblings while stopping before containers with neighboring reels.
     const post = video.locator('xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
+    if (topics.length) await session.wait(random(500, 1200))
     const related = topics.length > 0 && await matchesTopic(context, topics, session, log, post)
     if (!feedPostMatches(context, topics, related)) {
       log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })
-      await session.wait(random(500, 1200))
       if (!await advance()) break
       continue
     }

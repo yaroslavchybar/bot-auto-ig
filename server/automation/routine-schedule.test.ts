@@ -20,17 +20,44 @@ function setup(target = 30, batch = 5) {
   return { controls, session, events, sendTimes, sent: () => sent };
 }
 
-for (const batch of [3, 5]) test(`completes 30 DMs in a 30-minute budget with batches of ${batch}`, async () => {
+for (const batch of [3, 5]) test(`short sessions preserve batch gaps within a 30-minute budget (batch=${batch})`, async () => {
   const s = setup(30, batch);
   for (let remaining = 30; remaining > 0; remaining -= 5) {
     const session = s.session(5, remaining);
     await scheduleRoutine(session, s.controls);
     assert.ok(s.controls.now() <= session.deadline);
   }
-  assert.equal(s.sent(), 30);
+  assert.equal(s.sent(), batch * 6);
   assert.equal(s.controls.now(), 30 * 60_000);
   assert.ok(s.events.includes('browse'));
-  for (let i = 1; i < s.sendTimes.length; i++) assert.ok(s.sendTimes[i] - s.sendTimes[i - 1] >= 30_000);
+  for (let i = 1; i < s.sendTimes.length; i++) assert.ok(s.sendTimes[i] - s.sendTimes[i - 1] >= 20_000);
+});
+
+for (const pause of [10, 30]) for (const browsingMs of [180_000, 300_000])
+  test(`outreach pauses ${pause}s inside a batch and browses ${browsingMs / 60_000} minutes between batches`, async () => {
+    const s = setup(6, 3), session = s.session(20, 20), durations: number[] = [];
+    const browse = session.browse;
+    session.browse = async minutes => { durations.push(minutes * 60_000); return browse(minutes); };
+    await scheduleRoutine(session, { ...s.controls, random: (min, max) => {
+      if (min === 10 && max === 31) return pause;
+      if (min === 180_000 && max === 300_000) return browsingMs;
+      return s.controls.random(min, max);
+    } });
+    assert.equal(s.sent(), 6);
+    for (const i of [1, 2, 4, 5]) assert.equal(s.sendTimes[i] - s.sendTimes[i - 1] - 10_000, pause * 1000);
+    assert.equal(durations[1], browsingMs);
+    assert.equal(s.sendTimes[3] - s.sendTimes[2] - 10_000, browsingMs + 19_999,
+      'the transition pause still follows browsing');
+  });
+
+test('a batch gap uses the remaining session time instead of starting another batch early', async () => {
+  const s = setup(6, 3), session = s.session(4, 4), durations: number[] = [];
+  const browse = session.browse;
+  session.browse = async minutes => { durations.push(minutes * 60_000); return browse(minutes); };
+  await scheduleRoutine(session, s.controls);
+  assert.equal(s.sent(), 3);
+  assert.ok(durations[1] > 0 && durations[1] < 180_000);
+  assert.equal(s.controls.now(), session.deadline);
 });
 
 test('a session alternates browsing with multiple DM batches', async () => {
@@ -82,6 +109,40 @@ test('a stop during the transition pause prevents opening a recipient', async ()
   let stopped = false;
   await scheduleRoutine(session, { ...s.controls, stopped: () => stopped,
     sleep: async ms => { await s.controls.sleep(ms); stopped = true; },
+  });
+  assert.equal(s.sent(), 0);
+});
+
+for (const [roll, selection, expected] of [
+  [0.199, 0.49, 'profile'], [0.199, 0.5, 'dms'], [0.2, 0, undefined], [0.99, 0, undefined],
+] as const) test(`a 20% pause visit chooses one sidebar page per batch (${roll}, ${selection})`, async () => {
+  const s = setup(6, 3), session = s.session(20, 20), starts: number[] = [];
+  let rolls = 0;
+  session.visitDuringPause = async (destination, until) => {
+    assert.equal(destination, expected);
+    assert.ok(until > s.controls.now() && until <= session.deadline);
+    assert.equal(until - s.controls.now(), 19_999);
+    starts.push(s.controls.now()); s.events.push('visit-' + destination);
+    await s.controls.sleep(2000);
+  };
+  await scheduleRoutine(session, { ...s.controls, random: (min, max) => {
+    if (min === 0 && max === 1) return expected && rolls++ % 2 ? selection : roll;
+    return s.controls.random(min, max);
+  } });
+  assert.equal(s.sent(), 6);
+  assert.equal(starts.length, expected ? 2 : 0, 'no extra visits between accounts inside a batch');
+  if (expected) {
+    assert.equal(s.sendTimes[0] - starts[0], 19_999, 'the visit uses the existing pause');
+    assert.equal(s.sendTimes[3] - starts[1], 19_999);
+  }
+});
+
+test('a stop during a sidebar visit prevents the follow batch', async () => {
+  const s = setup(3), session = s.session(10, 10);
+  let stopped = false;
+  session.visitDuringPause = async () => { stopped = true; };
+  await scheduleRoutine(session, { ...s.controls, stopped: () => stopped,
+    random: (min, max) => min === 0 && max === 1 ? 0 : s.controls.random(min, max),
   });
   assert.equal(s.sent(), 0);
 });

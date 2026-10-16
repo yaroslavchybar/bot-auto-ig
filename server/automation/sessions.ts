@@ -52,6 +52,7 @@ export type SessionActivity = (session: {
   deadline: number; remainingMinutes: number; day?: number;
   browse: (minutes: number) => Promise<SessionResult['reason']>;
   waitForOutreach?: (until: number) => Promise<boolean>;
+  visitDuringPause?: (destination: 'profile' | 'dms', until: number) => Promise<void>;
 }) => Promise<SessionResult['reason']>
 
 const dependencies = { begin: warmupBeginRun, finish: warmupFinishRun, explore: runExploreWarmup,
