@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
 import { Window } from 'happy-dom'
-import { commentScrollBounds, readPostComments } from './comments.js'
+import { commentScrollBounds, readPostComments, scrollPostComments } from './comments.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { visibleActionGeometry } from './action-locator.test-support.js'
 
@@ -62,6 +62,34 @@ test('comment scrolling ignores hidden scrollports and stops at the list end', a
     list.getBoundingClientRect = () => ({ left: 700, right: 1100, top: 100, bottom: 400 }) as DOMRect
     list.scrollTop = 300
     const bounds = commentScrollBounds(window.document.querySelector('#panel')! as unknown as Element)
-    assert.deepEqual(bounds, { left: 700, right: 1100, top: 100, bottom: 400, atEnd: true })
+    assert.deepEqual(bounds, { left: 700, right: 1100, top: 100, bottom: 400, remaining: 0, atEnd: true })
+  } finally { await window.happyDOM.close() }
+})
+
+test('smooth comment glides target the nested thread and stop without overshooting', async () => {
+  const window = new Window({ width: 1280, height: 800 })
+  try {
+    window.document.body.innerHTML = '<article style="overflow-y:auto"><div style="overflow-y:auto" id="other"></div>' +
+      '<ul style="overflow-y:scroll"><li><a href="/p/current/c/123/">1d</a></li></ul></article>'
+    const panel = window.document.querySelector('article')!, list = panel.querySelector('ul')!
+    for (const node of [panel, panel.querySelector('#other')!, list]) {
+      Object.defineProperties(node, { clientHeight: { value: 300 }, scrollHeight: { value: 600 } })
+      node.getBoundingClientRect = () => ({ left: 700, right: 1100, top: 100, bottom: 400 }) as DOMRect
+    }
+    list.scrollTop = 250
+    const deltas: number[] = []
+    const session = new BrowseSession(Date.now() + 60_000)
+    session.wait = async () => {}
+    const locator = { evaluate: async (fn: (node: Element) => unknown) => fn(panel as unknown as Element) } as unknown as Locator
+    const page = { mouse: {
+      move: async (x: number, y: number) => { assert.ok(x > 700 && x < 1100 && y > 100 && y < 400) },
+      wheel: async (_x: number, y: number) => { deltas.push(y); list.scrollTop += y },
+    } } as unknown as Page
+    await scrollPostComments(page, locator, session)
+    assert.ok(deltas.length > 1, 'uses multiple small wheel events for a smooth glide')
+    assert.equal(deltas.reduce((sum, delta) => sum + delta, 0), 50)
+    assert.equal(list.scrollTop, 300)
+    assert.equal(panel.scrollTop, 0)
+    assert.equal(panel.querySelector('#other')!.scrollTop, 0)
   } finally { await window.happyDOM.close() }
 })

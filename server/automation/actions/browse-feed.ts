@@ -97,18 +97,18 @@ export async function runBrowseFeedSession(page: Page, context: FeedSessionConte
   await deps.inbox(page, log, session)
   if (stopped()) return 'stopped'
   const home = config.browse_home_feed !== false
+  const topics = warmupTopics(config.warmup_topics)
   const stories = config.watch_stories !== false && context.unseenStories
   if (home || stories) await deps.home(page, log, session)
   if (stopped()) return 'stopped'
   if (stories) {
-    budget.used.stories += await deps.stories(page, Infinity, log, stopped, { minSeconds: 2, maxSeconds: 5,
-      deadline: Math.min(deadline, deps.now() + deps.random(60_000, 180_000)) })
+    budget.used.stories += await deps.stories(page, Infinity, log, stopped, {
+      deadline: Math.min(deadline, deps.now() + deps.random(60_000, 180_000)), sessionDeadline: deadline, budget })
     if (!stopped()) await deps.check(page, session)
   }
   if (stopped()) return 'stopped'
   if (!home && config.scroll_reels !== false) await deps.openReels(page, log, session)
   if (stopped()) return 'stopped'
-  const topics = warmupTopics(config.warmup_topics)
   if (day >= 3 && day <= 7 && topics.length && budget.remaining('follows') &&
     (config.browse_home_feed !== false || config.scroll_reels !== false)) {
     const followSession = new BrowseSession(Math.min(deadline, deps.now() + (deadline - deps.now()) * 0.2), stopped)

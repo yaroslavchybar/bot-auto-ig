@@ -13,6 +13,17 @@ import { openReels } from './reels.js'
 import { backToFeed } from './navigation.js'
 import { openAuthorProfile, openOwnProfile } from './profiles.js'
 import { watchStories } from './stories.js'
+import { actionLocator } from './action-locator.js'
+
+const completedStory = {
+  chance: () => false,
+  visit: async () => {},
+  progress: async () => ({ index: 0, total: 1, progress: 1 }),
+  click: async (_page: Page, target: Locator, session: BrowseSession) => {
+    await (await actionLocator(target, session.timeout(5000))).click({ timeout: session.timeout(5000) })
+  },
+  wait: async (session: BrowseSession) => { session.check() },
+}
 
 test('revealing a grid tile uses viewport bounds after the document has scrolled', async () => {
   const window = new Window({ width: 1280, height: 800 })
@@ -266,7 +277,7 @@ test('story navigation and opening expiry stay local to the optional story chunk
       locator: (selector: string) => selector.includes('Story by') ? story : { count: async () => 0 },
     } as unknown as Page
     try {
-      assert.equal(await watchStories(page, 1, () => {}, () => false, { minSeconds: 2, maxSeconds: 5, deadline }), 0)
+      assert.equal(await watchStories(page, 1, () => {}, () => false, { deadline }), 0)
       assert.equal(clicks, 0)
     } finally { Date.now = originalNow }
   }
@@ -290,13 +301,16 @@ for (const stage of ['open', 'next']) test(`temporary story ${stage} failure ski
     elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { throw failure }, dispose: async () => {} }),
   }
   const page = { url: () => opened ? 'https://www.instagram.com/stories/alice/1/' : 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
+    waitForURL: async () => {},
+    getByRole: (_role: string, { name }: { name: string }) => ({ filter() { return this }, first() { return this },
+      isVisible: async () => name === 'Next', elementHandle: next.elementHandle }),
     keyboard: { press: async () => {} },
     locator: (selector: string) => selector.includes('Story by') ? control : selector.includes('Next')
       ? { count: async () => 1, nth: () => next }
       : { filter() { return this }, first() { return this }, count: async () => 0, isVisible: async () => false, evaluateAll: async () => null },
   } as unknown as Page
   const watched = await watchStories(page, 2, note => notes.push(note), () => false,
-    { minSeconds: 0, maxSeconds: 0, deadline: Date.now() + 60_000 })
+    { deadline: Date.now() + 60_000 }, completedStory)
   assert.equal(watched, stage === 'open' ? 0 : 1)
   assert.ok(notes.some(note => note.event === 'automation.actions.stories.skipped'))
 })
@@ -347,13 +361,16 @@ test('stories return zero for missing trays and only completed views after an ea
     }) }
     const page = {
       goto: async () => {}, url: () => opened ? 'https://www.instagram.com/stories/alice/1/' : 'https://www.instagram.com/',
+      waitForURL: async () => {},
+      getByRole: (_role: string, { name }: { name: string }) => ({ filter() { return this }, first() { return this },
+        isVisible: async () => name === 'Next', elementHandle: next.elementHandle }),
       viewportSize: () => ({ width: 1280, height: 800 }),
       keyboard: { press: async () => {} },
       locator: (selector: string) => selector.includes('Story by') ? control
         : selector.includes('Next') ? next : { count: async () => 0, filter: () => ({ evaluateAll: async () => null }) },
     } as unknown as Page
     const watched = await watchStories(page, mode === 'stop on next' ? 3 : 1, () => {}, () => stopped,
-      { minSeconds: 0, maxSeconds: 0 })
+      {}, completedStory)
     assert.equal(watched, mode === 'full' || mode === 'stop on next' ? 1 : 0)
   }
 })

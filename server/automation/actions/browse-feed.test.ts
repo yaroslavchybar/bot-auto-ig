@@ -20,6 +20,7 @@ function setup(day = 8) {
     openReels: async () => { calls.push('open-reels'); return true },
     stories: async (_page, count, _log, _stop, timing) => {
       calls.push('stories'); assert.equal(count, Infinity)
+      assert.equal(timing.budget, budget); assert.equal(timing.sessionDeadline, context.deadline)
       assert.equal(timing.deadline! - now, 60_000); now += 60_000; return 12
     },
     content: async (_page, end, _config, shared) => { calls.push('content'); assert.equal(shared, budget); now = end; budget.browsed++; return 'finished' },
