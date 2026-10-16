@@ -263,7 +263,7 @@ for (const roll of [0.1, 0.3]) test(`engagement shares its cap and reads comment
     } } as unknown as Locator
     const panel = { waitFor: async ({ state }: { state: string }) => { assert.equal(commentsOpen, state === 'visible') },
       isVisible: async () => commentsOpen, locator: () => makeControl('Close'),
-      evaluate: async () => ({ left: 700, right: 1000, top: 200, bottom: 600, atEnd: false }) }
+      evaluate: async () => ({ left: 700, right: 1000, top: 200, bottom: 600, remaining: 1000, atEnd: false }) }
     const dialogs = { filter() { return this }, count: async () => Number(commentsOpen), last: () => panel }
     const page = {
       url: () => 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
@@ -273,7 +273,9 @@ for (const roll of [0.1, 0.3]) test(`engagement shares its cap and reads comment
           : ({ filter: () => ({ evaluateAll: async () => null }) }),
       getByRole: (role: string) => { assert.equal(role, 'dialog'); return dialogs },
       mouse: { move: async (x: number, y: number) => { assert.ok(x > 700 && x < 1000 && y > 200 && y < 600) },
-        wheel: async () => { assert.ok(commentsOpen); calls.push('scroll-comments') } },
+        wheel: async (_x: number, y: number) => {
+          assert.ok(commentsOpen); assert.ok(Number.isFinite(y) && y > 0); calls.push('scroll-comments')
+        } },
       keyboard: { press: async () => { throw new Error('Close comments by clicking X') } },
     } as unknown as Page
     const session = new BrowseSession(Date.now() + 60_000); session.wait = async () => { session.check() }
