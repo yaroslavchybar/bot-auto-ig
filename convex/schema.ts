@@ -61,6 +61,7 @@ export default defineSchema({
     ),
     enrichmentModel: v.optional(v.string()),
     enrichmentConfidence: v.optional(v.number()),
+    followCheckPassed: v.optional(v.boolean()),
     enrichedAt: v.optional(v.number()),
     screeningToken: v.optional(v.string()),
     screeningProfileId: v.optional(v.id('profiles')),

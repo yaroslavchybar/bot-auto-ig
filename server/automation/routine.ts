@@ -24,7 +24,7 @@ import { sleep, random } from "./actions/shared.js";
 import { assertInstagramReady, checkNotifications } from './actions/instagram-state.js';
 import { performProfileFollow } from './actions/follow-safety.js';
 import { clickAction } from './actions/action-locator.js'
-import { screenLead, LEAD_SCREENING_MODEL } from './actions/lead-screening.js'
+import { screenLead } from './actions/lead-screening.js'
 import { BrowseSession, SessionEnded } from './actions/session.js'
 import { openProfileThroughSearch } from './actions/explore.js'
 import { errors } from 'playwright-core'
@@ -264,11 +264,11 @@ export async function runRoutineSession(
                     decision,
                   ))
                   screeningFinished = true
-                  scope.add({ category: decision.category, confidence: decision.confidence, accepted });
+                  scope.add({ category: decision.category, confidence: decision.confidence, model: decision.model, accepted });
                   log({
                     event: 'automation.lead_screened',
                     leadId: attempt.leadId,
-                    model: LEAD_SCREENING_MODEL,
+                    model: decision.model,
                     category: decision.category,
                     confidence: decision.confidence,
                     accepted,

@@ -18,6 +18,8 @@ export function registerRoutineRoutes(http: HttpRouter) {
           date: b.date,
           category: b.category,
           confidence: b.confidence,
+          model: b.model,
+          followCheckPassed: b.followCheckPassed,
           failureReason: b.failureReason,
         }),
       )

@@ -328,7 +328,8 @@ export function profilesSetIgLoggedIn(profileId: string, igLoggedIn: boolean): P
 
 export type DbAutomationRow = {
   listIds?: string[]
-  routine?: { activity: Record<string, number | boolean | string>; headless: boolean; interests?: { label: string; description: string }[] }
+  routine?: { activity: Record<string, number | boolean | string>; headless: boolean; interests?: { label: string; description: string }[];
+    ai?: import('./aiSettings.js').AiSettings }
   _id: string
   name: string
   nodes: import('../automation/graph.js').AutomationNode[]
@@ -519,7 +520,12 @@ export const routineFinishScreening = (
   leadId: string,
   screeningToken: string,
   date: string,
-  decision?: { category: 'male' | 'female' | 'business'; confidence: number },
+  decision?: {
+  category: 'male' | 'female' | 'business'
+  confidence: number
+  model: string
+  followCheckPassed?: boolean
+},
   failureReason?: 'refused',
 ) =>
   convexFetch<boolean>('/api/routines/screening', {

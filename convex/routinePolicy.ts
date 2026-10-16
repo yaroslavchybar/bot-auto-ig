@@ -1,6 +1,22 @@
 import { v } from "convex/values";
 import { validateOutreachMessage } from '../server/shared/outreachMessage';
 import { validateInterests } from '../server/shared/interests';
+import { validateAiSettings } from '../server/shared/aiSettings';
+
+const aiStepValidator = v.object({ model: v.string(), prompt: v.string() });
+// Every field is optional: saved overrides merge over the built-in screening defaults.
+const screeningValidator = v.object({
+  model: v.optional(v.string()),
+  followModel: v.optional(v.string()),
+  state: v.optional(v.string()),
+  instructions: v.optional(v.string()),
+  criteria: v.optional(v.object({
+    male: v.optional(v.string()),
+    female: v.optional(v.string()),
+    business: v.optional(v.string()),
+  })),
+  nonEnglishText: v.optional(v.string()),
+});
 
 export const routineValidator = v.object({
   allowedCategories: v.optional(
@@ -26,6 +42,7 @@ export const routineValidator = v.object({
   ),
   activity: v.record(v.string(), v.union(v.number(), v.boolean(), v.string())),
   interests: v.optional(v.array(v.object({ label: v.string(), description: v.string() }))),
+  ai: v.optional(v.object({ interestMatch: v.optional(aiStepValidator), leadPostPerson: v.optional(aiStepValidator), profileScreening: v.optional(screeningValidator) })),
   headless: v.boolean(),
   unfollowMinDays: v.optional(v.number()),
   unfollowMaxDays: v.optional(v.number()),
@@ -78,6 +95,7 @@ export const randomInRange = ([min, max]: readonly [number, number]) =>
   min + Math.floor(Math.random() * (max - min + 1));
 
 export function validateRoutine(p: RoutinePolicy) {
+  validateAiSettings(p.ai)
   validateInterests(p.interests ?? [])
   if (
     p.allowedCategories &&

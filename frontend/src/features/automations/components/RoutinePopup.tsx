@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { toast } from 'sonner'
-import { Flame, Heart, Send, Settings2, Users } from 'lucide-react'
+import { BrainCircuit, Flame, Heart, Send, Settings2, Users } from 'lucide-react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../../convex/_generated/dataModel'
 import {
@@ -32,6 +32,7 @@ import { getAutomationDisplayStatus, getStatusColor, getStatusLabel } from '../t
 import { OutreachAssignments } from './OutreachAssignments'
 import { RoutineProfiles } from './RoutineProfiles'
 import { RoutineInterests } from './RoutineInterests'
+import { RoutineAi } from './RoutineAi'
 import {
   Field,
   NumberField,
@@ -48,6 +49,7 @@ const tabs = [
   { id: 'outreach', label: 'Outreach', icon: Send },
   { id: 'profiles', label: 'Profiles', icon: Users },
   { id: 'interests', label: 'Interests', icon: Heart },
+  { id: 'ai', label: 'AI settings', icon: BrainCircuit },
 ] as const
 
 type TabId = (typeof tabs)[number]['id']
@@ -264,7 +266,7 @@ export function RoutinePopup({
             ))}
           </nav>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div className={cn('min-h-0 min-w-0 flex-1 px-6 py-5', tab === 'ai' ? 'overflow-hidden' : 'overflow-y-auto')}>
             {tab === 'general' && (
               <fieldset disabled={formDisabled} className="grid gap-5 sm:grid-cols-2">
                 <Field id="routine-name" label="Name">
@@ -475,6 +477,8 @@ export function RoutinePopup({
               <RoutineInterests value={policy.interests ?? []} disabled={formDisabled}
                 onPendingChange={setInterestPending} onChange={value => change('interests', value)} />
             </div>
+
+            {tab === 'ai' && <RoutineAi value={policy.ai} disabled={formDisabled} onChange={value => change('ai', value)} />}
 
             {tab === 'profiles' &&
               (automation ? (

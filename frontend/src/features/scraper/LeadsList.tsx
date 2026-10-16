@@ -12,6 +12,7 @@ type Lead = {
   enrichmentConfidence?: number
   enrichedAt?: number
   classification?: 'male' | 'female' | 'business'
+  followCheckPassed?: boolean
   enrichmentStatus?: 'pending' | 'ready' | 'error'
   dmSent: boolean
   followed: boolean
@@ -37,6 +38,9 @@ const details = (lead: Lead) => [
       (lead.enrichmentStatus === 'ready' ? 'unclear' : (lead.enrichmentStatus ?? 'pending')),
   ],
   ['Screened', lead.enrichedAt ? new Date(lead.enrichedAt).toLocaleString() : 'On profile visit'],
+  ['Language check passed', lead.classification === 'male'
+      ? lead.followCheckPassed === undefined ? 'Not checked' : lead.followCheckPassed ? 'Yes' : 'No'
+      : '—'],
   ['DM sent', lead.dmSent ? 'Yes' : 'No'],
   ['Followed', lead.followed ? 'Yes' : 'No'],
   ['Follow date', lead.followDate ? new Date(lead.followDate).toLocaleDateString() : '—'],
@@ -75,7 +79,7 @@ export function LeadsList({ leads, loading, hasActiveFilter,
         <TableHeader>
           <TableRow>
             {['Username', 'ID', 'Full name', 'Type',
-              'Screened', 'DM sent', 'Followed', 'Follow date', 'Sender', 'Saved',
+              'Screened', 'Language check passed', 'DM sent', 'Followed', 'Follow date', 'Sender', 'Saved',
             ].map((label) => (
               <TableHead key={label}>{label}</TableHead>))}
           </TableRow>

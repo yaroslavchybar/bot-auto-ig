@@ -48,7 +48,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     searchProfile: async () => true,
     screenLead: async () => {
       calls.push('screen')
-      return { category: 'male', confidence: 1 }
+      return { category: 'male', confidence: 1, model: 'openai/gpt-6-luna-decisions' }
     },
     finishScreening: async () => {
       calls.push('screen-saved')
@@ -248,10 +248,11 @@ test('a rejected screenshot decision saves enrichment and never follows or likes
   const s = setup('follow')
   s.deps.screenLead = async () => {
     s.calls.push('screen')
-    return { category: 'female', confidence: 0.95 }
+    return { category: 'female', confidence: 0.95, model: 'liquid/d1-ultra' }
   }
   s.deps.finishScreening = async (_a, _p, _l, _token, _date, decision) => {
     assert.equal(decision?.category, 'female')
+    assert.equal(decision?.model, 'liquid/d1-ultra')
     s.calls.push('screen-saved')
     return false
   }

@@ -1001,6 +1001,7 @@ test('new follow ramp starts small independently of previous DM growth and claim
 });
 
 // Existing follow/DM tests include the now-required browser-screening approval step.
+const SCREENED_MODEL = 'liquid/d1-ultra';
 async function reserveFollow(
   t: ReturnType<typeof createConvexTest>,
   args: { automationId: Id<'automations'>; profileId: Id<'profiles'> },
@@ -1014,6 +1015,8 @@ async function reserveFollow(
     screeningToken: claim.screeningToken,
     category: 'male',
     confidence: 1,
+    model: SCREENED_MODEL,
+    followCheckPassed: true,
   })
   return accepted ? claim : null
 }
@@ -1047,6 +1050,9 @@ test.each(['male', 'female', 'business'] as const)(
       screeningToken: claim.screeningToken,
       category,
       confidence: 0.4,
+      model: SCREENED_MODEL,
+      // A male screening always carries the second pass result.
+      ...(category === 'male' ? { followCheckPassed: true } : {}),
     }
     expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(true)
     expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(false)
@@ -1054,7 +1060,7 @@ test.each(['male', 'female', 'business'] as const)(
       senderId: args.profileId,
       classification: category,
       enrichmentStatus: 'ready',
-      enrichmentModel: 'openai/gpt-6-luna-decisions',
+      enrichmentModel: SCREENED_MODEL,
       enrichmentConfidence: 0.4,
     })
     expect((await t.query(internal.routines.target, args)).remaining).toBe(1)
@@ -1079,6 +1085,7 @@ test('a disallowed category consumes no quota and can be screened by an automati
     screeningToken: claim.screeningToken,
     category: 'female' as const,
     confidence: 0.95,
+    model: SCREENED_MODEL,
   }
   expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(false)
   expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
@@ -1125,9 +1132,69 @@ test('expired screening leases are recoverable and stale results cannot assign a
       screeningToken: claim.screeningToken,
       category: 'male',
       confidence: 1,
+      model: SCREENED_MODEL,
+      followCheckPassed: true,
     }),
   ).toBe(false)
 })
+
+test('a male decision without the English text check is never saved', async () => {
+  const { t, args, loggedIn } = await setup()
+  await loggedIn()
+  const claim = (await t.mutation(internal.routines.reserve, args))!
+  await expect(
+    t.mutation(internal.leadScreening.finish, {
+      ...args,
+      leadId: claim.leadId,
+      date: claim.date,
+      screeningToken: claim.screeningToken,
+      category: 'male',
+      confidence: 1,
+      model: SCREENED_MODEL,
+    }),
+  ).rejects.toThrow(/English/)
+  expect(await t.run((ctx) => ctx.db.get(claim.leadId))).not.toHaveProperty('senderId')
+});
+
+test('a male lead that failed the check is never screened again by the same policy', async () => {
+  const { t, args, loggedIn } = await setup()
+  await loggedIn()
+  const claim = (await t.mutation(internal.routines.reserve, args))!
+  expect(
+    await t.mutation(internal.leadScreening.finish, {
+      ...args,
+      leadId: claim.leadId,
+      date: claim.date,
+      screeningToken: claim.screeningToken,
+      category: 'male',
+      confidence: 1,
+      model: SCREENED_MODEL,
+      followCheckPassed: false,
+    }),
+  ).toBe(false)
+  expect(await t.run((ctx) => ctx.db.get(claim.leadId))).toMatchObject({
+    classification: 'male',
+    followCheckPassed: false,
+  })
+  expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId)
+});
+
+test('a decision without the model that answered it is never saved', async () => {
+  const { t, args, loggedIn } = await setup()
+  await loggedIn()
+  const claim = (await t.mutation(internal.routines.reserve, args))!
+  await expect(
+    t.mutation(internal.leadScreening.finish, {
+      ...args,
+      leadId: claim.leadId,
+      date: claim.date,
+      screeningToken: claim.screeningToken,
+      category: 'male',
+      confidence: 1,
+    }),
+  ).rejects.toThrow(/screening model/)
+  expect(await t.run((ctx) => ctx.db.get(claim.leadId))).not.toHaveProperty('senderId')
+});
 
 test('provider failures skip without assignment or quota consumption', async () => {
   const { t, args, loggedIn } = await setup()
@@ -1155,7 +1222,7 @@ test('screening failures back off, preserve decisions, and stop automatic retrie
   await loggedIn()
   let claim = (await t.mutation(internal.routines.reserve, args))!
   const leadId = claim.leadId
-  const decision = { classification: 'male' as const, enrichmentModel: 'openai/gpt-6-luna-decisions', enrichedAt: 123, enrichmentConfidence: 0.95 }
+  const decision = { classification: 'male' as const, enrichmentModel: 'openai/gpt-6-luna-decisions', enrichedAt: 123, enrichmentConfidence: 0.95, followCheckPassed: true }
   await t.run(async ctx => {
     await ctx.db.patch(leadId, decision)
     for (const membership of await ctx.db.query('leadMemberships').collect())
@@ -1207,10 +1274,10 @@ test('a successful screening resets the failure count and replaces the saved dec
     enrichmentStatus: 'error', enrichmentModel: 'previous-model', enrichedAt: 123, enrichmentConfidence: 0.8 }))
   expect(await t.mutation(internal.leadScreening.finish, { ...args,
     leadId: claim.leadId, date: claim.date, screeningToken: claim.screeningToken,
-    category: 'female', confidence: 0.99 })).toBe(false)
+    category: 'female', confidence: 0.99, model: SCREENED_MODEL })).toBe(false)
   const lead = (await t.run(ctx => ctx.db.get(claim.leadId)))!
   expect(lead).toMatchObject({ classification: 'female', enrichmentStatus: 'ready',
-    enrichmentModel: 'openai/gpt-6-luna-decisions', enrichmentConfidence: 0.99 })
+    enrichmentModel: SCREENED_MODEL, enrichmentConfidence: 0.99 })
   expect(lead.enrichedAt).not.toBe(123)
   expect(lead).not.toHaveProperty('screeningFailures')
   expect(lead).not.toHaveProperty('screeningUntil')
@@ -1238,6 +1305,8 @@ test('concurrent approvals cannot exceed the daily allowance', async () => {
         screeningToken: claim!.screeningToken,
         category: 'male',
         confidence: 1,
+        model: SCREENED_MODEL,
+        followCheckPassed: true,
       }),
     ),
   )
@@ -1276,6 +1345,8 @@ test.each(['pause', 'categories', 'route', 'disabled'] as const)(
         screeningToken: claim.screeningToken,
         category: 'male',
         confidence: 1,
+        model: SCREENED_MODEL,
+        followCheckPassed: true,
       }),
     ).toBe(false)
     expect(await t.run((ctx) => ctx.db.get(claim.leadId))).not.toHaveProperty('senderId')

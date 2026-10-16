@@ -23,6 +23,7 @@ import {
 } from '../shared/convexRealtime.js'
 import { sessionReady } from './sessions.js'
 import { runRoutineSession } from './routine.js'
+import { withAiSettings } from './ai-settings.js'
 import { postModelUpdateInSession } from '../ig-accounts/warmup.js'
 import { setupModelInSession } from '../ig-accounts/profile-setup.js'
 import { routineReady, routineRecordSession } from '../shared/convexClient.js'
@@ -365,7 +366,8 @@ async function runRoutineProfile(options: {
     } else if (!await routineReady(automationId, profile.id, false)) return
     let hadActivity = false
     await withProfile(profile, { headless: routine.headless, openSession, automationId }, async session => {
-      hadActivity = await runRoutineSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access) === true
+      hadActivity = await withAiSettings(routine.ai,
+        () => runRoutineSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access)) === true
       const modelId = automation.listIds?.length === 1 ? automation.listIds[0] : undefined
       if (useRealtime && modelId && !shouldStop() && access) {
         hadActivity = await setupModelInSession(profile.id, automationId, session.page, log,

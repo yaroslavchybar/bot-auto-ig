@@ -23,6 +23,8 @@ export const finish = internalMutation({
       v.union(v.literal('male'), v.literal('female'), v.literal('business')),
     ),
     confidence: v.optional(v.number()),
+    model: v.optional(v.string()),
+    followCheckPassed: v.optional(v.boolean()),
     failureReason: v.optional(v.literal('refused')),
   },
   handler: async (ctx, args) => {
@@ -47,6 +49,9 @@ export const finish = internalMutation({
         args.confidence > 1)
     )
       throw new Error('Invalid screening confidence')
+    if (args.category && !args.model?.trim()) throw new Error('Missing screening model')
+    if (args.category === 'male' && typeof args.followCheckPassed !== 'boolean')
+      throw new Error('A male screening must include the English text check')
     const e = await eligibility(ctx, args.automationId, args.profileId)
     const state = e ? await ensureProgress(ctx, args.profileId) : null
     const used = state?.followQuotaDate === args.date ? state.used : 0
@@ -82,6 +87,7 @@ export const finish = internalMutation({
       args.date === dayKey(now) &&
       used < allowance &&
       (e.policy.allowedCategories ?? ['male']).includes(classification) &&
+      (classification !== 'male' || args.followCheckPassed === true) &&
       lead.screeningListId &&
       (await ctx.db.get(lead.screeningListId)) &&
       membership?.available &&
@@ -95,9 +101,12 @@ export const finish = internalMutation({
         ? {
             classification,
             enrichmentStatus: 'ready' as const,
-            enrichmentModel: 'openai/gpt-6-luna-decisions',
+            enrichmentModel: args.model!,
             enrichedAt: now,
             enrichmentConfidence: args.confidence,
+            ...(classification === 'male'
+              ? { followCheckPassed: args.followCheckPassed }
+              : {}),
             screeningFailures: undefined,
             screeningUntil: undefined,
           }

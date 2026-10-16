@@ -316,9 +316,12 @@ export const reserve = internalMutation({
           }
           if ((candidate.screeningUntil ?? 0) > Date.now()) continue
           if (
-            candidate.enrichmentModel === 'openai/gpt-6-luna-decisions' &&
+            candidate.enrichedAt !== undefined &&
             candidate.classification &&
-            !(e.policy.allowedCategories ?? ['male']).includes(candidate.classification)
+            // A category this policy excludes, or a male lead that failed the
+            // English text check, is never screened again by the same policy.
+            (!(e.policy.allowedCategories ?? ['male']).includes(candidate.classification) ||
+              (candidate.classification === 'male' && candidate.followCheckPassed !== true))
           )
             continue
           lead = candidate
@@ -356,7 +359,7 @@ export const beginFollow = internalMutation({
     const e = await eligibility(ctx, args.automationId, args.profileId);
     const today = dayKey(args.now ?? Date.now());
     const allowed = !!(lead && lead.senderId === args.profileId &&
-      lead.enrichmentModel === 'openai/gpt-6-luna-decisions' &&
+      lead.enrichedAt !== undefined &&
       lead.classification &&
       e &&
       (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&

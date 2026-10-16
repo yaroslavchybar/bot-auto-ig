@@ -6,6 +6,7 @@ import { defaultRoutine } from '../../convex/routinePolicy'
 import { RoutinePopup } from '@/features/automations/components/RoutinePopup'
 import { mount } from './mount'
 import { apiFetch } from '@/lib/api'
+import { DEFAULT_SCREENING_SETTINGS } from '../../server/shared/aiSettings'
 
 vi.mock('convex/react', () => ({ useMutation: vi.fn(), useQuery: vi.fn() }))
 vi.mock('@/lib/api', () => ({ apiFetch: vi.fn() }))
@@ -52,6 +53,134 @@ test('new automation footer names the first missing requirement', async () => {
     (item) => item.textContent === 'Create automation',
   )!
   expect(create.disabled).toBe(true)
+})
+
+test('the AI tab loads saved settings, edits a prompt, validates it, and saves with the automation', async () => {
+  const save = vi.fn().mockResolvedValue(undefined)
+  vi.mocked(useQuery).mockReturnValue([])
+  vi.mocked(useMutation).mockReturnValue(Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }))
+  const ai = { interestMatch: { model: 'liquid/d1-ultra', prompt: 'Fishing content.' } }
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'],
+    routine: { ...defaultRoutine, ai } } as unknown as Doc<'automations'>
+  view = mount()
+  await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
+  await click('AI settings')
+  expect(document.querySelector('[role="tablist"][aria-label="AI settings steps"]')?.children.length).toBe(3)
+  await click('Interest matching')
+  const input = document.querySelector<HTMLTextAreaElement>('#ai-interestMatch-prompt')!
+  expect(input.value).toBe('Fishing content.')
+  expect(document.querySelector('#ai-interestMatch-model')?.textContent).toContain('liquid/d1-ultra')
+  expect(document.querySelector<HTMLTextAreaElement>('#ai-profile-state')?.readOnly).toBe(false)
+  await act(async () => document.querySelector('#ai-interestMatch-model')!.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+  ))
+  const option = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent === 'respan/span-02')!
+  await act(async () => option.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(document.querySelector('#ai-interestMatch-model')?.textContent).toContain('respan/span-02')
+  const edit = async (value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await edit(' ')
+  expect(document.querySelector('footer')?.textContent).toContain('AI prompts must be')
+  await edit('Fishing techniques and catches only.')
+  await click('Person detection')
+  expect(document.querySelector<HTMLElement>('#ai-interestMatch-prompt')?.closest('section')?.hidden).toBe(true)
+  await click('Interest matching')
+  expect(document.querySelector<HTMLTextAreaElement>('#ai-interestMatch-prompt')?.value).toBe('Fishing techniques and catches only.')
+  await click('Save changes')
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ routine: expect.objectContaining({
+    ai: { interestMatch: { model: 'respan/span-02', prompt: 'Fishing techniques and catches only.' } },
+  }) }))
+})
+
+test('profile screening prompts and both models are editable and saved', async () => {
+  const save = vi.fn().mockResolvedValue(undefined)
+  vi.mocked(useQuery).mockReturnValue([])
+  vi.mocked(useMutation).mockReturnValue(
+    Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }),
+  )
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'],
+    routine: defaultRoutine } as unknown as Doc<'automations'>
+  view = mount()
+  await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
+  await click('AI settings')
+  expect(document.querySelector('#ai-profile-model')?.textContent).toContain('liquid/d1-ultra')
+  expect(document.querySelector('#ai-profile-follow-model')?.textContent).toContain('liquid/d1-ultra')
+  expect(document.querySelector('#ai-profile-non-english-text')).not.toBeNull()
+  expect(document.querySelector('#ai-profile-lives-western-country')).toBeNull()
+  const pick = async (id: string, model: string) => {
+    await act(async () =>
+      document.querySelector<HTMLElement>(`#${id}`)!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+      ),
+    )
+    const option = [...document.querySelectorAll('[role="option"]')].find(
+      (node) => node.textContent === model,
+    )!
+    await act(async () => option.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  }
+  await pick('ai-profile-model', 'typesafe/jev-1.14')
+  await pick('ai-profile-follow-model', 'respan/span-02')
+  expect(document.querySelector('#ai-profile-model')?.textContent).toContain('typesafe/jev-1.14')
+  expect(document.querySelector('#ai-profile-follow-model')?.textContent).toContain('respan/span-02')
+  const criteria = document.querySelector<HTMLTextAreaElement>('#ai-profile-criteria-male')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(criteria, ' ')
+    criteria.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(document.querySelector('footer')?.textContent).toContain('male prompt must be')
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(criteria, 'Only accounts presenting as men.')
+    criteria.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await click('Save changes')
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({
+    routine: expect.objectContaining({
+      ai: { profileScreening: {
+        model: 'typesafe/jev-1.14',
+        followModel: 'respan/span-02',
+        criteria: { male: 'Only accounts presenting as men.' },
+      } },
+    }),
+  }))
+})
+
+test('profile screening Reset restores all defaults and preserves other AI settings when saved', async () => {
+  const save = vi.fn().mockResolvedValue(undefined)
+  vi.mocked(useQuery).mockReturnValue([])
+  vi.mocked(useMutation).mockReturnValue(
+    Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }),
+  )
+  const interestMatch = { model: 'liquid/d1-ultra', prompt: 'Fishing content.' }
+  const profileScreening = {
+    model: 'typesafe/jev-1.14',
+    followModel: 'respan/span-02',
+    state: 'Custom screenshot instructions.',
+    instructions: 'Custom category question.',
+    criteria: { male: 'Custom first choice.', female: 'Custom second choice.', business: 'Custom third choice.' },
+    nonEnglishText: 'Custom non-English text check.',
+  }
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'],
+    routine: { ...defaultRoutine, ai: { profileScreening, interestMatch } } } as unknown as Doc<'automations'>
+  view = mount()
+  await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
+  await click('AI settings')
+  expect(document.querySelector<HTMLTextAreaElement>('#ai-profile-state')?.value).toBe(profileScreening.state)
+  await click('Reset')
+  expect(document.querySelector('#ai-profile-model')?.textContent).toContain(DEFAULT_SCREENING_SETTINGS.model)
+  expect(document.querySelector('#ai-profile-follow-model')?.textContent).toContain(DEFAULT_SCREENING_SETTINGS.followModel)
+  for (const [id, expected] of [
+    ['state', DEFAULT_SCREENING_SETTINGS.state],
+    ['instructions', DEFAULT_SCREENING_SETTINGS.instructions],
+    ['non-english-text', DEFAULT_SCREENING_SETTINGS.nonEnglishText],
+    ...Object.entries(DEFAULT_SCREENING_SETTINGS.criteria).map(([choice, prompt]) => [`criteria-${choice}`, prompt]),
+  ])
+    expect(document.querySelector<HTMLTextAreaElement>(`#ai-profile-${id}`)?.value).toBe(expected)
+  await click('Save changes')
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({
+    routine: expect.objectContaining({ ai: { interestMatch } }),
+  }))
 })
 
 test('an automation saves its selected lead categories and rejects an empty selection', async () => {
