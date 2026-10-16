@@ -1,7 +1,7 @@
 import { visibleActionGeometry } from './actions/action-locator.test-support.js'
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Page } from 'playwright-core';
+import type { Locator, Page } from 'playwright-core';
 import { runRoutineSession } from './routine.js';
 import { errors } from 'playwright-core';
 import { BrowseSession, SessionEnded } from './actions/session.js';
@@ -21,7 +21,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     page: () => page,
     elementHandle: async function() { return this; }, dispose: async () => {},
     click: async () => { calls.push('message-button'); },
-    fill: async () => { calls.push('compose'); },
+    fill: async (_text: string) => { calls.push('compose'); },
     press: async () => { calls.push('send'); },
     waitFor: async () => { calls.push('confirm'); },
   };
@@ -68,6 +68,10 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     dmTasks: async () => (mode === 'dm' ? [attempt] : []),
     dismissDm: async () => { calls.push('dismiss-dm'); },
     canMessage: async () => { calls.push('check-message'); return relationship === 'Following'; },
+    openMessage: async () => { calls.push('message-button'); await locator.waitFor(); return locator as unknown as Locator; },
+    typeMessage: async (_composer, text) => { await locator.fill(text); },
+    sendMessage: async () => { await locator.press(); },
+    closeMessage: async () => { calls.push('close-message'); },
     recordDmCheck: async (_a, _p, _l, _d, canMessage) => { calls.push('check-saved'); return canMessage; },
     reserve: async () => { calls.push('reserve'); return attempt; },
     begin: async () => { calls.push('authorize'); return true; },
@@ -94,7 +98,7 @@ test('a new public follow immediately opens Message and sends a DM in the same v
       'screen',
       'screen-saved',
       'authorize-follow', 'follow', 'record-follow', 'check-message', 'check-saved',
-      'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent',
+      'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'close-message',
     ],
   );
   assert.equal(s.result().sent, true);
@@ -111,7 +115,10 @@ for (const browseFirst of [true, false]) test(`lead post browsing runs ${browseF
   assert.equal(s.calls.indexOf('lead-posts') < s.calls.indexOf('authorize-follow'), browseFirst)
   assert.ok(s.calls.indexOf('lead-posts') > s.calls.indexOf('screen-saved'))
   assert.ok(s.calls.includes('send'))
-  if (!browseFirst) assert.ok(s.calls.indexOf('send') < s.calls.indexOf('lead-posts'))
+  assert.ok(s.calls.indexOf('lead-posts') < s.calls.indexOf('message-button'))
+  assert.equal(s.calls.filter(c => c === 'lead-posts').length, 1)
+  assert.equal(s.calls.filter(c => c === 'navigate').length, 1, 'no reload or second visit after DM')
+  assert.ok(s.calls.indexOf('sent') < s.calls.indexOf('close-message'))
   assert.equal(s.result().issue, undefined)
 })
 
@@ -134,7 +141,7 @@ for (const browseFirst of [true, false]) test(`optional lead post UI errors pres
   s.deps.browseLeadPosts = async () => { s.calls.push('lead-posts'); throw new errors.TimeoutError('Viewer failed to close') }
   await s.run()
   assert.ok(s.calls.includes('follow')); assert.ok(s.calls.includes('record-follow'))
-  assert.equal(s.calls.filter(c => c === 'navigate').length, browseFirst ? 2 : 3, 'recover the exact lead profile')
+  assert.equal(s.calls.filter(c => c === 'navigate').length, 2, 'recover the exact lead profile only after an error')
   assert.equal(s.result().issue, undefined)
 })
 
@@ -201,7 +208,7 @@ for (const isPrivate of [undefined, true, false]) test(`private/unknown or unsel
   s.deps.searchProfile = async () => { throw new Error('Should not search this profile') }
   await s.run()
   assert.ok(s.calls.includes('follow'))
-  assert.equal(s.calls.filter(c => c === 'navigate').length, isPrivate === false ? 2 : 1)
+  assert.equal(s.calls.filter(c => c === 'navigate').length, 1)
   assert.equal(s.result().issue, undefined)
 })
 
@@ -347,7 +354,7 @@ test('Instagram warnings stop outreach before reserving or following a lead', as
 
 test('an existing followed recipient is checked and authorized before sending', async () => {
   const s = setup(); await s.run();
-  assert.deepEqual(s.calls, ['browse', 'navigate', 'check-message', 'check-saved', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'browse', 'record-completed',
+  assert.deepEqual(s.calls, ['browse', 'navigate', 'check-message', 'check-saved', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'close-message', 'browse', 'record-completed',
   ]);
   assert.equal(s.result().sent, true);
 });
@@ -565,4 +572,31 @@ test('a temporary composer failure after a confirmed new follow preserves browsi
   assert.ok(s.calls.includes('record-follow'));
   assert.ok(!s.calls.includes('authorize') && !s.calls.includes('send'));
   assert.equal(s.result().issue, undefined);
+});
+
+test('denied Send authorization closes the draft without sending', async () => {
+  const s = setup(); s.deps.begin = async () => false;
+  await s.run();
+  assert.ok(s.calls.includes('compose') && s.calls.includes('close-message'));
+  assert.ok(!s.calls.includes('send'));
+});
+
+test('a surviving DM popup stops browsing without changing a confirmed delivery to uncertain', async () => {
+  const s = setup();
+  s.deps.closeMessage = async () => { throw new errors.TimeoutError('Close unavailable'); };
+  await s.run();
+  assert.equal(s.result().sent, true);
+  assert.ok(!s.calls.includes('uncertain'));
+  assert.match(s.result().issue ?? '', /popup could not be closed/);
+  assert.ok(!s.calls.slice(s.calls.indexOf('sent') + 1).includes('browse'));
+});
+
+test('cleanup errors never replace the primary uncertain-delivery error', async () => {
+  const s = setup();
+  s.deps.sendMessage = async () => { s.calls.push('send'); throw new Error('Send transport failed'); };
+  s.deps.closeMessage = async () => { throw new errors.TimeoutError('Close failed too'); };
+  await s.run();
+  assert.equal(s.calls.filter(c => c === 'send').length, 1);
+  assert.ok(s.calls.includes('uncertain'));
+  assert.match(s.result().issue ?? '', /Delivery needs review: Send transport failed/);
 });

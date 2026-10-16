@@ -15,8 +15,9 @@ import {
 } from "../shared/convexClient.js";
 import { runBrowsingSession } from "./sessions.js";
 import { browseUntilEnd, scheduleRoutine } from './routine-schedule.js';
-import { followButton, isFollowing, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage, canMessageFollowedProfile,
+import { followButton, isFollowing, messageWasBlocked, unfollow, unsendMessage, canMessageFollowedProfile,
 } from './follow.js';
+import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage } from './outreach-message.js';
 import { renderOutreachMessage } from '../shared/outreachMessage.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 import { sleep, random } from "./actions/shared.js";
@@ -51,6 +52,10 @@ const dependencies = {
   dismissDm: routineDismissDm,
   checkNotifications,
   canMessage: canMessageFollowedProfile,
+  openMessage: openOutreachMessage,
+  typeMessage: typeOutreachMessage,
+  sendMessage: sendOutreachMessage,
+  closeMessage: closeOutreachMessage,
   sleep,
   random,
   instagram: assertInstagramReady,
@@ -190,9 +195,9 @@ export async function runRoutineSession(
                 try { return await action(); }
                 finally { scope.add({ [`${stage}Ms`]: Math.max(0, deps.now() - started) }); }
               };
-              // Navigation and composer preparation happen before permission to press Send.
+              // Post browsing finishes before the composer opens; Send still needs fresh authorization.
               let sendAttempted = false, deliveryConfirmed = false, followedNow = false;
-              let browseAfterDm: (() => Promise<void>) | undefined;
+              let messageOpened = false;
               let followAttempted = false, screeningFinished = false;
               const token = 'screeningToken' in attempt ? attempt.screeningToken : undefined;
               try {
@@ -288,6 +293,7 @@ export async function runRoutineSession(
                     await check()
                   }
                   const browseFirst = deps.random(0, 1) < 0.5
+                  scope.add({ postBrowseOrder: browseFirst ? 'before_follow' : 'after_follow' });
                   if (browseFirst) await browsePosts()
                   if (shouldStop()) return 'unavailable'
                   const followed = await timed('follow', () => followIfNeeded(attempt.leadId, attempt.date, () => { followAttempted = true; }));
@@ -295,12 +301,7 @@ export async function runRoutineSession(
                   log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
                   if (!followed) return 'blocked';
                   followedNow = true;
-                  if (!browseFirst) browseAfterDm = async () => {
-                    await page.goto(`https://www.instagram.com/${attempt.username}/`, {
-                      waitUntil: 'domcontentloaded', timeout: timeout(15_000),
-                    });
-                    await browsePosts();
-                  };
+                  if (!browseFirst) await browsePosts();
                 }
                 if (shouldStop()) return 'unavailable';
                 const canMessage = await timed('dmCheck', () => deps.canMessage(page, timeout(10_000)));
@@ -320,11 +321,10 @@ export async function runRoutineSession(
                   await deps.dismissDm(profileId, attempt.leadId);
                   return 'blocked';
                 }
-                await clickAction(messageButton(page), 15_000);
-                // Current Instagram keeps the profile URL and opens the composer in
-                // an overlay, so the composer is the navigation-complete signal.
-                const composer = await messageComposer(page);
-                await composer.fill(message, { timeout: 15_000 });
+                const messaging = new BrowseSession(deadline, shouldStop);
+                messageOpened = true;
+                const composer = await timed('dmOpen', () => deps.openMessage(page, attempt.username, messaging));
+                await timed('dmType', () => deps.typeMessage(composer, message, messaging));
                 await check(true);
                 if (shouldStop()) return 'unavailable';
                 if (!(await deps.begin(automation._id, profileId, attempt.leadId, attempt.date))) return 'unavailable';
@@ -333,7 +333,7 @@ export async function runRoutineSession(
                 let blocked = false;
                 try {
                   sendAttempted = true;
-                  await composer.press("Enter", { timeout: 10_000 });
+                  await timed('dmSend', () => deps.sendMessage(page, attempt.username, messaging));
                   // A cleared composer alone is insufficient: require the outgoing message in the thread.
                   await page
                     .getByText(message, { exact: true })
@@ -354,7 +354,6 @@ export async function runRoutineSession(
                 });
                 scope.add({ sent, blocked });
                 deliveryConfirmed = sent;
-                if (sent && browseAfterDm && !shouldStop()) await browseAfterDm();
                 return sent ? 'sent' : 'blocked';
               } catch (error) {
                 if (deliveryConfirmed) throw error;
@@ -373,6 +372,21 @@ export async function runRoutineSession(
                 throw new Error(
                   `Delivery needs review: ${error instanceof Error ? error.message : String(error)}`,
                 );
+              } finally {
+                if (messageOpened && !shouldStop()) {
+                  try {
+                    await timed('dmClose', () => deps.closeMessage(page, attempt.username, new BrowseSession(deadline, shouldStop)));
+                    scope.add({ dmPopupClosed: true });
+                  } catch (error) {
+                    log({ event: 'automation.routine.dm_close_failed', targetUsername: attempt.username, error });
+                    // Stop before another recipient can browse underneath the surviving popup.
+                    // Preserve any delivery error already propagating from the main operation.
+                    if (!shouldStop()) {
+                      allowed = false;
+                      issue ??= 'Message popup could not be closed. Check Instagram before resuming.';
+                    }
+                  }
+                }
               }
             });
           },
