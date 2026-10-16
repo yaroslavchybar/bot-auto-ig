@@ -73,6 +73,8 @@ export async function captureTopicScreenshot(target: Locator, session: BrowseSes
     if (width <= 0 || height <= 0) throw new Error('Topic content is outside the viewport')
     const screenshot = await page.screenshot({
       type: 'jpeg', quality: 70, scale: 'css', fullPage: false,
+      // Keep comment-field styles untouched; Playwright otherwise hides and restores every caret.
+      caret: 'initial',
       clip: { x, y, width, height }, timeout: session.timeout(5000),
     })
     session.check()

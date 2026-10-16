@@ -207,6 +207,7 @@ test('capture is clipped to the visible target, pins identity, and never scrolls
       assert.deepEqual(options.clip, { x: 0, y: 500, width: 480, height: 100 })
       assert.equal(options.type, 'jpeg'); assert.equal(options.quality, 70)
       assert.equal(options.scale, 'css'); assert.equal(options.fullPage, false)
+      assert.equal(options.caret, 'initial', 'capture must not modify the popup comment field')
       assert.equal(options.path, undefined)
       return image
     },
