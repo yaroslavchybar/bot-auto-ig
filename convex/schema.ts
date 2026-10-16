@@ -91,6 +91,7 @@ export default defineSchema({
     .index('by_classification', ['classification'])
     .index('by_dm_revisit', ['senderId', 'followed', 'dmStartedAt', 'lastDmCheckDate'])
     .index('by_enrichment', ['enrichmentStatus', 'screeningRefused'])
+    .index('by_screening_profile', ['screeningProfileId'])
     .index('by_follow_due', ['senderId', 'followed', 'followDate'])
     .index('by_unfollow_due', ['senderId', 'followed', 'unfollowAt']),
   leadMemberships: defineTable({

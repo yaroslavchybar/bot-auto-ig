@@ -54,6 +54,8 @@ export async function assertAssignments(
 export async function ensureProgress(ctx: MutationCtx, profileId: Id<"profiles">) {
   const existing = await progress(ctx, profileId);
   if (existing) return existing;
+  // Late worker results must not recreate state after profile cleanup.
+  if (!await ctx.db.get(profileId)) throw new Error('Profile not found');
   const id = await ctx.db.insert("accountProgress", {
     profileId,
     paused: false,

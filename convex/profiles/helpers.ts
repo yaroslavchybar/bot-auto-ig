@@ -1,6 +1,7 @@
 import { DomainError } from '../errors';
-import { syncProxyUsage, clearProxyUsage } from '../proxyUsage'
-import { patchProfile, syncWorkerProfile, clearWorkerProfile } from '../workerMetadata'
+import { syncProxyUsage } from '../proxyUsage'
+import { patchProfile, syncWorkerProfile } from '../workerMetadata'
+import { deleteProfileData } from './cleanup'
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
@@ -319,58 +320,23 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	return await ctx.db.get(args.profileId);
 }
 
-async function deleteIgAccount(ctx: MutationCtx, profileId: Id<'profiles'>) {
-  const accounts = await ctx.db.query('igAccounts')
-    .withIndex('by_profile', q => q.eq('profileId', profileId)).collect();
-  for (const account of accounts) await ctx.db.delete(account._id);
-}
-
-export async function removeProfileByNameRow(ctx: any, name: string) {
+export async function removeProfileByNameRow(ctx: MutationCtx, name: string) {
   const cleaned = String(name || '').trim()
   if (!cleaned) throw new DomainError('VALIDATION', 'name is required')
   const existing = await ctx.db
     .query('profiles')
-    .withIndex('by_name', (q: any) => q.eq('name', cleaned))
+    .withIndex('by_name', q => q.eq('name', cleaned))
     .first()
   if (!existing) return true
-  if (existing.status !== 'deleting')
-    throw new DomainError('CONFLICT', 'Begin profile deletion first')
-  for (const assignment of await ctx.db
-    .query('profileListAssignments')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
-    .collect())
-    await ctx.db.delete(assignment._id)
-  await deleteIgAccount(ctx, existing._id)
-  const setup = await ctx.db
-    .query('modelSetupStates')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
-    .first()
-  if (setup) await ctx.db.delete(setup._id)
-  await clearProxyUsage(ctx, existing._id)
-  await clearWorkerProfile(ctx, existing._id)
-  await ctx.db.delete(existing._id)
-  return true
+  return removeProfileByIdRow(ctx, existing._id)
 }
 
-export async function removeProfileByIdRow(ctx: any, profileId: any) {
+export async function removeProfileByIdRow(ctx: MutationCtx, profileId: Id<'profiles'>) {
   const existing = await ctx.db.get(profileId)
-  if (!existing) return true
-  if (existing.status !== 'deleting')
+  if (existing && existing.status !== 'deleting')
     throw new DomainError('CONFLICT', 'Begin profile deletion first')
-  for (const assignment of await ctx.db
-    .query('profileListAssignments')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
-    .collect())
-    await ctx.db.delete(assignment._id)
-  await deleteIgAccount(ctx, profileId)
-  const setup = await ctx.db
-    .query('modelSetupStates')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
-    .first()
-  if (setup) await ctx.db.delete(setup._id)
-  await clearProxyUsage(ctx, profileId)
-  await clearWorkerProfile(ctx, profileId)
-  await ctx.db.delete(profileId)
+  await deleteProfileData(ctx, profileId)
+  if (existing) await ctx.db.delete(profileId)
   return true
 }
 

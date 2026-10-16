@@ -31,6 +31,12 @@ the saved profile opens and closes. To refresh an expired Instagram session,
 open that browser profile and sign in again. Account credentials stay encrypted.
 Deleting a profile also deletes its linked encrypted IG credentials when browser
 and profile-folder cleanup finishes. Credentials are not returned to Available.
+The same cleanup removes account progress, warm-up state, setup state, list
+memberships, scraper budgets and worker/proxy projections. It clears the profile
+from automation settings, lead leases and scraper work; large shared-data cleanup
+continues in batches. Shared leads, lists and recorded Follow/DM history remain,
+so removing a profile does not cause duplicate outreach. Retrying deletion by ID
+also cleans records left behind when that profile is already missing.
 
 The **Create Profile** dialog selects a model and a count. It uses unused
 credentials and saved **Work** proxies, respecting each proxy's profile limit.

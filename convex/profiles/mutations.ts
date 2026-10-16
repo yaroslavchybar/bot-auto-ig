@@ -5,6 +5,7 @@ import { mutation } from "../_generated/server";
 import { DomainError } from '../errors';
 import { proxyKey, proxyPurpose, resolveMaxProfiles } from '../proxies';
 import { setProfilePaused } from '../profilePause'
+import { cleanupProfileReferences } from './cleanup'
 
 export const setPaused = mutation({
   args: { profileId: v.id('profiles'), paused: v.boolean() },
@@ -205,6 +206,14 @@ export const removeByIdInternal = internalMutation({
 		return await removeProfileByIdRow(ctx, args.profileId);
 	},
 });
+
+export const cleanupDeletedProfileReferencesInternal = internalMutation({
+  args: { profileId: v.id('profiles') },
+  handler: async (ctx, { profileId }): Promise<void> => {
+    if (await ctx.db.get(profileId)) throw new Error('Profile still exists')
+    await cleanupProfileReferences(ctx, profileId)
+  },
+})
 
 export const syncStatusInternal = internalMutation({
 	args: { name: v.string(), status: v.string(), using: v.optional(v.boolean()) },
