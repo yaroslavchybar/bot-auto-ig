@@ -11,7 +11,7 @@ import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 
 function likeFixture(options: { path?: string; alreadyLiked?: boolean; missing?: boolean; confirms?: boolean;
   failure?: Error; warning?: string; slowMovement?: () => void; lateLike?: 'during-hover' | 'before-live-click';
-  related?: boolean; extras?: boolean } = {}) {
+  related?: boolean; extras?: boolean; reelLikes?: number | null } = {}) {
   let liked = options.alreadyLiked ?? false, failed = false
   const calls: string[] = [], notes: Record<string, unknown>[] = []
   const makeControl = (label: string) => ({
@@ -38,7 +38,9 @@ function likeFixture(options: { path?: string; alreadyLiked?: boolean; missing?:
       click: async () => { throw new Error('Never click a pinned Like handle') },
     }),
   })
-  const target = { locator: (selector: string) => makeControl(selector.match(/aria-label="(\w+)"/)![1]!) } as unknown as Locator
+  const target = { evaluate: async (_fn: unknown, kind: string) => {
+    assert.equal(kind, 'likes'); return options.reelLikes === undefined ? 3001 : options.reelLikes
+  }, locator: (selector: string) => makeControl(selector.match(/aria-label="(\w+)"/)![1]!) } as unknown as Locator
   const page = { url: () => 'https://www.instagram.com' + (options.path ?? '/reels/current/'),
     viewportSize: () => ({ width: 1280, height: 800 }),
     mouse: { dblclick: async () => { throw new Error('Never double-click for engagement') } },
@@ -81,7 +83,7 @@ test('a lead post identity change during cursor movement prevents Like input', a
   assert.deepEqual(fixture.calls, [])
 })
 
-for (const path of ['/', '/reels/current/']) test('likes use one live Like-button click on ' + path, async () => {
+for (const path of ['/', '/reels/current/', '/reel/current/']) test('likes use one live Like-button click on ' + path, async () => {
   const fixture = likeFixture({ path })
   await fixture.run()
   assert.deepEqual(fixture.calls, ['Like'])
@@ -91,17 +93,18 @@ for (const path of ['/', '/reels/current/']) test('likes use one live Like-butto
   assert.deepEqual(fixture.calls, ['Like'])
 })
 
-for (const related of [false, true]) for (const roll of [0.1, 0.3])
-  test(`profile Reel engagement only Likes after its own interest decision (${related}, ${roll})`, async () => {
-    const fixture = likeFixture({ path: '/reel/current/', related, extras: true })
+for (const related of [false, true]) for (const roll of [0.1, 0.3]) for (const reelLikes of [3000, 3001])
+  test(`profile Reel engagement requires interest, Like chance and count (${related}, ${roll}, ${reelLikes})`, async () => {
+    const fixture = likeFixture({ path: '/reel/current/', related, extras: true, reelLikes })
+    const eligible = related && reelLikes > 3000
     await fixture.run(roll, true)
-    assert.deepEqual(fixture.calls, related && roll < 0.3 ? ['Like'] : [])
+    assert.deepEqual(fixture.calls, eligible && roll < 0.3 ? ['Like'] : [])
     assert.equal(fixture.budget.used.saves + fixture.budget.used.comments + fixture.budget.used.profiles, 0)
     await fixture.run(0, true)
-    assert.equal(fixture.budget.used.likes, related ? 1 : 0, 'profile Reels share the same daily Like cap')
+    assert.equal(fixture.budget.used.likes, eligible ? 1 : 0, 'profile Reels share the same daily Like cap')
   })
 
-for (const path of ['/', '/reels/current/'])
+for (const path of ['/', '/reels/current/', '/reel/current/'])
   for (const roll of [0.299, 0.3, 0.999]) test(`30% Like chance on ${path} with roll ${roll}`, async () => {
     const fixture = likeFixture({ path })
     await fixture.run(roll)
@@ -111,6 +114,15 @@ for (const path of ['/', '/reels/current/'])
       await fixture.run(0)
       assert.deepEqual(fixture.calls, ['Like'], 'a skipped Like must leave budget for the next match')
     }
+  })
+
+for (const path of ['/reels/current/', '/reel/current/']) for (const likes of [null, 0, 2999, 3000, 3001, 10_000])
+  test(`Reel Likes require more than 3,000 visible likes (${path}, ${likes})`, async () => {
+    const fixture = likeFixture({ path, reelLikes: likes })
+    await fixture.run(0)
+    const eligible = likes !== null && likes > 3000
+    assert.deepEqual(fixture.calls, eligible ? ['Like'] : [])
+    assert.equal(fixture.budget.used.likes, eligible ? 1 : 0)
   })
 
 for (const alreadyLiked of [true, false]) test('liked or missing controls never receive input: ' + alreadyLiked, async () => {
@@ -215,10 +227,16 @@ test('a negative interest decision blocks every interaction, including followed 
   assert.equal(budget.used.likes + budget.used.saves + budget.used.comments, 0)
 })
 
-for (const related of [false, true]) test(`matched-author visits share interest evidence and the daily cap (${related})`, async () => {
+for (const related of [false, true]) for (const [path, likes, eligible] of [
+  ['/', null, true], ['/reels/current/', null, false], ['/reels/current/', 1000, false], ['/reels/current/', 1001, true],
+  ['/reel/current/', null, false], ['/reel/current/', 1000, false], ['/reel/current/', 1001, true],
+] as const) test(`matched-author visits require interest, budget and Reel likes (${related}, ${path}, ${likes})`, async () => {
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 1, reels: 0, stories: 0 })
-  const page = { url: () => 'https://www.instagram.com/reels/current/' } as Page
-  const target = {} as Locator, session = new BrowseSession(Date.now() + 60_000)
+  const page = { url: () => 'https://www.instagram.com' + path } as Page
+  const target = { evaluate: async (_fn: unknown, kind: string) => {
+    assert.notEqual(path, '/', 'Home feed author visits do not require a count')
+    assert.equal(kind, 'likes'); return likes
+  } } as unknown as Locator, session = new BrowseSession(Date.now() + 60_000)
   let visits = 0
   const visit = async (visitedPage: Page, visitedTarget: Locator) => {
     assert.equal(visitedPage, page); assert.equal(visitedTarget, target); visits++
@@ -226,11 +244,14 @@ for (const related of [false, true]) test(`matched-author visits share interest 
   for (let i = 0; i < 2; i++)
     await engagePost(page, target, { text: 'Fishing trip', relationship: 'followed' }, ['Fishing'], budget,
       session, () => {}, async () => related, visit)
-  assert.equal(visits, related ? 1 : 0)
-  assert.equal(budget.used.profiles, related ? 1 : 0)
+  assert.equal(visits, related && eligible ? 1 : 0)
+  assert.equal(budget.used.profiles, related && eligible ? 1 : 0)
 })
 
-for (const roll of [0.1, 0.3]) test(`engagement shares its cap and reads comments independently of Like chance (${roll})`, async () => {
+for (const roll of [0.1, 0.3]) for (const [path, comments, eligible] of [
+  ['/', null, true], ['/reels/current/', null, false], ['/reels/current/', 50, false], ['/reels/current/', 51, true],
+  ['/reel/current/', null, false], ['/reel/current/', 50, false], ['/reel/current/', 51, true],
+] as const) test(`engagement shares its cap and gates Reel comments independently of Like chance (${roll}, ${path}, ${comments})`, async () => {
   const originalRandom = Math.random
   Math.random = () => roll
   try {
@@ -256,7 +277,11 @@ for (const roll of [0.1, 0.3]) test(`engagement shares its cap and reads comment
         if (label === 'Close') commentsOpen = false
       } }),
     })
-    const target = { locator: (selector: string) => {
+    const target = { evaluate: async (_fn: unknown, kind: string) => {
+      assert.notEqual(path, '/', 'Home feed comments do not require a count')
+      if (kind === 'likes') return 3001
+      assert.equal(kind, 'comments'); return comments
+    }, locator: (selector: string) => {
       const label = selector.match(/aria-label="(\w+)"/)?.[1]
       assert.ok(label, 'only scoped post controls may be queried')
       return makeControl(label)
@@ -266,7 +291,7 @@ for (const roll of [0.1, 0.3]) test(`engagement shares its cap and reads comment
       evaluate: async () => ({ left: 700, right: 1000, top: 200, bottom: 600, remaining: 1000, atEnd: false }) }
     const dialogs = { filter() { return this }, count: async () => Number(commentsOpen), last: () => panel }
     const page = {
-      url: () => 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
+      url: () => 'https://www.instagram.com' + path, viewportSize: () => ({ width: 1280, height: 800 }),
       locator: (selector: string) => selector === 'svg[data-igbot-like-target=fixture][aria-label=Like]' ? makeControl('Like')
         : selector === 'svg[data-igbot-like-target=fixture]' ? { evaluateAll: async () => {} }
           : selector.startsWith('[data-igbot-action-target=fixture-') ? makeControl(selector.match(/fixture-(\w+)/)![1]!)
@@ -283,11 +308,12 @@ for (const roll of [0.1, 0.3]) test(`engagement shares its cap and reads comment
     const view = () => engagePost(page, target, { text: 'Dinner', relationship: 'followed' }, ['fitness'], budget, session, () => {}, async () => true)
     await view(); assert.equal(commentsOpen, false)
     assert.equal(calls.includes('Like'), roll < 0.3)
-    assert.ok(calls.includes('Save') && calls.includes('Comment') && calls.includes('scroll-comments') && calls.includes('Close'))
+    assert.ok(calls.includes('Save'))
+    for (const action of ['Comment', 'scroll-comments', 'Close']) assert.equal(calls.includes(action), eligible, action)
     await view(); assert.equal(budget.used.likes, roll < 0.3 ? 1 : 0, 'already-liked or chance-skipped posts must not consume another attempt')
     liked = false; await view()
     liked = false; await view()
     assert.equal(calls.filter(call => call === 'Like').length, roll < 0.3 ? 2 : 0)
-    assert.equal(budget.used.likes, roll < 0.3 ? 2 : 0); assert.equal(budget.used.saves, 1); assert.equal(budget.used.comments, 1)
+    assert.equal(budget.used.likes, roll < 0.3 ? 2 : 0); assert.equal(budget.used.saves, 1); assert.equal(budget.used.comments, eligible ? 1 : 0)
   } finally { Math.random = originalRandom }
 })

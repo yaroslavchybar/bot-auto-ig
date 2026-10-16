@@ -8,6 +8,7 @@ import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { advanceReel, enableReelSound, openReels, reelAdMarker, watchReels } from './reels.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { liveLikeSelector } from './engagement.js'
+import { reelEngagementCount } from './reel-counts.js'
 
 test('disabled reels never access the browser', async () => {
   await watchReels({} as Page, 5, { scroll_reels: false }, () => {}, () => false, Date.now() + 60_000)
@@ -71,9 +72,11 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
     const videoHtml = player === 'ancestor' ? '<div role="group" aria-label="Video player"><video></video></div>'
       : `<video></video>${player === 'sibling' ? overlay : ''}`
     window.document.body.innerHTML = `<main><div id="current-reel">${videoHtml}
-      <button><svg aria-label="Like"></svg></button></div>
+      <div><button><svg aria-label="Like"></svg></button><span>3,001</span></div></div>
       <div id="neighbor"><video></video>${overlay}<button><svg aria-label="Unlike"></svg></button></div></main>`
     const current = window.document.querySelector('#current-reel')!
+    for (const node of current.querySelectorAll('svg, span'))
+      node.getBoundingClientRect = () => ({ left: 650, right: 680, top: 200, bottom: 230, width: 30, height: 30 }) as DOMRect
     window.document.elementFromPoint = () => current.querySelector('[aria-label="Video player"]')
     const video = current.querySelector('video')!
     Object.defineProperties(video, { duration: { value: 2 }, currentTime: { get: () => (now - started) / 1000 },
@@ -85,8 +88,9 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
     type Node = typeof current | null
     const locator = (resolve: () => Node): Locator => ({
       ...visibleActionGeometry,
-      evaluate: async (fn: (node: Element) => unknown) => fn === liveLikeSelector
-        ? fn(resolve() as unknown as Element) : visibleActionGeometry.evaluate(fn),
+      evaluate: async (fn: (node: Element) => unknown, kind: 'likes' | 'comments') => fn === liveLikeSelector
+        ? fn(resolve() as unknown as Element) : fn === reelEngagementCount
+          ? reelEngagementCount(resolve() as unknown as Element, kind) : visibleActionGeometry.evaluate(fn),
       evaluateAll: async (fn: (nodes: Element[]) => unknown) => fn(resolve() ? [resolve() as unknown as Element] : []),
       first() { return this },
       locator: (selector: string) => locator(() => resolve()?.querySelector(selector) ?? null),

@@ -13,6 +13,7 @@ import { isInstagramHome } from './navigation.js'
 import { chance, random, type ActionLogger } from './shared.js'
 import { isTemporaryUiError } from './ui-errors.js'
 import { readPostComments } from './comments.js'
+import { reelEngagementCount } from './reel-counts.js'
 
 const control = (target: Locator, label: string) => target.locator(
   `button:has(svg[aria-label="${label}"]), [role="button"]:has(svg[aria-label="${label}"])`).first()
@@ -82,7 +83,11 @@ export async function engagePost(page: Page, target: Locator,
       log({ event: 'automation.engagement.action_skipped', action, error })
     }
   }
-  await optional('like', () => likePost(page, target, budget, session, log))
+  await optional('like', async () => {
+    if (/\/reels?\//.test(page.url()) && (!budget.remaining('likes') ||
+      (await target.evaluate(reelEngagementCount, 'likes' as const, { timeout: session.timeout(1000) }) ?? 0) <= 3000)) return
+    await likePost(page, target, budget, session, log)
+  })
   if (likeOnly) return
   await optional('save', async () => {
     if (budget.remaining('saves')) {
@@ -98,6 +103,8 @@ export async function engagePost(page: Page, target: Locator,
   })
   await optional('comments', async () => {
     if (!budget.remaining('comments')) return
+    if (/\/reels?\//.test(page.url()) &&
+      (await target.evaluate(reelEngagementCount, 'comments' as const, { timeout: session.timeout(1000) }) ?? 0) <= 50) return
     const dialogs = page.getByRole('dialog').filter({ visible: true })
     if (await dialogs.count()) {
       // Topic results already show their comment thread inside the article.
@@ -124,7 +131,9 @@ export async function engagePost(page: Page, target: Locator,
   await optional('profile', async () => {
     // Explore dialogs return to their grid; Home/Reels can visit this matched post's author.
     if (!budget.remaining('profiles') || session.end - Date.now() < 30_000 ||
-      (!isInstagramHome(page) && !/\/reels\//.test(page.url()))) return
+      (!isInstagramHome(page) && !/\/reels?\//.test(page.url()))) return
+    if (/\/reels?\//.test(page.url()) &&
+      (await target.evaluate(reelEngagementCount, 'likes' as const, { timeout: session.timeout(1000) }) ?? 0) <= 1000) return
     if (budget.take('profiles')) await visit(page, target, log, session, undefined, async (article, visiting) => {
       budget.browsed++; budget.used.reels++
       const context = await article.evaluate(feedPostContext)
