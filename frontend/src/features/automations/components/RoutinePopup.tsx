@@ -431,21 +431,21 @@ export function RoutinePopup({
                       ))}
                     </div>
                   </SettingsGroup>
-                  <SettingsGroup title="Daily follows">
-                    {routineNumber('initial-follows', 'Initial follows per day', 'initialDms', {
+                  <SettingsGroup title="Daily outreach">
+                    {routineNumber('initial-follows', 'Initial leads per day', 'initialDms', {
                       min: 1,
                       max: 35,
                     })}
-                    {routineNumber('max-follows', 'Max follows per day', 'maxDms', {
+                    {routineNumber('max-follows', 'Max leads per day', 'maxDms', {
                       min: 1,
                       max: 35,
                     })}
                   </SettingsGroup>
                   <p className="text-sm text-muted-copy">
-                    Follow public or private accounts first. Public accounts with posts can receive
-                    one like. DM immediately when Message is available after following. Pending private
-                    requests and existing followed leads without a DM are checked daily until
-                    messaging is available or unfollow is due. DMs use the existing session time.
+                    Message public accounts without following. Only private accounts receive a follow
+                    request and are checked daily until approval or scheduled unfollow. Public posts
+                    can be browsed before messaging. Existing followed leads without a DM remain in
+                    the daily check queue. All outreach uses the existing session time.
                   </p>
                   <SettingsGroup title="Unfollow">
                     {routineRange(

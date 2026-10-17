@@ -489,9 +489,9 @@ export const routineTarget = (automationId: string, profileId: string) =>
     method: 'POST',
     body: { automationId, profileId },
   })
-export const routineRecordDmCheck = (automationId: string, profileId: string, leadId: string, date: string, canMessage: boolean) =>
+export const routineRecordDmCheck = (automationId: string, profileId: string, leadId: string, date: string, canMessage: boolean, isPrivate?: boolean) =>
   convexFetch<boolean>('/api/routines/record-dm-check', {
-    method: 'POST', body: { automationId, profileId, leadId, date, canMessage }, maxRetries: 0,
+    method: 'POST', body: { automationId, profileId, leadId, date, canMessage, isPrivate }, maxRetries: 0,
   })
 export const routineDmTasks = (automationId: string, profileId: string) =>
   convexFetch<Array<{ leadId: string; username: string; fullName?: string; message: string; date: string }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })

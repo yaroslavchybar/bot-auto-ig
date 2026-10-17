@@ -41,7 +41,7 @@ const dependencies = { decide: decideLeadPost, capture: captureTopicScreenshot, 
   click: clickLiveAction, reveal: revealForClick, scroll: smoothScroll, video: viewVideo,
   check: assertInstagramReady, random, wait: (session: BrowseSession, ms: number) => session.wait(ms) }
 
-/** Browse 1–3 public lead posts around Follow. This is never called by feed/Reel profile visits. */
+/** Browse 1–3 public lead posts before a DM. This is never called by feed/Reel profile visits. */
 export async function browseLeadPosts(page: Page, username: string, parent: BrowseSession, log: ActionLogger,
   deps = dependencies): Promise<void> {
   parent.check()

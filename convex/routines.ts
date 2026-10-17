@@ -359,21 +359,33 @@ export const beginFollow = internalMutation({
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId);
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    const today = dayKey(args.now ?? Date.now());
+    const now = args.now ?? Date.now();
+    const today = dayKey(now);
     const allowed = !!(lead && lead.senderId === args.profileId &&
       lead.enrichedAt !== undefined &&
       lead.classification &&
+      lead.isPrivate === true &&
       e &&
       (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
-      !lead.followed && lead.followStartedAt === undefined && !lead.dmSent && !lead.dmBlocked &&
+      !lead.followed && lead.followStartedAt === undefined && !lead.dmSent && !lead.dmBlocked && lead.dmStartedAt === undefined &&
       e.maintenance && !e.followsBlocked && (!e.profile.igAccountId || e.profile.igLoggedIn) &&
       e.profile.outreachReady && e.policy.outreachEnabled && today === args.date &&
       (!lead.outreachListId || ((await ctx.db.get(lead.outreachListId)) && lead.outreachAutomationId === args.automationId && profileOutreachRoutes(e.policy, args.profileId).some(
             (route) => route.leadListId === lead.outreachListId,
           ))));
-    if (!allowed || !lead) return false;
+    if (!allowed || !lead || !e) return false;
+    // Screening already reserves the initial day's slot. A later-day follow
+    // must reserve today's slot in the same transaction as its follow intent.
+    if (dayKey(lead.enrichedAt!) !== today) {
+      const state = await ensureProgress(ctx, args.profileId);
+      const used = state.followQuotaDate === today ? state.used : 0;
+      const allowance = Math.min(e.policy.maxDms, state.followQuotaDate === today
+        ? state.allowance : followAllowance(e.policy, state.followIncrease ?? 0));
+      if (used >= allowance) return false;
+      await ctx.db.patch(state._id, { date: today, followQuotaDate: today, used: used + 1, allowance,
+        followedToday: state.followQuotaDate === today ? (state.followedToday ?? 0) : 0, updatedAt: now });
+    }
     // Persist cleanup intent before the browser click, including a lost confirmation/restart.
-    const now = Date.now();
     await ctx.db.patch(lead._id, { followStartedAt: now, unfollowAt: now + (lead.unfollowDays ?? 7) * 86_400_000,
     });
     return true;
@@ -383,30 +395,36 @@ export const beginFollow = internalMutation({
 const outreachArgs = { automationId: v.id('automations'), profileId: v.id('profiles') };
 
 function pendingDm(lead: Doc<'leads'>, profileId: Id<'profiles'>, now: number) {
-  return (
-    lead.senderId === profileId && lead.followed && !lead.dmSent && !lead.dmBlocked &&
-    lead.dmStartedAt === undefined && lead.followDate !== undefined &&
-    (lead.unfollowAt ?? lead.followDate + followDelay) > now
-  )
+  if (lead.senderId !== profileId || lead.dmSent || lead.dmBlocked || lead.dmStartedAt !== undefined) return false;
+  if (!lead.followed) return lead.isPrivate !== true && lead.followDate === undefined && lead.followStartedAt === undefined;
+  return lead.followDate !== undefined && (lead.unfollowAt ?? lead.followDate + followDelay) > now;
 }
 
 /** Save the live profile check before authorizing a DM; pending requests wait until tomorrow. */
 export const recordDmCheck = internalMutation({
-  args: { ...outreachArgs, leadId: v.id('leads'), date: v.string(), canMessage: v.boolean() },
+  args: { ...outreachArgs, leadId: v.id('leads'), date: v.string(), canMessage: v.boolean(), isPrivate: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const now = Date.now();
     const lead = await ctx.db.get(args.leadId);
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!lead || !e || !e.maintenance || !e.policy.outreachEnabled || !e.profile.outreachReady ||
       (e.profile.igAccountId && e.igAccount?.status !== 'connected') || args.date !== dayKey(now) ||
-      !pendingDm(lead, args.profileId, now) || !lead.classification ||
+      lead.dmSent || lead.dmBlocked || lead.dmStartedAt !== undefined || !lead.classification ||
+      lead.senderId !== args.profileId ||
       !(e.policy.allowedCategories ?? ['male']).includes(lead.classification) ||
       lead.outreachAutomationId !== args.automationId || !lead.outreachListId ||
       !(await ctx.db.get(lead.outreachListId)) ||
       !profileOutreachRoutes(e.policy, args.profileId).some(route => route.leadListId === lead.outreachListId))
       return false;
-    await ctx.db.patch(lead._id, { lastDmCheckDate: args.date, dmEligible: args.canMessage });
-    return args.canMessage;
+    const checked = { ...lead, ...(args.isPrivate !== undefined ? { isPrivate: args.isPrivate } : {}) };
+    const newPrivate = checked.isPrivate === true && !lead.followed &&
+      lead.followDate === undefined && lead.followStartedAt === undefined;
+    if (!pendingDm(checked, args.profileId, now) && !newPrivate) return false;
+    // Messaging without a follow requires an explicit live public-profile result.
+    const dmEligible = args.canMessage && args.isPrivate !== true && (lead.followed || args.isPrivate === false);
+    await ctx.db.patch(lead._id, { ...(args.isPrivate !== undefined ? { isPrivate: args.isPrivate } : {}),
+      lastDmCheckDate: args.date, dmEligible });
+    return dmEligible;
   },
 });
 
@@ -418,27 +436,29 @@ export const dmTasks = internalQuery({
       (e.profile.igAccountId && e.igAccount?.status !== 'connected')) return [];
     const routes = profileOutreachRoutes(e.policy, args.profileId);
     const tasks = [];
-    for await (const lead of ctx.db.query('leads').withIndex('by_dm_revisit', (q) =>
-      q.eq('senderId', args.profileId).eq('followed', true).eq('dmStartedAt', undefined).lt('lastDmCheckDate', dayKey()),
-      )) {
-      const route = routes.find((route) => route.leadListId === lead.outreachListId);
-      if (
-        lead.classification &&
-        (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
-        pendingDm(lead, args.profileId, Date.now()) && route && lead.outreachAutomationId === args.automationId &&
-        (await ctx.db.get(route.leadListId))
-      ) {
-        tasks.push({ leadId: lead._id, username: lead.username,
-          fullName: lead.fullName, message: route.message, date: dayKey(),
-        });
-        if (tasks.length === 50) break; // More than can fit in a single browser session.
+    for (const followed of [true, false]) {
+      for await (const lead of ctx.db.query('leads').withIndex('by_dm_revisit', (q) =>
+        q.eq('senderId', args.profileId).eq('followed', followed).eq('dmStartedAt', undefined).lt('lastDmCheckDate', dayKey()),
+        )) {
+        const route = routes.find((route) => route.leadListId === lead.outreachListId);
+        if (
+          lead.classification &&
+          (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
+          pendingDm(lead, args.profileId, Date.now()) && route && lead.outreachAutomationId === args.automationId &&
+          (await ctx.db.get(route.leadListId))
+        ) {
+          tasks.push({ leadId: lead._id, username: lead.username,
+            fullName: lead.fullName, message: route.message, date: dayKey(),
+          });
+          if (tasks.length === 50) return tasks; // More than can fit in a single browser session.
+        }
       }
     }
     return tasks;
   },
 });
 
-/** Atomically authorize the first and only press of Send, after a live Message-button check. */
+/** Atomically authorize one Send after a live public/approved profile check. */
 export const beginSend = internalMutation({
   args: { ...outreachArgs, leadId: v.id('leads'), date: v.string(), now: v.optional(v.number()) },
   handler: async (ctx, args) => {
@@ -486,11 +506,12 @@ export const finishSend = internalMutation({
     if (!state) return;
     if (args.sent) {
       await ctx.db.patch(state._id, {
+        ...(!lead.followed ? outreachDayProgress(state, args.date, Date.now()) : {}),
         dmDate: args.date,
         sentToday: (state.dmDate === args.date ? (state.sentToday ?? 0) : 0) + 1,
       });
     } else if (args.blocked) {
-      // A confirmed blocked/unsent message is never retried.
+      // A confirmed blocked message is never retried.
       await ctx.db.patch(lead._id, { dmBlocked: true });
     } else {
       await ctx.db.patch(state._id, {
@@ -501,6 +522,16 @@ export const finishSend = internalMutation({
 });
 
 const followDelay = 7 * 24 * 60 * 60_000;
+
+function outreachDayProgress(state: Doc<'accountProgress'>, date: string, now: number) {
+  const firstToday = (state.lastOutreachDate ?? state.lastFollowDate) !== date;
+  return {
+    outreachDays: state.outreachDays + (firstToday ? 1 : 0),
+    followIncrease: (state.followIncrease ?? 0) + (firstToday ? 1 + Math.floor(Math.random() * 4) : 0),
+    lastOutreachDate: date,
+    outreachStartedAt: state.outreachStartedAt ?? now,
+  };
+}
 export const followTasks = internalQuery({
   args: { automationId: v.id('automations'), profileId: v.id('profiles'), now: v.optional(v.number()),
   },
@@ -542,13 +573,10 @@ export const recordFollow = internalMutation({
       await setLeadAvailability(ctx, lead._id, false);
       const state = await ensureProgress(ctx, args.profileId);
       const date = dayKey(now);
-      const firstFollowToday = state.lastFollowDate !== date;
       await recordActivity(ctx, date, { follows: 1 });
       await ctx.db.patch(state._id, {
-        outreachDays: state.outreachDays + (firstFollowToday ? 1 : 0),
-        followIncrease: (state.followIncrease ?? 0) + (firstFollowToday ? 1 + Math.floor(Math.random() * 4) : 0),
+        ...outreachDayProgress(state, date, lead.followStartedAt ?? now),
         lastFollowDate: date,
-        outreachStartedAt: state.outreachStartedAt ?? lead.followStartedAt ?? now,
         ...(state.followQuotaDate === date ? { followedToday: (state.followedToday ?? 0) + 1 } : {}),
       });
     }

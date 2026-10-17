@@ -39,6 +39,7 @@ export function registerRoutineRoutes(http: HttpRouter) {
     return jsonResponse(await ctx.runMutation(internal.routines.recordDmCheck, {
       automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
       leadId: b.leadId as Id<'leads'>, date: String(b.date), canMessage: b.canMessage === true,
+      isPrivate: typeof b.isPrivate === 'boolean' ? b.isPrivate : undefined,
     }));
   }) });
   http.route({ path: '/api/routines/dismiss-dm', method: 'POST', handler: withErrorHandling(async (ctx, request) => {

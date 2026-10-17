@@ -14,14 +14,24 @@ export const outreachMessagePopup = (page: Page, username: string) => {
   const hrefs = paths.flatMap(path => [path, `https://www.instagram.com${path}`, `https://instagram.com${path}`])
   const recipient = page.locator(`a:is(${hrefs.map(href => `[href="${href}" i]`).join(',')})`)
   const closeControl = './/*[@role="button" or self::button][@aria-label="Close" or .//*[@aria-label="Close"]]'
-  return page.locator(editorSelector)
+  const overlay = page.locator(editorSelector)
     .locator(`xpath=ancestor::div[count(${closeControl})=1][count(.//*[@role="textbox"][@contenteditable="true"])=1]`)
     .filter({ has: recipient }).filter({ visible: true }).last()
+  const inbox = page.locator('main').filter({ has: page.locator('[aria-label="Thread list"]') })
+    .filter({ has: recipient }).filter({ has: page.locator(editorSelector) }).filter({ visible: true })
+  return overlay.or(inbox).last()
 }
 
 export async function openOutreachMessage(page: Page, username: string, session: BrowseSession): Promise<Locator> {
   session.check()
-  await clickAction(messageButton(page), session.timeout(15_000))
+  if (new URL(page.url()).pathname.toLowerCase() !== `/${username.toLowerCase()}/`)
+    throw new Error('Outreach profile navigation changed')
+  if (await messageButton(page).isVisible()) {
+    await clickAction(messageButton(page), session.timeout(15_000))
+  } else {
+    await clickAction(page.locator('main header').getByRole('button', { name: 'Options', exact: true }), session.timeout(10_000))
+    await clickAction(page.getByRole('dialog').getByRole('button', { name: 'Send message', exact: true }), session.timeout(10_000))
+  }
   const popup = outreachMessagePopup(page, username)
   const composer = popup.locator(editorSelector)
   try {
@@ -83,8 +93,22 @@ export async function sendOutreachMessage(page: Page, username: string, session:
 
 export async function closeOutreachMessage(page: Page, username: string, session: BrowseSession) {
   session.check()
+  // The profile menu can navigate to a full inbox thread. Back can restore an
+  // overlay on the profile, so close that overlay with X as well.
+  if (new URL(page.url()).pathname.startsWith('/direct/t/')) {
+    await page.goBack({ waitUntil: 'domcontentloaded', timeout: session.timeout(10_000) })
+    session.check()
+    if (new URL(page.url()).pathname.toLowerCase() !== `/${username.toLowerCase()}/`)
+      throw new Error('Could not return from the outreach chat')
+    await page.locator('main header').waitFor({ state: 'visible', timeout: session.timeout(5000) })
+  }
   const popup = outreachMessagePopup(page, username)
-  if (!await popup.isVisible()) return
+  if (!await popup.isVisible()) {
+    const options = page.locator('main header').getByRole('button', { name: 'Options', exact: true })
+    if (await options.isVisible() && await options.getAttribute('aria-expanded') === 'true')
+      await clickAction(options, session.timeout(5000))
+    return
+  }
   await clickAction(popup.getByRole('button', { name: 'Close', exact: true }), session.timeout(10_000))
   await popup.waitFor({ state: 'hidden', timeout: session.timeout(5000) })
 }

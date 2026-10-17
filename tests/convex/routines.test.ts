@@ -318,7 +318,7 @@ async function setup() {
     for (const username of ['alice', 'bob', 'carol', 'dave']) {
       const createdAt = Date.now();
       const leadId = await ctx.db.insert('leads', {
-        username, classification: 'male', enrichmentStatus: 'ready',
+        username, isPrivate: true, classification: 'male', enrichmentStatus: 'ready',
         dmSent: false, followed: false, createdAt,
       });
       await ctx.db.insert('leadMemberships', { leadId, listId: leadListId, available: true, leadCreatedAt: createdAt });
@@ -985,7 +985,7 @@ test('new follow ramp starts small independently of previous DM growth and claim
   await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false });
   await t.run(async ctx => {
     const state = (await ctx.db.query('accountProgress').collect())[0];
-    await ctx.db.patch(state._id, { dmIncrease: 30, date: dayKey(), used: 30, allowance: 30, lastOutreachDate: dayKey() });
+    await ctx.db.patch(state._id, { dmIncrease: 30, date: dayKey(), used: 30, allowance: 30 });
   });
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 2, sent: 0 });
   const claim = (await reserveFollow(t, args))!;

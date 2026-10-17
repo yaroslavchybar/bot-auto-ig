@@ -6,10 +6,13 @@ import { BrowseSession, SessionEnded } from './actions/session.js'
 import { visibleActionGeometry } from './actions/action-locator.test-support.js'
 import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, outreachMessagePopup } from './outreach-message.js'
 
-function fixture(nested = false) {
+function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox' = 'button') {
   const window = new Window()
   const document = window.document
-  document.body.innerHTML = `<button id="message">Message</button>
+  document.body.innerHTML = `<main id="profile"><header>
+    <button id="message" ${entry === 'button' ? '' : 'hidden'}>Message</button>
+    <button id="options" aria-label="Options" aria-expanded="false"></button></header></main>
+    <div role="dialog" id="menu" hidden><button id="menu-message">Send message</button></div>
     <button id="unrelated-close" aria-label="Close"></button>
     <div id="chats">
     ${['other', 'alice'].map(username => `<div id="${username}" data-pagelet="IGDChatTabsRootContentOffMsys" ${username === 'alice' ? 'hidden' : ''}>
@@ -24,6 +27,8 @@ function fixture(nested = false) {
   let stopped = false
   let afterCharacter = () => {}
   let afterSelectAll = () => {}
+  let url = 'https://www.instagram.com/alice/'
+  const close = document.querySelector('#alice-close')!
   class Fields {
     constructor(readonly find: () => Element[], readonly keyboardSupported = true) {}
     filter(options: { visible?: boolean; has?: Fields }) {
@@ -32,6 +37,7 @@ function fixture(nested = false) {
         (!options.has || options.has.find().some(link => node.contains(link)))), false)
     }
     last() { return new Fields(() => this.find().slice(-1), false) }
+    or(other: Fields) { return new Fields(() => [...new Set([...this.find(), ...other.find()])], false) }
     locator(selector: string) {
       if (selector.startsWith('xpath=ancestor::')) return new Fields(() => this.find().flatMap(node => {
         const ancestors: Element[] = []
@@ -47,9 +53,10 @@ function fixture(nested = false) {
       }), false)
       return new Fields(() => this.find().flatMap(node => Array.from(node.querySelectorAll(selector))), false)
     }
-    getByRole(_role: string, { name }: { name: string }) {
+    getByRole(role: string, { name }: { name?: string } = {}) {
+      if (role === 'dialog') return new Fields(() => this.find().flatMap(node => Array.from(node.querySelectorAll('[role="dialog"]'))))
       return new Fields(() => this.find().flatMap(node => Array.from(node.querySelectorAll('button,[role="button"]')))
-        .filter(node => (node.getAttribute('aria-label') ?? node.querySelector('svg')?.getAttribute('aria-label')) === name))
+        .filter(node => (node.getAttribute('aria-label') ?? node.querySelector('svg')?.getAttribute('aria-label') ?? node.textContent) === name))
     }
     one() { const nodes = this.find(); assert.equal(nodes.length, 1); return nodes[0]! }
     page() { return page }
@@ -57,6 +64,7 @@ function fixture(nested = false) {
     async evaluateAll<T>(fn: (nodes: Element[]) => T) { return fn(this.find()) }
     async isVisible() { return this.find().some(node => !node.closest('[hidden]')) }
     async count() { return this.find().length }
+    async getAttribute(name: string) { return this.one().getAttribute(name) }
     async waitFor({ state }: { state: string }) { assert.equal(await this.isVisible(), state !== 'hidden') }
     async elementHandle() {
       const node = this.one()
@@ -67,7 +75,26 @@ function fixture(nested = false) {
         click: async () => {
         calls.push(node.id)
         if (node.getAttribute('role') === 'textbox') (node as HTMLElement).focus()
-        if (node.id === 'message') document.querySelector('#alice')!.removeAttribute('hidden')
+        if (node.id === 'options') {
+          const menu = document.querySelector('#menu')!
+          menu.toggleAttribute('hidden')
+          node.setAttribute('aria-expanded', String(!menu.hasAttribute('hidden')))
+        }
+        if (node.id === 'message' || node.id === 'menu-message') document.querySelector('#alice')!.removeAttribute('hidden')
+        if (node.id === 'menu-message') {
+          document.querySelector('#menu')!.setAttribute('hidden', '')
+          document.querySelector('#options')!.setAttribute('aria-expanded', 'false')
+          if (entry === 'menu-inbox') {
+            const inbox = document.createElement('main')
+            inbox.id = 'inbox'
+            inbox.innerHTML = '<nav aria-label="Thread list"></nav>'
+            inbox.append(document.querySelector('#alice')!)
+            document.body.append(inbox)
+            close.remove()
+            document.querySelector('#profile')!.setAttribute('hidden', '')
+            url = 'https://www.instagram.com/direct/t/123/'
+          }
+        }
         if (node.id.endsWith('-close')) node.closest('#alice,#other')!.setAttribute('hidden', '')
       } }
     }
@@ -88,7 +115,18 @@ function fixture(nested = false) {
     }
     async innerText() { return this.one().textContent ?? '' }
   }
-  const page = { keyboard: {
+  const page = { url: () => url,
+    goBack: async () => {
+      calls.push('back')
+      url = 'https://www.instagram.com/alice/'
+      const chat = document.querySelector('#alice')!
+      chat.append(close)
+      document.querySelector('#chats')!.append(chat)
+      document.querySelector('#inbox')!.remove()
+      document.querySelector('#profile')!.removeAttribute('hidden')
+    },
+    getByRole: (role: string, options: { name?: string }) => new Fields(() => [document.body] as unknown as Element[]).getByRole(role, options),
+    keyboard: {
     press: async (key: string) => new Fields(() => [document.activeElement! as unknown as Element]).press(key),
     type: async (text: string, options: { delay: number }) => new Fields(() => [document.activeElement! as unknown as Element]).pressSequentially(text, options),
   }, locator: (selector: string) => new Fields(() => Array.from(document.querySelectorAll(
@@ -131,6 +169,37 @@ test('recipient detection supports changed containers, translated labels and abs
     await closeOutreachMessage(f.page, 'alice', f.session)
     assert.ok(f.calls.includes('alice-close'))
     assert.ok(!f.calls.includes('other-close'))
+  } finally { await f.window.happyDOM.close() }
+})
+
+for (const entry of ['menu-overlay', 'menu-inbox'] as const) {
+  test(`a profile without Message opens through Options and cleans up ${entry}`, async () => {
+    const f = fixture(false, entry)
+    try {
+      const composer = await openOutreachMessage(f.page, 'alice', f.session)
+      await typeOutreachMessage(composer, 'Hello', f.session)
+      await sendOutreachMessage(f.page, 'alice', f.session)
+      assert.equal(f.document.querySelector('#alice-editor')!.textContent, 'Hello')
+      assert.equal(f.document.querySelector('#other-editor')!.textContent, '')
+      await closeOutreachMessage(f.page, 'alice', f.session)
+      assert.equal(f.page.url(), 'https://www.instagram.com/alice/')
+      assert.equal(f.calls.includes('back'), entry === 'menu-inbox')
+      assert.equal(f.document.querySelector('#alice')!.hasAttribute('hidden'), true)
+      assert.equal(f.document.querySelector('#other')!.hasAttribute('hidden'), false)
+      assert.deepEqual(f.calls.filter(call => ['message', 'options', 'menu-message', 'alice-send', 'alice-close'].includes(call)),
+        ['options', 'menu-message', 'alice-send', 'alice-close'])
+    } finally { await f.window.happyDOM.close() }
+  })
+}
+
+test('failed menu messaging leaves the profile menu closed during cleanup', async () => {
+  const f = fixture(false, 'menu-overlay')
+  try {
+    f.document.querySelector('#menu-message')!.remove()
+    await assert.rejects(openOutreachMessage(f.page, 'alice', f.session))
+    await closeOutreachMessage(f.page, 'alice', f.session)
+    assert.equal(f.document.querySelector('#menu')!.hasAttribute('hidden'), true)
+    assert.ok(!f.calls.includes('alice-send'))
   } finally { await f.window.happyDOM.close() }
 })
 

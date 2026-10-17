@@ -2,79 +2,9 @@ import { visibleActionGeometry } from './actions/action-locator.test-support.js'
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Window } from 'happy-dom';
-import { errors, type Page } from 'playwright-core';
+import { type Page } from 'playwright-core';
 
-import { messageComposer, unsendMessage } from './follow.js';
-
-test('unsendMessage waits for the selected duplicate message to detach', async () => {
-  let matchingMessageCount = 2;
-  let detachedIndex: number | undefined;
-  let unsendClicked = false;
-  const actionTargets = new Map<string, unknown>();
-  const actionable = <T extends object>(index: number, methods: T) => {
-    const xpath = `/*[1]/*[${index}]`;
-    const target = { ...methods, elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, ...methods, dispose: async () => {} }) };
-    actionTargets.set(`xpath=${xpath}`, target);
-    return target;
-  };
-
-  const fixedMessage = actionable(1, {
-    ...visibleActionGeometry, hover: async () => {},
-    waitFor: async ({ state }: { state: string }) => {
-      if (state === 'detached') {
-        assert.equal(unsendClicked, true);
-        detachedIndex = 1;
-      }
-    },
-  });
-  const matchingMessages = {
-    count: async () => matchingMessageCount,
-    last: () => ({
-      waitFor: async ({ state }: { state: string }) => {
-        if (state === 'detached' && matchingMessageCount === 1)
-          throw new Error('the earlier duplicate message is still attached');
-      },
-    }),
-    nth: (index: number) => {
-      assert.equal(index, 1);
-      return fixedMessage;
-    },
-  };
-
-  const page = {
-    locator: (selector: string) => {
-      assert.ok(actionTargets.has(selector), `Unknown action target: ${selector}`);
-      return actionTargets.get(selector);
-    },
-    getByRole: (role: string, options?: { name?: unknown }) => {
-      if (role === 'article') return matchingMessages;
-
-      if (role === 'button' && String(options?.name).includes('See more options'))
-        return { last: () => actionable(2, { waitFor: async () => {}, click: async () => {} }) };
-
-      if (role === 'button' && String(options?.name).includes('Unsend'))
-        return {
-          last: () => actionable(3, {
-            waitFor: async () => {},
-            click: async () => {
-              matchingMessageCount = 1;
-              unsendClicked = true;
-            },
-          }),
-        };
-
-      if (role === 'dialog')
-        return { getByRole: () => ({ last: () => ({ isVisible: async () => false }) }) };
-
-      throw new Error(`Unexpected role: ${role}`);
-    },
-  } as unknown as Page;
-
-  await unsendMessage(page, 'Hello');
-
-  assert.equal(unsendClicked, true);
-  assert.equal(detachedIndex, 1);
-});
+import { messageComposer } from './follow.js';
 
 test('private request cleanup prefers visible dialog confirmations without blocking the fallback', async () => {
   const { unfollow } = await import('./follow.js');
@@ -169,26 +99,39 @@ test('message composer prefers visible named fields and isolates overlay fallbac
 });
 
 
-test('DM readiness requires an approved Following relationship and a visible Message button', async () => {
-  const { canMessageFollowedProfile } = await import('./follow.js');
-  for (const [relationship, messageVisible, expected] of [
-    ['Follow', true, false],
-    ['Requested', true, false],
-    ['Requested', false, false],
-    ['Following', false, false],
-    ['Following', true, true],
+test('live privacy and request state decide outreach without requiring a Message button', async () => {
+  const { outreachProfileState } = await import('./follow.js');
+  for (const [relationship, content, isPrivate, canMessage] of [
+    ['Follow', 'This profile is private', true, false],
+    ['Requested', 'This account is private', true, false],
+    ['Requested', 'No posts yet', false, false],
+    ['Follow', 'No posts yet', false, true],
+    ['Following', 'posts', false, true],
   ] as const) {
-    let messageChecks = 0;
-    const message = { waitFor: async () => {
-      messageChecks++;
-      if (!messageVisible) throw new errors.TimeoutError('Message unavailable');
-    } };
-    const following = {
-      or() { return this; }, waitFor: async () => {},
-      isVisible: async () => relationship !== 'Follow', innerText: async () => relationship,
-    };
-    const page = { locator: (selector: string) => selector.includes('="message"') ? message : following } as unknown as Page;
-    assert.equal(await canMessageFollowedProfile(page), expected, relationship + '/' + messageVisible);
-    if (relationship === 'Requested') assert.equal(messageChecks, 0, 'pending requests never open Message');
+    const window = new Window();
+    try {
+      const document = window.document;
+      document.body.innerHTML = `<main><header><button>${relationship}</button></header>${content === 'posts'
+        ? '<a href="/alice/p/current/">Photo</a>' : `<span>${content}</span>`}</main>`;
+      class Fields {
+        constructor(readonly find: () => Element[]) {}
+        locator(selector: string) { return new Fields(() => this.find().flatMap(node => Array.from(node.querySelectorAll(selector)))); }
+        getByText(text: string | RegExp) { return new Fields(() => this.find().flatMap(node => Array.from(node.querySelectorAll('span')))
+          .filter(node => typeof text === 'string' ? node.textContent === text : text.test(node.textContent ?? ''))); }
+        or(other: Fields) { return new Fields(() => [...new Set([...this.find(), ...other.find()])]); }
+        first() { return new Fields(() => this.find().slice(0, 1)); }
+        async isVisible() { return this.find().length > 0; }
+        async waitFor() { assert.ok(await this.isVisible()); }
+        async innerText() { assert.equal(this.find().length, 1); return this.find()[0]!.textContent; }
+      }
+      const page = { url: () => 'https://www.instagram.com/alice/', locator: (selector: string) => {
+        if (selector.startsWith('xpath=')) return new Fields(() => Array.from(document.querySelectorAll('main header button'))
+          .filter(node => selector.includes('="following"') ? /^(Following|Requested)$/.test(node.textContent ?? '') : node.textContent === 'Follow') as unknown as Element[]);
+        return new Fields(() => Array.from(document.querySelectorAll(selector)) as unknown as Element[]);
+      } } as unknown as Page;
+      assert.deepEqual(await outreachProfileState(page, 'alice'), { isPrivate, canMessage });
+      page.url = () => 'https://www.instagram.com/bob/';
+      await assert.rejects(outreachProfileState(page, 'alice'), /navigation changed/);
+    } finally { await window.happyDOM.close(); }
   }
 });

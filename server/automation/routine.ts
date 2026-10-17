@@ -15,7 +15,7 @@ import {
 } from "../shared/convexClient.js";
 import { runBrowsingSession } from "./sessions.js";
 import { browseUntilEnd, scheduleRoutine } from './routine-schedule.js';
-import { followButton, isFollowing, messageWasBlocked, unfollow, unsendMessage, canMessageFollowedProfile,
+import { followButton, isFollowing, messageWasBlocked, unfollow, outreachProfileState,
 } from './follow.js';
 import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage } from './outreach-message.js';
 import { renderOutreachMessage } from '../shared/outreachMessage.js';
@@ -51,7 +51,7 @@ const dependencies = {
   dmTasks: routineDmTasks,
   dismissDm: routineDismissDm,
   checkNotifications,
-  canMessage: canMessageFollowedProfile,
+  inspectProfile: outreachProfileState,
   openMessage: openOutreachMessage,
   typeMessage: typeOutreachMessage,
   sendMessage: sendOutreachMessage,
@@ -112,7 +112,7 @@ export async function runRoutineSession(
     await check();
     if (shouldStop()) throw new Error('Session stopped before following');
     if (!(await deps.beginFollow(automation._id, profileId, leadId, date)))
-      throw new Error('Follow was not authorized');
+      return false;
     if (shouldStop()) throw new Error('Session stopped before following');
     return deps.follow(page, async () => { await check(); return !shouldStop(); },
       () => { markAttempted(); return clickAction(follow, timeout(10_000)); },
@@ -163,13 +163,13 @@ export async function runRoutineSession(
           throw error;
         }
         if (shouldStop()) return 'stopped';
-        const followTarget = await deps.target(automation._id, profileId);
+        const outreachTarget = await deps.target(automation._id, profileId);
         const dms = await deps.dmTasks(automation._id, profileId);
-        let followsRemaining = followTarget.remaining;
+        let outreachRemaining = outreachTarget.remaining;
         let preferDm = true;
-        // Both activities share session time, but only new follows consume the daily quota.
+        // New public DMs and private requests share the quota; daily revisits do not consume it.
         return scheduleRoutine(session, {
-          target: async () => ({ target: followsRemaining + dms.length, remaining: followsRemaining + dms.length, sent: 0,
+          target: async () => ({ target: outreachRemaining + dms.length, remaining: outreachRemaining + dms.length, sent: 0,
           }),
           now: deps.now, random: deps.random, sleep: deps.sleep,
           stopped: () => stopped() || !allowed || Boolean(liveAccess && !liveAccess()), log,
@@ -178,16 +178,16 @@ export async function runRoutineSession(
             if (/\/accounts\/login|\/challenge|\/checkpoint/.test(page.url()))
               throw new Error('Instagram login or challenge needs attention');
             if (shouldStop()) return 'unavailable';
-            const isDm = dms.length > 0 && (preferDm || followsRemaining <= 0);
+            const isDm = dms.length > 0 && (preferDm || outreachRemaining <= 0);
             preferDm = !preferDm;
             const attempt = isDm ? dms.shift()! : await deps.reserve(automation._id, profileId);
-            if (!isDm && !attempt) followsRemaining = 0
+            if (!isDm && !attempt) outreachRemaining = 0
             if (!attempt) {
               return dms.length ? 'blocked' : 'unavailable';
             }
             return logOperation('automation.recipient_session', {
               profileId, automationId: automation._id, leadId: attempt.leadId,
-              targetUsername: attempt.username, kind: isDm ? 'dm' : 'follow',
+              targetUsername: attempt.username, kind: isDm ? 'dm' : 'outreach',
             }, async (scope): Promise<'sent' | 'followed' | 'blocked' | 'unavailable'> => {
               const timed = async <T>(stage: string, action: () => Promise<T>): Promise<T> => {
                 scope.add({ stage });
@@ -275,7 +275,25 @@ export async function runRoutineSession(
                     accepted,
                   })
                   if (!accepted || shouldStop()) return shouldStop() ? 'unavailable' : 'blocked'
-                  followsRemaining = Math.max(0, followsRemaining - 1)
+                  outreachRemaining = Math.max(0, outreachRemaining - 1)
+                }
+                if (shouldStop()) return 'unavailable';
+                const profileState = await timed('dmCheck', () => deps.inspectProfile(page, attempt.username, timeout(10_000)));
+                await check();
+                if (shouldStop()) return 'unavailable';
+                const dmReady = await deps.recordDmCheck(automation._id, profileId, attempt.leadId, attempt.date,
+                  profileState.canMessage, profileState.isPrivate);
+                scope.add({ ...profileState, dmReady });
+                if (profileState.isPrivate) {
+                  if (isDm) return 'blocked';
+                  const followed = await timed('follow', () => followIfNeeded(attempt.leadId, attempt.date, () => { followAttempted = true; }));
+                  scope.add({ followed });
+                  log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
+                  followedNow = followed;
+                  return followed ? 'followed' : 'blocked';
+                }
+                if (!dmReady) return 'blocked';
+                if (!isDm) {
                   const browsePosts = async () => {
                     try {
                       await timed('leadPosts', () => deps.browseLeadPosts(page, attempt.username,
@@ -292,24 +310,10 @@ export async function runRoutineSession(
                     }
                     await check()
                   }
-                  const browseFirst = deps.random(0, 1) < 0.5
-                  scope.add({ postBrowseOrder: browseFirst ? 'before_follow' : 'after_follow' });
-                  if (browseFirst) await browsePosts()
-                  if (shouldStop()) return 'unavailable'
-                  const followed = await timed('follow', () => followIfNeeded(attempt.leadId, attempt.date, () => { followAttempted = true; }));
-                  scope.add({ followed });
-                  log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
-                  if (!followed) return 'blocked';
-                  followedNow = true;
-                  if (!browseFirst) await browsePosts();
+                  scope.add({ postBrowseOrder: 'before_dm' });
+                  await browsePosts();
                 }
                 if (shouldStop()) return 'unavailable';
-                const canMessage = await timed('dmCheck', () => deps.canMessage(page, timeout(10_000)));
-                await check();
-                if (shouldStop()) return 'unavailable';
-                const dmReady = await deps.recordDmCheck(automation._id, profileId, attempt.leadId, attempt.date, canMessage);
-                scope.add({ canMessage, dmReady });
-                if (!dmReady) return followedNow ? 'followed' : 'blocked';
                 await check();
                 if (shouldStop()) return 'unavailable';
                 let message: string;
@@ -340,7 +344,6 @@ export async function runRoutineSession(
                     .last()
                     .waitFor({ state: "visible", timeout: 15_000 });
                   if (await messageWasBlocked(page)) {
-                    await unsendMessage(page, message);
                     blocked = true;
                   } else {
                     sent = true;
@@ -349,7 +352,7 @@ export async function runRoutineSession(
                   await deps.finish(profileId, attempt.leadId, attempt.date, sent, blocked);
                 }
                 log({ event: 'automation.dm_result', targetUsername: attempt.username, sent, blocked, message: blocked
-                  ? `Message blocked for @${attempt.username}; unsent`
+                  ? `Message blocked for @${attempt.username}`
                   : `Message sent to @${attempt.username}`,
                 });
                 scope.add({ sent, blocked });
@@ -401,7 +404,8 @@ export async function runRoutineSession(
     hadActivity = result.minutes > 0;
     activityCompleted = hadActivity && result.reason === 'finished';
     const target = await deps.target(automation._id, profileId).catch(() => null);
-    if (target && target.target > 0) log({ event: 'automation.daily_follow_target', followedCount: target.sent, targetCount: target.target,
+    if (target && target.target > 0) log({ event: 'automation.daily_outreach_target', processedCount: target.target - target.remaining,
+      followedCount: target.sent, targetCount: target.target,
       });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

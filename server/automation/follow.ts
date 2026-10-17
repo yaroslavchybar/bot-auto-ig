@@ -14,6 +14,25 @@ export const followButton = (page: Page) => button(page, profileButtons, ['follo
 export const followingButton = (page: Page) => button(page, profileButtons, ['following', 'requested', 'following down chevron icon', 'requested down chevron icon']);
 export const messageButton = (page: Page) => button(page, profileButtons, ['message']);
 
+/** Wait for loaded profile content before deciding whether a follow request is needed. */
+export async function outreachProfileState(page: Page, username: string, timeout = 10_000) {
+  const deadline = Date.now() + timeout;
+  const remaining = () => Math.max(1, deadline - Date.now());
+  const main = page.locator('main');
+  await profileControls(page).waitFor({ state: 'visible', timeout: remaining() });
+  await followingButton(page).or(followButton(page)).waitFor({ state: 'visible', timeout: remaining() });
+  const privateNotice = main.getByText(/^(This profile is private|This account is private)$/);
+  const posts = main.locator(`a[href^="/${username}/p/"], a[href^="/${username}/reel/"]`);
+  await privateNotice.or(main.getByText('No posts yet', { exact: true })).or(posts.first())
+    .first().waitFor({ state: 'visible', timeout: remaining() });
+  if (new URL(page.url()).pathname.toLowerCase() !== `/${username.toLowerCase()}/`)
+    throw new errors.TimeoutError('Outreach profile navigation changed');
+  const isPrivate = await privateNotice.isVisible();
+  const pending = await followingButton(page).isVisible() &&
+    /^requested\b/i.test(await followingButton(page).innerText({ timeout: remaining() }));
+  return { isPrivate, canMessage: !isPrivate && !pending };
+}
+
 // Instagram currently opens the composer as an overlay on the profile URL.
 // Older layouts exposed a named textbox, while the current layout exposes an
 // unnamed contenteditable textbox next to the visible “Message...” label.
@@ -38,56 +57,10 @@ export async function messageWasBlocked(page: Page) {
     .waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
 }
 
-/** Remove the just-sent message from the current Instagram DM thread. */
-export async function unsendMessage(page: Page, message: string) {
-  const matchingMessages = page.getByRole('article', { name: message, exact: true });
-  await matchingMessages.last().waitFor({ state: 'visible', timeout: 15_000 });
-  const sentMessage = matchingMessages.nth((await matchingMessages.count()) - 1);
-  await (await actionLocator(sentMessage)).hover({ timeout: 10_000 });
-
-  const actions = page
-    .getByRole('button', { name: /See more options for message from/i })
-    .last();
-  await actions.waitFor({ state: 'visible', timeout: 10_000 });
-  await (await actionLocator(actions)).click({ timeout: 10_000 });
-
-  const unsend = page.getByRole('button', { name: /^Unsend(?: Unsend)?$/i }).last();
-  await unsend.waitFor({ state: 'visible', timeout: 10_000 });
-  await (await actionLocator(unsend)).click({ timeout: 10_000 });
-
-  // Some layouts show a confirmation dialog; others remove the message
-  // immediately after the menu action.
-  const confirmation = page
-    .getByRole('dialog')
-    .getByRole('button', { name: /^Unsend(?: Unsend)?$/i })
-    .last();
-  if (await confirmation.isVisible().catch(() => false))
-    await (await actionLocator(confirmation)).click({ timeout: 10_000 });
-
-  await sentMessage.waitFor({ state: 'detached', timeout: 15_000 });
-}
-
 /** Wait for relationship controls and recognize both follows and pending requests. */
 export async function isFollowing(page: Page) {
   await followingButton(page).or(followButton(page)).waitFor({ state: 'visible', timeout: 15_000 });
   return followingButton(page).isVisible();
-}
-
-/** Requested is not approval, even when Instagram already exposes a Message button. */
-export async function canMessageFollowedProfile(page: Page, timeout = 10_000) {
-  const deadline = Date.now() + timeout;
-  const remaining = () => Math.max(1, deadline - Date.now());
-  const following = followingButton(page);
-  await following.or(followButton(page)).waitFor({ state: 'visible', timeout: remaining() });
-  if (!await following.isVisible() || !/^following\b/i.test(await following.innerText({ timeout: remaining() })))
-    return false;
-  try {
-    await messageButton(page).waitFor({ state: 'visible', timeout: remaining() });
-    return true;
-  } catch (error) {
-    if (error instanceof errors.TimeoutError) return false;
-    throw error;
-  }
 }
 
 export async function unfollow(page: Page, allowed: () => Promise<boolean>) {
