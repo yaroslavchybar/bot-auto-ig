@@ -1,4 +1,5 @@
 import type { Locator, Page } from 'playwright-core'
+import { errors } from 'playwright-core'
 import { messageButton } from './follow.js'
 import { clickAction } from './actions/action-locator.js'
 import { BrowseSession } from './actions/session.js'
@@ -6,14 +7,18 @@ import { random } from './actions/shared.js'
 import { currentLogScope } from '../shared/logger.js'
 
 const editorSelector = '[role="textbox"][contenteditable="true"]'
+const closeControl = './/*[@role="button" or self::button][@aria-label="Close" or .//*[@aria-label="Close"]]'
+
+const recipientSelector = (username: string) => {
+  const paths = [`/${username}/`, `/${username}`]
+  const hrefs = paths.flatMap(path => [path, `https://www.instagram.com${path}`, `https://instagram.com${path}`])
+  return `a:is(${hrefs.map(href => `[href="${href}" i]`).join(',')})`
+}
 
 // Find a recipient's chat across nested controls. One editor and one Close
 // control keep shared containers from matching a neighboring chat during loading.
 export const outreachMessagePopup = (page: Page, username: string) => {
-  const paths = [`/${username}/`, `/${username}`]
-  const hrefs = paths.flatMap(path => [path, `https://www.instagram.com${path}`, `https://instagram.com${path}`])
-  const recipient = page.locator(`a:is(${hrefs.map(href => `[href="${href}" i]`).join(',')})`)
-  const closeControl = './/*[@role="button" or self::button][@aria-label="Close" or .//*[@aria-label="Close"]]'
+  const recipient = page.locator(recipientSelector(username))
   const overlay = page.locator(editorSelector)
     .locator(`xpath=ancestor::div[count(${closeControl})=1][count(.//*[@role="textbox"][@contenteditable="true"])=1]`)
     .filter({ has: recipient }).filter({ visible: true }).last()
@@ -93,22 +98,44 @@ export async function sendOutreachMessage(page: Page, username: string, session:
 
 export async function closeOutreachMessage(page: Page, username: string, session: BrowseSession) {
   session.check()
-  // The profile menu can navigate to a full inbox thread. Back can restore an
-  // overlay on the profile, so close that overlay with X as well.
-  if (new URL(page.url()).pathname.startsWith('/direct/t/')) {
-    await page.goBack({ waitUntil: 'domcontentloaded', timeout: session.timeout(10_000) })
+  const fromInbox = new URL(page.url()).pathname.startsWith('/direct/')
+  if (fromInbox) {
+    const links = page.locator('main').locator(recipientSelector(username)).filter({ visible: true })
+    const header = links.filter({ hasNotText: /^View profile$/ }).first()
+    const viewProfile = links.filter({ hasText: /^View profile$/ }).first()
+    const chooseView = random(0, 1) < 0.5
+    const preferred = chooseView ? viewProfile : header
+    const fallback = chooseView ? header : viewProfile
+    await clickAction(await preferred.isVisible() ? preferred : fallback, session.timeout(10_000))
+    await page.waitForURL(url => url.pathname.toLowerCase() === `/${username.toLowerCase()}/`, {
+      waitUntil: 'domcontentloaded', timeout: session.timeout(10_000),
+    })
     session.check()
-    if (new URL(page.url()).pathname.toLowerCase() !== `/${username.toLowerCase()}/`)
-      throw new Error('Could not return from the outreach chat')
     await page.locator('main header').waitFor({ state: 'visible', timeout: session.timeout(5000) })
   }
   const popup = outreachMessagePopup(page, username)
-  if (!await popup.isVisible()) {
-    const options = page.locator('main header').getByRole('button', { name: 'Options', exact: true })
-    if (await options.isVisible() && await options.getAttribute('aria-expanded') === 'true')
-      await clickAction(options, session.timeout(5000))
-    return
+  const messages = page.getByRole('heading', { name: 'Messages', exact: true }).filter({ visible: true }).last()
+  // Inbox navigation restores either the recipient chat or the Messages list asynchronously.
+  if (fromInbox) {
+    try {
+      await popup.or(messages).first().waitFor({ state: 'visible', timeout: session.timeout(5000) })
+    } catch (error) {
+      session.check()
+      if (!(error instanceof errors.TimeoutError)) throw error
+    }
   }
-  await clickAction(popup.getByRole('button', { name: 'Close', exact: true }), session.timeout(10_000))
-  await popup.waitFor({ state: 'hidden', timeout: session.timeout(5000) })
+  session.check()
+  if (await popup.isVisible()) {
+    await clickAction(popup.getByRole('button', { name: 'Close', exact: true }), session.timeout(10_000))
+    await popup.waitFor({ state: 'hidden', timeout: session.timeout(5000) })
+  }
+  session.check()
+  if (await messages.isVisible()) {
+    const header = messages.locator(`xpath=ancestor::div[${closeControl}][1]`)
+    await clickAction(header.getByRole('button', { name: 'Close', exact: true }), session.timeout(5000))
+    await messages.waitFor({ state: 'hidden', timeout: session.timeout(5000) })
+  }
+  const options = page.locator('main header').getByRole('button', { name: 'Options', exact: true })
+  if (await options.isVisible() && await options.getAttribute('aria-expanded') === 'true')
+    await clickAction(options, session.timeout(5000))
 }
