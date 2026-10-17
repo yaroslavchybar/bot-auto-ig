@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Page } from 'playwright-core'
-import { warmupBeginRun, warmupFinishRun, type DbWarmupState } from '../shared/convexClient.js'
+import { warmupBeginRun, warmupFinishRun, warmupPrepareDay, type DbWarmupState } from '../shared/convexClient.js'
 import { WarmupActivityBudget, warmupActivityPlan } from '../shared/warmupPlan.js'
 import { warmupTopics } from '../shared/warmupTopics.js'
 import { BrowseSession, SessionEnded } from './actions/session.js'
@@ -44,6 +44,11 @@ export function sessionReady(state: Pick<DbWarmupState, 'date' | 'nextRunAt' | '
   if ((state.nextRunAt ?? 0) > now) return false
   if (state.date !== new Date(now).toISOString().slice(0, 10)) return true
   return !state.reservedMinutes && state.minutesUsedToday < state.todayMinutes
+}
+
+export function prepareBrowsingDay(profileId: string, input: Record<string, unknown>): Promise<boolean> {
+  const config = sessionConfig(input)
+  return warmupPrepareDay({ profileId, minMinutes: config.warmup_min_minutes, maxMinutes: config.warmup_max_minutes })
 }
 
 

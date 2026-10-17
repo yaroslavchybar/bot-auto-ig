@@ -11,6 +11,7 @@ import {
 const warmupPaths = [
   '/api/warmup/states',
   '/api/warmup/by-profile',
+  '/api/warmup/prepare',
   '/api/warmup/begin',
   '/api/warmup/finish',
   '/api/warmup/begin-follow',
@@ -20,6 +21,16 @@ const warmupPaths = [
 
 export function registerWarmupRoutes(http: HttpRouter): void {
   registerPreflight(http, warmupPaths);
+  http.route({ path: '/api/warmup/prepare', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const body = await parseBody(request);
+    if (!body?.profileId) throw new ValidationError('profileId is required');
+    const minMinutes = Number(body.minMinutes), maxMinutes = Number(body.maxMinutes);
+    if (!Number.isFinite(minMinutes) || !Number.isFinite(maxMinutes) || minMinutes < 1 || maxMinutes < minMinutes)
+      throw new ValidationError('Invalid warm-up range');
+    return jsonResponse(await ctx.runMutation(internal.warmup.mutations.prepareDayInternal, {
+      profileId: body.profileId, minMinutes, maxMinutes,
+    }));
+  }) });
   http.route({ path: '/api/warmup/pause-follows', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const body = await parseBody(request);
     if (!body?.profileId || !body?.date || !body?.reason) throw new ValidationError('profileId, date and reason are required');

@@ -417,6 +417,9 @@ export async function warmupGetByProfile(profileId: string): Promise<DbWarmupSta
   )
 }
 
+export const warmupPrepareDay = (input: { profileId: string; minMinutes: number; maxMinutes: number }) =>
+  convexFetch<boolean>('/api/warmup/prepare', { method: 'POST', body: input })
+
 export type WarmupFollowRequest = { profileId: string; runId: string; date: string; username: string }
 export const warmupBeginFollow = (input: WarmupFollowRequest) =>
   convexFetch<boolean>('/api/warmup/begin-follow', { method: 'POST', body: input, maxRetries: 0 })

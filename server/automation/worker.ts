@@ -21,7 +21,7 @@ import {
   watchRoutineRuntime,
   type RuntimeSnapshot,
 } from '../shared/convexRealtime.js'
-import { sessionReady } from './sessions.js'
+import { prepareBrowsingDay, sessionReady } from './sessions.js'
 import { runRoutineSession } from './routine.js'
 import { withAiSettings } from './ai-settings.js'
 import { postModelUpdateInSession } from '../ig-accounts/warmup.js'
@@ -364,6 +364,7 @@ async function runRoutineProfile(options: {
       access = await accessSubscription.initial
       if (!access || !await routineReady(automationId, profile.id, false)) return
     } else if (!await routineReady(automationId, profile.id, false)) return
+    if (!await prepareBrowsingDay(profile.id, routine.activity ?? {})) return
     let hadActivity = false
     await withProfile(profile, { headless: routine.headless, openSession, automationId }, async session => {
       hadActivity = await withAiSettings(routine.ai,
@@ -469,6 +470,8 @@ export async function runAutomation(
         : null
       try {
         if (accessSubscription && !await accessSubscription.initial) return
+        if (hasWarmup && !await prepareBrowsingDay(profile.id,
+          nodes.find(node => node.data?.activityId === 'browse_feed')?.data?.config ?? {})) return
         await withProfile(
           profile,
           {

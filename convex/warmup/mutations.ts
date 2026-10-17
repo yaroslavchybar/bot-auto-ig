@@ -1,11 +1,27 @@
 import { v } from 'convex/values'
 import { internalMutation } from '../_generated/server'
-import { planFromConfig, randomMinutes, todayDate, warmupActivityValidator } from './helpers'
+import { ensureDailyPlan, planFromConfig, randomMinutes, todayDate, warmupActivityValidator } from './helpers'
 import { emptyWarmupActivity, warmupActivityPlan } from '../../server/shared/warmupPlan'
 import { recordActivity } from '../analyticsActivity'
 import { routineLists } from '../routinePolicy'
 import { proxyKey } from '../../server/shared/proxy'
 import { proxyCountryZones } from '../proxyCountryZones'
+
+/** Plan before browser launch; session reservations remain owned by beginRunInternal. */
+export const prepareDayInternal = internalMutation({
+  args: { profileId: v.id('profiles'), minMinutes: v.number(), maxMinutes: v.number() },
+  handler: async (ctx, args) => {
+    if (!Number.isFinite(args.minMinutes) || !Number.isFinite(args.maxMinutes) ||
+      args.minMinutes < 1 || args.maxMinutes < args.minMinutes) throw new Error('Invalid warm-up range')
+    const profile = await ctx.db.get(args.profileId)
+    if (!profile) throw new Error('Profile not found')
+    if (profile.paused) return false
+    const now = Date.now()
+    const state = await ensureDailyPlan(ctx, args.profileId, args, now)
+    return !state.activeRun && (state.nextRunAt ?? 0) <= now &&
+      (state.minutesUsedToday ?? 0) < state.todayMinutes
+  },
+})
 
 /** Assign today's budget once and reserve one session, capped by remaining time. */
 export const beginRunInternal = internalMutation({
@@ -29,25 +45,8 @@ export const beginRunInternal = internalMutation({
     if (profile.paused) return { date: todayDate(Date.now()), minutes: 0 }
     const now = Date.now()
     const date = todayDate(now)
-    let state = await ctx.db.query('warmupStates')
-      .withIndex('by_profile', q => q.eq('profileId', args.profileId)).unique()
-    if (!state || state.date !== date) {
-      const plan = planFromConfig({ warmup_min_minutes: args.minMinutes, warmup_max_minutes: args.maxMinutes })
-      const day = state ? state.day + (state.runsToday > 0 || state.activeRun ? 1 : 0) : 1
-      const daily = {
-        profileId: args.profileId,
-        day,
-        activityPlan: warmupActivityPlan(day), activityUsed: emptyWarmupActivity(), followAttempts: [],
-        date, runsToday: 0, todayMinutes: day > 7 && Math.random() < 0.1 ? 0 : randomMinutes(plan), minutesUsedToday: 0,
-        recentRunIds: [] as string[], updatedAt: now,
-      }
-      if (state) {
-        await ctx.db.patch(state._id, { ...daily, activeRun: undefined })
-        state = (await ctx.db.get(state._id))!
-      } else {
-        state = (await ctx.db.get(await ctx.db.insert('warmupStates', daily)))!
-      }
-    }
+    const plan = planFromConfig({ warmup_min_minutes: args.minMinutes, warmup_max_minutes: args.maxMinutes })
+    let state = await ensureDailyPlan(ctx, args.profileId, plan, now)
     if (!state.activeRun && (state.nextRunAt ?? 0) > now) return { date, minutes: 0 }
     if (!state.activityPlan || state.activityPlan.follows === undefined || state.activityPlan.saves === undefined) {
       const activityPlan = warmupActivityPlan(state.day)

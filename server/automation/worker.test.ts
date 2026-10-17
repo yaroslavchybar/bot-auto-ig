@@ -60,6 +60,38 @@ test('retry skips completed profiles without launching or changing their status'
   } finally { globalThis.fetch = originalFetch }
 })
 
+for (const mode of ['routine', 'graph'] as const) {
+  test(`${mode} plans a rest day before launching a browser or marking the profile busy`, async () => {
+    const originalFetch = globalThis.fetch
+    let prepared = 0, launches = 0
+    const config = { warmup_min_minutes: 30, warmup_max_minutes: 40 }
+    globalThis.fetch = (async (url, init) => {
+      const path = new URL(String(url)).pathname
+      if (path === '/api/profiles') return Response.json([{ id: 'rest-day', name: 'rest-day', listIds: ['chosen'], using: false }])
+      if (path === '/api/warmup/by-profile') return Response.json(null)
+      if (path === '/api/routines/ready') return Response.json(true)
+      if (path === '/api/warmup/prepare') {
+        prepared++
+        assert.deepEqual(JSON.parse(String(init?.body)), { profileId: 'rest-day', minMinutes: 30, maxMinutes: 40 })
+        return Response.json(false)
+      }
+      if (path === '/api/automations/by-id') return Response.json({ status: 'completed', isActive: false })
+      throw new Error(`Unexpected request before rest-day skip: ${path}`)
+    }) as typeof fetch
+    try {
+      await runAutomation({ automation: mode === 'routine'
+        ? { routine: { activity: config }, listIds: ['chosen'] }
+        : { nodes: [
+          { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
+          { id: 'warm', data: { activityId: 'browse_feed', config } },
+        ], edges: [{ source: 'start_node', target: 'warm', sourceHandle: 'next' }] },
+      }, async () => { launches++; throw new Error('A rest day must not launch a browser') })
+      assert.equal(prepared, 1)
+      assert.equal(launches, 0)
+    } finally { globalThis.fetch = originalFetch }
+  })
+}
+
 test('repeating warm-ups requeue completed profiles but never open resting or exhausted profiles', async () => {
   const originalFetch = globalThis.fetch
   setProfilePollIntervalMs(10)
@@ -166,6 +198,7 @@ test('automation action failures reject the run and close the browser', async ()
         },
       ])
     if (String(url).includes('/api/warmup/by-profile')) return Response.json(null)
+    if (String(url).endsWith('/api/warmup/prepare')) return Response.json(true)
     if (String(url).endsWith('/api/warmup/begin')) return Response.json({ date: new Date().toISOString().slice(0, 10), minutes: 30 })
     if (String(url).endsWith('/api/warmup/finish')) return Response.json({ ok: true })
     assert.match(String(url), /sync-status$/)
