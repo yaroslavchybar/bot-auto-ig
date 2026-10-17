@@ -27,7 +27,7 @@ export const create = mutation({
       usernames: cleanUsernames(args.usernames),
       createdAt: Date.now(),
     })
-    // Content storage has a stable identity independent of future table migrations.
+    // Content storage uses its own stable identity.
     await ctx.db.patch(id, { contentKey: String(id) })
     return ctx.db.get(id)
   },

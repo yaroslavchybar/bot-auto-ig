@@ -488,7 +488,7 @@ fn thumbnail(file: &Path) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
     #[tokio::test]
-    async fn migrated_model_ids_keep_existing_content_for_gallery_and_worker_allocations() {
+    async fn stable_content_keys_keep_existing_content_for_gallery_and_worker_allocations() {
         use crate::{native::Native, test_support::Fixture};
         use axum::{response::IntoResponse, Json};
 

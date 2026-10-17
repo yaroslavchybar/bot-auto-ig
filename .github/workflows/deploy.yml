@@ -91,7 +91,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # The deploy key scopes this push to production.
-      - run: bun .github/scripts/deploy-convex.ts
+      - run: bunx convex deploy --check-build-environment disable
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
 
