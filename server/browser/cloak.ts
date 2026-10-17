@@ -289,7 +289,7 @@ export async function openBrowserSession(
     // Check under the deletion lock, before creating any directories.
     profile = (await profilesGetByName(profileName)) ?? undefined
     if (!profile) throw new Error(`Profile not found: ${profileName}`)
-    if (profile.status === 'deleting' || profile.renameFrom)
+    if (profile.status === 'deleting' || profile.pendingRenameFrom)
       throw new Error('Profile maintenance is in progress')
     if (profileLockLost) throw new Error('Profile lock disconnected')
     fs.mkdirSync(profileDir, { recursive: true })
@@ -382,7 +382,7 @@ export async function openBrowserSession(
     checkStartup()
     profile = (await profilesGetByName(profileName)) ?? undefined
     if (!profile) throw new Error(`Profile not found: ${profileName}`)
-    if (profile.status === 'deleting' || profile.renameFrom)
+    if (profile.status === 'deleting' || profile.pendingRenameFrom)
       throw new Error('Profile maintenance is in progress')
     checkStartup()
     display = options.headless ? undefined : await allocateDisplay(profileName)

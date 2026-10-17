@@ -229,9 +229,9 @@ class RuntimeMonitor {
   private onSnapshot(snapshot: RuntimeSnapshot): void {
     const profileRevision = JSON.stringify((snapshot?.profiles ?? []).map(profile => ({
       id: profile.id, name: profile.name, status: profile.status,
-      paused: profile.paused, using: profile.using, igLoggedIn: profile.igLoggedIn,
-      outreachReady: profile.outreachReady, listIds: profile.listIds,
-      lastOpenedAt: profile.lastOpenedAt, renameFrom: profile.renameFrom,
+      paused: profile.paused, inUse: profile.inUse, igLoggedIn: profile.igLoggedIn,
+      outreachReady: profile.outreachReady, modelIds: profile.modelIds,
+      lastOpenedAt: profile.lastOpenedAt, pendingRenameFrom: profile.pendingRenameFrom,
     })))
     const timingRevision = JSON.stringify({
       warmups: snapshot?.warmups ?? [], progress: snapshot?.progress ?? [],
@@ -369,7 +369,7 @@ async function runRoutineProfile(options: {
     await withProfile(profile, { headless: routine.headless, openSession, automationId }, async session => {
       hadActivity = await withAiSettings(routine.ai,
         () => runRoutineSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access)) === true
-      const modelId = automation.listIds?.length === 1 ? automation.listIds[0] : undefined
+      const modelId = automation.modelIds?.length === 1 ? automation.modelIds[0] : undefined
       if (useRealtime && modelId && !shouldStop() && access) {
         hadActivity = await setupModelInSession(profile.id, automationId, session.page, log,
           () => shouldStop() || !access).catch(() => false) || hadActivity
@@ -408,7 +408,7 @@ export async function runAutomation(
   const aggregateStates = nodeStates
   const automationId = String(input.automationId || 'automation')
   const setupConfig = startConfig(nodes)
-  const lists = automation.routine ? automation.listIds ?? [] : selectedLists(nodes)
+  const lists = automation.routine ? automation.modelIds ?? [] : selectedLists(nodes)
   if (!lists.length)
     throw new Error(
       'Select at least one profile list before running the automation',

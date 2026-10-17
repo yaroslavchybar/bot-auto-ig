@@ -15,12 +15,12 @@ const SCREENING_TIMEOUT = 30_000
 /** Jev rejects images wider than this, so a wider viewport is captured cropped. */
 const MAX_IMAGE_WIDTH = 1568
 export type LeadCategory = 'male' | 'female' | 'business'
-/** `followCheckPassed` is set only for male accounts; other categories never get the check. */
+/** `englishTextCheckPassed` is set only for male accounts; other categories never get the check. */
 export type LeadDecision = {
   category: LeadCategory
   confidence: number
   model: string
-  followCheckPassed?: boolean
+  englishTextCheckPassed?: boolean
 }
 const categories = SCREENING_CHOICES
 type DecisionOptions = { key?: string; fetcher?: typeof fetch }
@@ -129,7 +129,7 @@ export async function decideLead(
   if (decision.category !== 'male') return decision
   const remaining = deadline - Date.now()
   if (remaining <= 0) throw new errors.TimeoutError('Lead screening timed out before the follow-up check')
-  return { ...decision, followCheckPassed: await checkFollowEligibility(screenshot, settings, remaining, options) }
+  return { ...decision, englishTextCheckPassed: await checkFollowEligibility(screenshot, settings, remaining, options) }
 }
 
 /** Capture the loaded recipient once, with the same session deadline as outreach. */

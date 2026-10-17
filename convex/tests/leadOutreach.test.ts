@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../_generated/api'
 import { defaultRoutine, dayKey } from '../routinePolicy'
-import { createConvexTest, seedList, seedProfile } from '../../tests/convex/helpers'
+import { createConvexTest, seedModel, seedProfile } from '../../tests/convex/helpers'
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
@@ -9,11 +9,11 @@ async function setup() {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-10-11T10:00:00Z'))
   const t = createConvexTest()
-  const list = (await seedList(t))!, profile = (await seedProfile(t))!
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: list._id })
+  const list = (await seedModel(t))!, profile = (await seedProfile(t))!
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: list._id })
   const leadListId = await t.mutation(api.leads.createList, { name: 'Recipients' })
   const automation = (await t.mutation(api.automations.mutations.create, {
-    name: 'Outreach', nodes: [], edges: [], listIds: [list._id],
+    name: 'Outreach', nodes: [], edges: [], modelIds: [list._id],
     routine: { ...defaultRoutine, initialDms: 3, maxDms: 10, outreachEnabled: true, leadListId, message: 'Hello' },
   }))!
   await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: true })
@@ -21,11 +21,11 @@ async function setup() {
   await t.run(async ctx => {
     await ctx.db.patch(profile._id, { outreachReady: true })
     await ctx.db.insert('warmupStates', { profileId: profile._id, day: 8, date: dayKey(),
-      runsToday: 1, todayMinutes: 30, minutesUsedToday: 0, updatedAt: Date.now() })
+      runsToday: 1, todayMinutes: 30, minutesUsedToday: 0, })
     for (const username of ['alice', 'bob']) {
       const createdAt = Date.now()
       const leadId = await ctx.db.insert('leads', { username, isPrivate: true,
-        enrichmentStatus: 'pending', dmSent: false, followed: false, createdAt })
+        screeningStatus: 'pending', dmSent: false, followed: false, createdAt })
       await ctx.db.insert('leadMemberships', { leadId, listId: leadListId, available: true, leadCreatedAt: createdAt })
     }
   })
@@ -35,7 +35,7 @@ async function setup() {
     expect(reserved).not.toBeNull()
     expect(await t.mutation(internal.leadScreening.finish, { ...args, leadId: reserved.leadId,
       date: reserved.date, screeningToken: reserved.screeningToken, category: 'male', confidence: 1,
-      model: 'liquid/d1-ultra', followCheckPassed: true })).toBe(true)
+      model: 'liquid/d1-ultra', englishTextCheckPassed: true })).toBe(true)
     return reserved
   }
   return { t, args, claim }
@@ -58,9 +58,9 @@ test('live public checks allow one DM without a follow or cleanup deadline', asy
   expect(await t.query(internal.routines.followTasks, args)).toEqual([])
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
   const state = (await t.run(ctx => ctx.db.query('accountProgress').unique()))!
-  expect(state).toMatchObject({ used: 1, followedToday: 0, sentToday: 1, outreachDays: 1 })
-  expect(state.followIncrease).toBeGreaterThanOrEqual(1)
-  expect(state.followIncrease).toBeLessThanOrEqual(4)
+  expect(state).toMatchObject({ outreachUsedToday: 1, followedToday: 0, sentToday: 1 })
+  expect(state.outreachIncrease).toBeGreaterThanOrEqual(1)
+  expect(state.outreachIncrease).toBeLessThanOrEqual(4)
 })
 
 test('a same-day private follow uses its screening slot exactly once', async () => {
@@ -78,7 +78,7 @@ test('later-day private follows atomically reserve the remaining quota before fo
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
   await t.run(async ctx => {
     const state = (await ctx.db.query('accountProgress').unique())!
-    await ctx.db.patch(state._id, { followQuotaDate: dayKey(), used: 0, allowance: 1 })
+    await ctx.db.patch(state._id, { outreachQuotaDate: dayKey(), outreachUsedToday: 0, outreachAllowanceToday: 1 })
   })
   const results = await Promise.all(leads.map(lead => t.mutation(internal.routines.beginFollow,
     { ...args, leadId: lead.leadId, date: dayKey() })))
@@ -87,10 +87,10 @@ test('later-day private follows atomically reserve the remaining quota before fo
   const saved = await t.run(ctx => Promise.all(leads.map(lead => ctx.db.get(lead.leadId))))
   expect(saved.filter(lead => lead?.followStartedAt !== undefined)).toHaveLength(1)
   const state = (await t.run(ctx => ctx.db.query('accountProgress').unique()))!
-  expect(state).toMatchObject({ followQuotaDate: dayKey(), used: 1 })
+  expect(state).toMatchObject({ outreachQuotaDate: dayKey(), outreachUsedToday: 1 })
   const winner = leads[results.indexOf(true)]!
   expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: winner.leadId, date: dayKey() })).toBe(false)
-  expect(await t.run(ctx => ctx.db.get(state._id))).toMatchObject({ used: 1 })
+  expect(await t.run(ctx => ctx.db.get(state._id))).toMatchObject({ outreachUsedToday: 1 })
 })
 
 test.each([true, false, undefined])('unfollowed private leads stay out of revisits; public/unknown leads retain history guards (%s)', async isPrivate => {
@@ -110,7 +110,7 @@ test('public DM revisits stay quota-free when the daily outreach limit is exhaus
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
   await t.run(async ctx => {
     const state = (await ctx.db.query('accountProgress').unique())!
-    await ctx.db.patch(state._id, { followQuotaDate: dayKey(), used: 3, allowance: 3 })
+    await ctx.db.patch(state._id, { outreachQuotaDate: dayKey(), outreachUsedToday: 3, outreachAllowanceToday: 3 })
   })
   const before = await t.query(internal.routines.target, args)
   expect(before.remaining).toBe(0)
@@ -173,7 +173,7 @@ test('approval permits one DM and public DMs share the private-follow daily ramp
   await t.mutation(internal.routines.beginSend, secondInput)
   await t.mutation(internal.routines.finishSend, { profileId: args.profileId, leadId: second.leadId, date: dayKey(), sent: true })
   expect(await t.run(ctx => ctx.db.query('accountProgress').unique())).toMatchObject({
-    outreachDays: 1, followIncrease: before.followIncrease, followedToday: 1, sentToday: 1,
+    outreachIncrease: before.outreachIncrease, followedToday: 1, sentToday: 1,
   })
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
   expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)

@@ -59,9 +59,7 @@ impl Accounts {
         if state["pending"].is_null() {
             return Err(Failure::invalid("No model setup action needs review"));
         }
-        if resolution == "completed"
-            && ["username", "name"].contains(&profiles::text(&state["pending"], "kind"))
-        {
+        if resolution == "completed" && profiles::text(&state["pending"], "kind") == "username" {
             let username = profiles::text(&state, "targetUsername");
             if username.is_empty() {
                 return Err(Failure::invalid("The target username is missing"));
@@ -100,9 +98,9 @@ impl Accounts {
             .filter(|a| {
                 a["isActive"] == true
                     && a["routine"].is_object()
-                    && a["listIds"].as_array().is_some_and(|v| v.len() == 1)
+                    && a["modelIds"].as_array().is_some_and(|v| v.len() == 1)
             })
-            .filter_map(|a| a["listIds"][0].as_str())
+            .filter_map(|a| a["modelIds"][0].as_str())
             .collect();
         if owners.is_empty() {
             return Ok(());
@@ -116,7 +114,7 @@ impl Accounts {
             {
                 continue;
             }
-            let Some(model) = profile["listIds"]
+            let Some(model) = profile["modelIds"]
                 .as_array()
                 .into_iter()
                 .flatten()
@@ -169,10 +167,10 @@ impl Accounts {
         let profile = self.profiles.by_id(id).await?;
         if profile.is_null()
             || profile["paused"] == true
-            || profile["using"] == true
+            || profile["inUse"] == true
             || profile["status"] == "running"
             || profile["status"] == "deleting"
-            || profile["renameFrom"].is_string()
+            || profile["pendingRenameFrom"].is_string()
             || profile["igLoggedIn"] != true
         {
             return Ok(());
@@ -183,16 +181,16 @@ impl Accounts {
         }
         let state = self.setup_state(id).await?;
         if state.is_null()
-            || !automation["listIds"]
+            || !automation["modelIds"]
                 .as_array()
                 .is_some_and(|models| models.len() == 1 && models[0] == state["modelId"])
-            || !profile["listIds"]
+            || !profile["modelIds"]
                 .as_array()
                 .is_some_and(|models| models.contains(&state["modelId"]))
         {
             return Ok(());
         }
-        if state["nameDone"] == true && profile["name"] != account["username"] {
+        if state["usernameDone"] == true && profile["name"] != account["username"] {
             self.profiles
                 .update(
                     profiles::text(&profile, "name"),
@@ -219,7 +217,7 @@ impl Accounts {
                 None,
             )
             .await?;
-        let Some(model_id) = automation["listIds"]
+        let Some(model_id) = automation["modelIds"]
             .as_array()
             .filter(|a| a.len() == 1)
             .and_then(|a| a[0].as_str())
@@ -239,18 +237,18 @@ impl Accounts {
         else {
             return Ok(Value::Null);
         };
-        if !profile["listIds"]
+        if !profile["modelIds"]
             .as_array()
             .is_some_and(|v| v.iter().any(|v| v == model_id))
             || profile["igLoggedIn"] != true
             || profile["paused"] == true
             || profiles::text(profile, "proxy").is_empty()
             || profile["status"] == "deleting"
-            || profile["renameFrom"].is_string()
+            || profile["pendingRenameFrom"].is_string()
         {
             return Ok(Value::Null);
         }
-        let models = self.api.convex(Method::GET, "/api/lists", None).await?;
+        let models = self.api.convex(Method::GET, "/api/models", None).await?;
         let Some(model) = models
             .as_array()
             .into_iter()
@@ -318,7 +316,7 @@ impl Accounts {
             .flatten()
             .filter(|p| {
                 enrolled.contains(profiles::text(p, "id"))
-                    && p["listIds"]
+                    && p["modelIds"]
                         .as_array()
                         .is_some_and(|v| v.iter().any(|v| v == model_id))
             })
@@ -327,7 +325,7 @@ impl Accounts {
         let Some(index) = members.iter().position(|p| p["id"] == id) else {
             return Ok(Value::Null);
         };
-        if state["nameDone"] != true {
+        if state["usernameDone"] != true {
             let mut used: HashSet<String> = profiles
                 .as_array()
                 .into_iter()
@@ -348,8 +346,8 @@ impl Accounts {
         }
         if state["fullNameDone"] != true
             && (state["fullName"].is_string()
-                || !profiles::text(model, "fullName").trim().is_empty()
-                || model["fullNames"].as_array().is_some_and(|v| {
+                || !profiles::text(model, "baseFullName").trim().is_empty()
+                || model["fullNameVariations"].as_array().is_some_and(|v| {
                     v.iter()
                         .any(|n| n.as_str().is_some_and(|n| !n.trim().is_empty()))
                 }))
@@ -386,16 +384,17 @@ impl Accounts {
         if today < 4 || state["avatarDone"] == true {
             return Ok(Value::Null);
         }
+        let content_key = crate::native::content::Content::storage_key(&self.api, model_id).await?;
         let content = self
             .content
-            .allocate(model_id, "avatars", id, &[], false)
+            .allocate(&content_key, "avatars", id, &[], false)
             .await?;
         if content.is_null() {
             return Ok(Value::Null);
         }
         // Verify the content exists before acquiring a durable mutation lease.
         tokio::fs::metadata(profiles::text(&content, "path")).await?;
-        self.patch_setup(id,model_id,json!({"pending":{"kind":"avatar","sourceId":content["sourceId"],"date":date(api::now_ms())},"avatarSourceId":content["sourceId"]}),&[]).await?;
+        self.patch_setup(id,model_id,json!({"pending":{"kind":"avatar","sourceId":content["sourceId"],"date":date(api::now_ms())}}),&[]).await?;
         Ok(
             json!({"kind":"avatar","path":content["path"],"sourceId":content["sourceId"],"currentUsername":account["username"],"accountId":account["id"]}),
         )
@@ -437,7 +436,7 @@ impl Accounts {
         task: &Value,
         tried: &[Value],
     ) -> Result<Vec<Value>> {
-        let models = self.api.convex(Method::GET, "/api/lists", None).await?;
+        let models = self.api.convex(Method::GET, "/api/models", None).await?;
         let model = models
             .as_array()
             .into_iter()
@@ -496,7 +495,7 @@ impl Accounts {
         match result {
             "applied" => {
                 let done = match kind {
-                    "username" => "nameDone",
+                    "username" => "usernameDone",
                     "fullName" => "fullNameDone",
                     "avatar" => "avatarDone",
                     _ => return Err(Failure::invalid("Unknown browser setup action")),
@@ -612,7 +611,7 @@ impl Accounts {
             .collect())
     }
     async fn group_name(&self, model_id: &str, group: usize, model: &Value) -> Result<String> {
-        if let Some(name) = model["fullNames"][group]
+        if let Some(name) = model["fullNameVariations"][group]
             .as_str()
             .filter(|s| !s.trim().is_empty())
         {
@@ -676,9 +675,10 @@ impl Accounts {
             return Ok(Value::Null);
         }
         let excludes: Vec<String> = serde_json::from_value(state["postSourceIds"].clone())?;
+        let content_key = crate::native::content::Content::storage_key(&self.api, model).await?;
         let content = self
             .content
-            .allocate(model, "posts", id, &excludes, false)
+            .allocate(&content_key, "posts", id, &excludes, false)
             .await?;
         if content.is_null() {
             return Ok(Value::Null);
@@ -735,10 +735,10 @@ impl Accounts {
     }
 }
 fn base_name(model: &Value) -> &str {
-    model["fullName"]
+    model["baseFullName"]
         .as_str()
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| model["fullNames"][0].as_str())
+        .or_else(|| model["fullNameVariations"][0].as_str())
         .unwrap_or(profiles::text(model, "name"))
         .trim()
 }

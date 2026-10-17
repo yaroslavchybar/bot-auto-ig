@@ -53,7 +53,7 @@ test('keeps list and automation HTTP-facing queries callable without public auth
   const t = createUnauthenticatedConvexTest()
   const now = Date.now()
   const listId = await t.run((ctx) =>
-    ctx.db.insert('lists', {
+    ctx.db.insert('models', {
       name: 'Leads',
       createdAt: now,
     }),
@@ -64,7 +64,7 @@ test('keeps list and automation HTTP-facing queries callable without public auth
       description: 'automation',
       nodes: [],
       edges: [],
-      listIds: [listId],
+      modelIds: [listId],
       status: 'running',
       isActive: false,
       createdAt: now,
@@ -72,7 +72,7 @@ test('keeps list and automation HTTP-facing queries callable without public auth
     }),
   )
 
-  const lists = await t.query(api.lists.list, {})
+  const lists = await t.query(api.models.list, {})
   const automations = await t.query(internal.automations.queries.listInternal, {
     status: 'running',
   })
@@ -82,9 +82,9 @@ test('keeps list and automation HTTP-facing queries callable without public auth
   expect(automations[0]).toMatchObject({
     name: 'Automation A',
     status: 'running',
-    listIds: [listId],
+    modelIds: [listId],
   })
-  await expect(t.query(api.lists.list, {})).resolves.toHaveLength(1)
+  await expect(t.query(api.models.list, {})).resolves.toHaveLength(1)
   await expect(
     t.query(api.automations.queries.list, {
       status: 'running',

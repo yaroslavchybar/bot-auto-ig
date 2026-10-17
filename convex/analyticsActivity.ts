@@ -6,9 +6,7 @@ export const emptyActivity = (): ActivityCounts => ({
   follows: 0,
   dms: 0,
   warmupMinutes: 0,
-  scraperUnits: 0,
   scraperRequests: 0,
-  unlimitedScraperUnits: 0,
 })
 
 export function addActivity(
@@ -19,9 +17,7 @@ export function addActivity(
     follows: counts.follows + (delta.follows ?? 0),
     dms: counts.dms + (delta.dms ?? 0),
     warmupMinutes: counts.warmupMinutes + (delta.warmupMinutes ?? 0),
-    scraperUnits: counts.scraperUnits + (delta.scraperUnits ?? 0),
     scraperRequests: (counts.scraperRequests ?? 0) + (delta.scraperRequests ?? 0),
-    unlimitedScraperUnits: counts.unlimitedScraperUnits + (delta.unlimitedScraperUnits ?? 0),
   }
 }
 

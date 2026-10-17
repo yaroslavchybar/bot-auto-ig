@@ -27,7 +27,7 @@ export async function deleteProfileData(ctx: MutationCtx, profileId: Id<'profile
     'accountProgress',
     'warmupStates',
     'modelSetupStates',
-    'profileListAssignments',
+    'profileModelAssignments',
     'scraperProfiles',
     'scraperRequestUsage',
     'proxyProfileAssignments',
@@ -113,7 +113,7 @@ export async function cleanupProfileReferences(
       running: false,
       runId: undefined,
       leaseUntil: undefined,
-      kind: undefined,
+      runKind: undefined,
       currentPostId: undefined,
       nextCheckAt: Math.min(source.nextCheckAt, Date.now()),
     })

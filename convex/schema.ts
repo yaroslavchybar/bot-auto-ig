@@ -7,9 +7,7 @@ const activityCounts = v.object({
   follows: v.number(),
   dms: v.number(),
   warmupMinutes: v.number(),
-  scraperUnits: v.number(),
   scraperRequests: v.optional(v.number()),
-  unlimitedScraperUnits: v.number(),
 })
 
 export default defineSchema({
@@ -20,26 +18,21 @@ export default defineSchema({
   leadStats: defineTable({
     counts: v.object({
       total: v.number(),
-      pending: v.number(),
-      enriched: v.number(),
       male: v.number(),
-      ready: v.number(),
       assigned: v.number(),
     }),
-    revision: v.number(),
-    scanRevision: v.number(),
-    complete: v.boolean(),
-    cursor: v.union(v.string(), v.null()),
-    jobId: v.optional(v.id('_scheduled_functions')),
+    dataRevision: v.number(),
+    backfillRevision: v.number(),
+    backfillComplete: v.boolean(),
+    backfillCursor: v.union(v.string(), v.null()),
+    backfillJobId: v.optional(v.id('_scheduled_functions')),
   }),
   leadLists: defineTable({
     name: v.string(),
     createdAt: v.number(),
     scrapeLookbackDays: v.optional(v.number()),
     scrapeMonitor: v.optional(v.boolean()),
-    scrapeMonitorDays: v.optional(v.number()),
     scrapePostLimit: v.optional(v.number()),
-    scrapeIncludePrivate: v.optional(v.boolean()), // Retired setting; existing saved values are ignored.
   }),
   // Keep changing counts separate from list metadata subscriptions.
   leadListCounts: defineTable({
@@ -56,13 +49,11 @@ export default defineSchema({
     classification: v.optional(
       v.union(v.literal('male'), v.literal('female'), v.literal('business')),
     ),
-    enrichmentStatus: v.optional(
+    screeningStatus: v.optional(
       v.union(v.literal('pending'), v.literal('ready'), v.literal('error')),
     ),
-    enrichmentModel: v.optional(v.string()),
-    enrichmentConfidence: v.optional(v.number()),
-    followCheckPassed: v.optional(v.boolean()),
-    enrichedAt: v.optional(v.number()),
+    englishTextCheckPassed: v.optional(v.boolean()),
+    screenedAt: v.optional(v.number()),
     screeningToken: v.optional(v.string()),
     screeningProfileId: v.optional(v.id('profiles')),
     screeningAutomationId: v.optional(v.id('automations')),
@@ -90,7 +81,7 @@ export default defineSchema({
     .index('by_ig_id', ['igId'])
     .index('by_classification', ['classification'])
     .index('by_dm_revisit', ['senderId', 'followed', 'dmStartedAt', 'lastDmCheckDate'])
-    .index('by_enrichment', ['enrichmentStatus', 'screeningRefused'])
+    .index('by_screening', ['screeningStatus', 'screeningRefused'])
     .index('by_screening_profile', ['screeningProfileId'])
     .index('by_follow_due', ['senderId', 'followed', 'followDate'])
     .index('by_unfollow_due', ['senderId', 'followed', 'unfollowAt']),
@@ -105,42 +96,35 @@ export default defineSchema({
   })
     .index('by_lead_list', ['leadId', 'listId'])
     .index('by_list_created', ['listId', 'leadCreatedAt'])
-    .index('by_list_available', ['listId', 'available', 'leadCreatedAt'])
     .index('by_list_category', ['listId', 'available', 'classification', 'leadCreatedAt']),
   accountProgress: defineTable({
     profileId: v.id('profiles'),
     paused: v.boolean(),
     issue: v.optional(v.string()),
     activeDays: v.number(),
-    outreachDays: v.number(),
-    dmIncrease: v.optional(v.number()),
-    followIncrease: v.optional(v.number()),
-    followQuotaDate: v.optional(v.string()),
+    outreachIncrease: v.optional(v.number()),
+    outreachQuotaDate: v.optional(v.string()),
     lastFollowDate: v.optional(v.string()),
     sentToday: v.optional(v.number()),
-    dmDate: v.optional(v.string()),
+    dmCountDate: v.optional(v.string()),
     followedToday: v.optional(v.number()),
-    lastNotificationsDate: v.optional(v.string()),
-    lastNotificationsAt: v.optional(v.number()),
-    outreachStartedAt: v.optional(v.number()),
     lastActivityDate: v.optional(v.string()),
     lastOutreachDate: v.optional(v.string()),
-    date: v.string(),
-    used: v.number(),
-    allowance: v.number(),
+    outreachUsedToday: v.number(),
+    outreachAllowanceToday: v.number(),
     lastLeadListId: v.optional(v.id('leadLists')),
     nextRunAt: v.number(),
-    startedAt: v.number(),
     updatedAt: v.number(),
   }).index('by_profile', ['profileId']),
-  lists: defineTable({
+  models: defineTable({
     name: v.string(),
-    fullName: v.optional(v.string()),
-    fullNames: v.optional(v.array(v.string())),
+    baseFullName: v.optional(v.string()),
+    fullNameVariations: v.optional(v.array(v.string())),
     usernames: v.optional(v.array(v.string())),
+    contentKey: v.optional(v.string()),
     createdAt: v.number(),
   }),
-  modelContentCleanup: defineTable({ modelId: v.id('lists') }).index('by_model', ['modelId']),
+  modelContentCleanup: defineTable({ contentKey: v.string() }).index('by_content', ['contentKey']),
 
   proxies: defineTable({
     name: v.string(),
@@ -186,14 +170,12 @@ export default defineSchema({
 
   modelSetupStates: defineTable({
     profileId: v.id('profiles'),
-    modelId: v.id('lists'),
+    modelId: v.id('models'),
     startedAt: v.number(),
     targetUsername: v.optional(v.string()),
     fullName: v.optional(v.string()),
-    // nameDone is the username checkpoint for existing setup rows.
-    nameDone: v.optional(v.boolean()),
+    usernameDone: v.optional(v.boolean()),
     fullNameDone: v.optional(v.boolean()),
-    avatarSourceId: v.optional(v.string()),
     avatarDone: v.optional(v.boolean()),
     postSourceIds: v.array(v.string()),
     postTarget: v.optional(v.number()),
@@ -202,7 +184,6 @@ export default defineSchema({
     pending: v.optional(
       v.object({
         kind: v.union(
-          v.literal('name'),
           v.literal('username'),
           v.literal('fullName'),
           v.literal('avatar'),
@@ -217,7 +198,7 @@ export default defineSchema({
     .index('by_profile', ['profileId'])
     .index('by_model', ['modelId']),
   modelSetupGroupNames: defineTable({
-    modelId: v.id('lists'),
+    modelId: v.id('models'),
     group: v.number(),
     name: v.string(),
   }).index('by_model_group', ['modelId', 'group']),
@@ -229,31 +210,26 @@ export default defineSchema({
     igAccountId: v.optional(v.id('igAccounts')),
     igLoggedIn: v.optional(v.boolean()),
     outreachReady: v.optional(v.boolean()),
-    renameFrom: v.optional(v.string()),
+    pendingRenameFrom: v.optional(v.string()),
     createdAt: v.number(),
     name: v.string(),
     proxy: v.optional(v.string()),
     proxyType: v.optional(v.string()),
     status: v.optional(v.string()),
-    mode: v.optional(v.string()),
-    using: v.boolean(),
+    inUse: v.boolean(),
     fingerprintOs: v.optional(v.string()),
     fingerprintSeed: v.optional(v.number()),
     cookiesJson: v.optional(v.string()),
-    sessionId: v.optional(v.string()),
-    scraperDailyLimit: v.optional(v.union(v.number(), v.null())),
-    scraperUsageDate: v.optional(v.string()),
-    scraperUsageCount: v.optional(v.number()),
+    instagramSessionId: v.optional(v.string()),
     scraperRateLimitCount: v.optional(v.number()),
-    listIds: v.optional(v.array(v.id('lists'))),
+    modelIds: v.optional(v.array(v.id('models'))),
     lastOpenedAt: v.optional(v.number()),
     scraperCooldownUntil: v.optional(v.number()),
   })
     .index('by_name', ['name'])
     .index('by_status', ['status'])
-    .index('by_rename', ['renameFrom'])
-    .index('by_created', ['createdAt'])
-    .index('by_proxy', ['proxy', 'proxyType']),
+    .index('by_rename', ['pendingRenameFrom'])
+    .index('by_created', ['createdAt']),
   // Worker subscriptions only depend on these small, independently changing projections.
   scraperProfiles: defineTable({
     paused: v.optional(v.boolean()),
@@ -261,18 +237,15 @@ export default defineSchema({
     name: v.string(),
     proxy: v.optional(v.string()),
     proxyType: v.optional(v.string()),
-    using: v.boolean(),
+    inUse: v.boolean(),
     status: v.optional(v.string()),
-    renameFrom: v.optional(v.string()),
+    pendingRenameFrom: v.optional(v.string()),
     scraperReady: v.boolean(),
-    scraperDailyLimit: v.optional(v.union(v.number(), v.null())),
-    scraperUsageDate: v.optional(v.string()),
-    scraperUsageCount: v.optional(v.number()),
     scraperCooldownUntil: v.optional(v.number()),
   }).index('by_profile', ['profileId']),
   scraperRequestUsage: defineTable({
     profileId: v.id('profiles'),
-    requests: v.array(v.object({ id: v.string(), at: v.number() })),
+    requests: v.array(v.object({ id: v.string(), reservedAt: v.number() })),
     sleepUntil: v.optional(v.number()),
   }).index('by_profile', ['profileId']),
   // Proxy tables read this small projection instead of profile cookies and runtime state.
@@ -291,18 +264,17 @@ export default defineSchema({
     deleting: v.optional(v.boolean()),
     running: v.boolean(),
     nextCheckAt: v.number(),
-    lastCheckAt: v.optional(v.number()),
+    lastPostsCheckAt: v.optional(v.number()),
     lastLikerCheckAt: v.optional(v.number()),
     averageLikes: v.optional(v.number()),
     postCount: v.number(),
-    discovered: v.number(),
+    leadsAdded: v.number(),
     error: v.optional(v.string()),
     profileId: v.optional(v.id('profiles')),
     runId: v.optional(v.string()),
     leaseUntil: v.optional(v.number()),
-    kind: v.optional(v.union(v.literal('posts'), v.literal('likers'))),
+    runKind: v.optional(v.union(v.literal('posts'), v.literal('likers'))),
     currentPostId: v.optional(v.id('scrapePosts')),
-    postsFromApify: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index('by_profile', ['profileId', 'running'])
@@ -318,19 +290,7 @@ export default defineSchema({
     scheduled: v.boolean(),
     monitoring: v.boolean(),
     nextCheckAt: v.number(),
-    monitorEligible: v.optional(v.boolean()),
     monitorStoppedAt: v.optional(v.number()),
-    observedLikeCount: v.optional(v.number()),
-    checks: v.optional(
-      v.array(
-        v.object({
-          at: v.number(),
-          elapsedMs: v.number(),
-          newIds: v.number(),
-          likesGained: v.optional(v.number()),
-        }),
-      ),
-    ),
     lastScrapedAt: v.optional(v.number()),
     firstScrapedAt: v.optional(v.number()),
     error: v.optional(v.string()),
@@ -342,20 +302,12 @@ export default defineSchema({
 
   // One row per profile/list membership so runtime workers can query only
   // profiles assigned to their lists instead of scanning the whole table.
-  profileListAssignments: defineTable({
+  profileModelAssignments: defineTable({
     profileId: v.id('profiles'),
-    listId: v.id('lists'),
+    modelId: v.id('models'),
   })
     .index('by_profile', ['profileId'])
-    .index('by_list', ['listId'])
-    .index('by_profile_list', ['profileId', 'listId']),
-
-  messageTemplates: defineTable({
-    kind: v.string(),
-    texts: v.array(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index('by_kind', ['kind']),
+    .index('by_model', ['modelId']),
 
   // Per-profile daily budget, initialized on the first warm-up attempt each UTC day.
   warmupStates: defineTable({
@@ -376,18 +328,15 @@ export default defineSchema({
       v.array(v.object({ username: v.string(), runId: v.string(), confirmed: v.boolean() })),
     ),
     followBlockedDate: v.optional(v.string()),
-    followBlockReason: v.optional(v.string()),
     // An interrupted worker keeps its reservation until the next UTC day.
     activeRun: v.optional(
       v.object({ id: v.string(), minutes: v.number(), restMinutes: v.number() }),
     ),
     nextRunAt: v.optional(v.number()),
     lastAutomationId: v.optional(v.string()),
-    lastRunAt: v.optional(v.number()),
     // Recent run ids for deduping retried record calls. Bounded so the
     // row cannot grow without limit; retries arrive within seconds.
     recentRunIds: v.optional(v.array(v.string())),
-    updatedAt: v.number(),
   })
     .index('by_profile', ['profileId'])
     .index('by_active_run', ['activeRun.id']),
@@ -408,7 +357,7 @@ export default defineSchema({
     isActive: v.optional(v.boolean()),
 
     // Execution fields
-    listIds: v.optional(v.array(v.id('lists'))),
+    modelIds: v.optional(v.array(v.id('models'))),
     status: v.optional(
       v.union(
         v.literal('idle'),
@@ -426,14 +375,10 @@ export default defineSchema({
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     error: v.optional(v.string()),
-    retryCount: v.optional(v.number()),
-    maxRetries: v.optional(v.number()),
 
     // Timestamps
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('by_name', ['name'])
-    .index('by_isActive', ['isActive'])
     .index('by_status', ['status']),
 })

@@ -9,9 +9,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import type { List } from '../types'
+import type { Model } from '../types'
 
-// Mirrors the rules in convex/lists.ts so bad entries are flagged before saving.
+// Mirrors the rules in convex/models.ts so bad entries are flagged before saving.
 const USERNAME_PATTERN = /^[a-z0-9._]{1,30}$/
 const FULL_NAME_PATTERN = /^[\p{L}\p{M}\p{Extended_Pictographic}\p{Emoji_Component} .'-]{3,80}$/u
 
@@ -38,25 +38,25 @@ function parseFullNames(text: string): ParsedList {
 }
 
 // Edits a model's name, usernames, and full names. All fields save together.
-export function ModelIdentityPanel({ model }: { model: List }) {
-  const update = useMutation(api.lists.update)
+export function ModelIdentityPanel({ model }: { model: Model }) {
+  const update = useMutation(api.models.update)
   const [name, setName] = useState(model.name)
-  const [fullName, setFullName] = useState(model.fullName ?? '')
-  const [fullNames, setFullNames] = useState((model.fullNames ?? []).join('\n'))
+  const [baseFullName, setBaseFullName] = useState(model.baseFullName ?? '')
+  const [fullNameVariations, setFullNameVariations] = useState((model.fullNameVariations ?? []).join('\n'))
   const [usernames, setUsernames] = useState((model.usernames ?? []).join('\n'))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const trimmedName = name.trim()
   const usernameList = parseUsernames(usernames)
-  const fullNameList = parseFullNames(fullNames)
+  const fullNameList = parseFullNames(fullNameVariations)
   const invalidUsernames = usernameList.items.filter((n) => !USERNAME_PATTERN.test(n))
   const invalidFullNames = fullNameList.items.filter((n) => !FULL_NAME_PATTERN.test(n))
   const hasInvalid = invalidUsernames.length > 0 || invalidFullNames.length > 0
   const changed =
     trimmedName !== model.name ||
-    fullName.trim() !== (model.fullName ?? '') ||
-    JSON.stringify(fullNameList.items) !== JSON.stringify(model.fullNames ?? []) ||
+    baseFullName.trim() !== (model.baseFullName ?? '') ||
+    JSON.stringify(fullNameList.items) !== JSON.stringify(model.fullNameVariations ?? []) ||
     JSON.stringify(usernameList.items) !== JSON.stringify(model.usernames ?? [])
   const canSave = changed && trimmedName !== '' && !hasInvalid && !saving
 
@@ -67,14 +67,14 @@ export function ModelIdentityPanel({ model }: { model: List }) {
     setError('')
     try {
       await update({
-        id: model.id as Id<'lists'>,
+        id: model.id as Id<'models'>,
         name: trimmedName,
-        fullName: fullName.trim(),
-        fullNames: fullNameList.items,
+        baseFullName: baseFullName.trim(),
+        fullNameVariations: fullNameList.items,
         usernames: usernameList.items,
       })
       setUsernames(usernameList.items.join('\n'))
-      setFullNames(fullNameList.items.join('\n'))
+      setFullNameVariations(fullNameList.items.join('\n'))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -85,8 +85,8 @@ export function ModelIdentityPanel({ model }: { model: List }) {
   // Restores every field to the saved model values.
   function discard() {
     setName(model.name)
-    setFullName(model.fullName ?? '')
-    setFullNames((model.fullNames ?? []).join('\n'))
+    setBaseFullName(model.baseFullName ?? '')
+    setFullNameVariations((model.fullNameVariations ?? []).join('\n'))
     setUsernames((model.usernames ?? []).join('\n'))
     setError('')
   }
@@ -184,7 +184,7 @@ export function ModelIdentityPanel({ model }: { model: List }) {
               </p>
               <ImportButton
                 disabled={saving}
-                onFile={(file) => void importFile(file, setFullNames)}
+                onFile={(file) => void importFile(file, setFullNameVariations)}
               />
             </>
           }
@@ -195,9 +195,9 @@ export function ModelIdentityPanel({ model }: { model: List }) {
             </Label>
             <Input
               id="model-detail-base-name"
-              value={fullName}
+              value={baseFullName}
               disabled={saving}
-              onChange={(event) => setFullName(event.target.value)}
+              onChange={(event) => setBaseFullName(event.target.value)}
               placeholder="e.g. Anna Smith"
               className="h-9 brand-focus border-line bg-field text-ink"
             />
@@ -208,9 +208,9 @@ export function ModelIdentityPanel({ model }: { model: List }) {
             </Label>
             <Textarea
               id="model-detail-full-names"
-              value={fullNames}
+              value={fullNameVariations}
               disabled={saving}
-              onChange={(event) => setFullNames(event.target.value)}
+              onChange={(event) => setFullNameVariations(event.target.value)}
               placeholder="Optional variations, one full name per line"
               className="min-h-32 flex-1 resize-none brand-focus border-line bg-field text-sm text-ink"
             />

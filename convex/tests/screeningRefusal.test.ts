@@ -2,15 +2,15 @@ import { expect, test } from 'vite-plus/test'
 import { api, internal } from '../_generated/api'
 import { defaultRoutine, dayKey } from '../routinePolicy'
 import { leadAvailable, addMembership } from '../leadMemberships'
-import { createConvexTest, seedList, seedProfile } from '../../tests/convex/helpers'
+import { createConvexTest, seedModel, seedProfile } from '../../tests/convex/helpers'
 
 async function setup() {
   const t = createConvexTest()
-  const list = (await seedList(t))!, profile = (await seedProfile(t))!
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: list._id })
+  const list = (await seedModel(t))!, profile = (await seedProfile(t))!
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: list._id })
   const leadListId = await t.mutation(api.leads.createList, { name: 'Recipients' })
   const automation = (await t.mutation(api.automations.mutations.create, {
-    name: 'Daily', nodes: [], edges: [], listIds: [list._id],
+    name: 'Daily', nodes: [], edges: [], modelIds: [list._id],
     routine: { ...defaultRoutine, initialDms: 2, maxDms: 3, outreachEnabled: true, leadListId, message: 'Hello {{username}}' },
   }))!
   await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: true })
@@ -19,11 +19,11 @@ async function setup() {
     await ctx.db.patch(profile._id, { outreachReady: true })
     const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique()
     const state = { profileId: profile._id, day: 8, date: dayKey(), runsToday: 1, todayMinutes: 30,
-      minutesUsedToday: 0, updatedAt: Date.now() }
+      minutesUsedToday: 0 }
     if (warmup) await ctx.db.patch(warmup._id, state)
     else await ctx.db.insert('warmupStates', state)
     const createdAt = Date.now()
-    const leadId = await ctx.db.insert('leads', { username: 'target', enrichmentStatus: 'pending', dmSent: false, followed: false, createdAt })
+    const leadId = await ctx.db.insert('leads', { username: 'target', screeningStatus: 'pending', dmSent: false, followed: false, createdAt })
     await ctx.db.insert('leadMemberships', { leadId, listId: leadListId, available: true, leadCreatedAt: createdAt })
   })
   const args = { automationId: automation._id, profileId: profile._id }
@@ -33,7 +33,7 @@ async function setup() {
 
 test.each([false, true])('a first refusal permanently excludes every membership, preserves prior decisions and consumes no quota (saved=%s)', async saved => {
   const { t, args, claim, failure } = await setup()
-  const prior = { classification: 'business' as const, enrichmentModel: 'previous-model', enrichedAt: 123, enrichmentConfidence: 0.9 }
+  const prior = { classification: 'business' as const, screenedAt: 123 }
   await t.run(async ctx => {
     if (saved) await ctx.db.patch(claim.leadId, prior)
     const listId = await ctx.db.insert('leadLists', { name: 'Another list', createdAt: 0 })
@@ -41,7 +41,7 @@ test.each([false, true])('a first refusal permanently excludes every membership,
   })
   expect(await t.mutation(internal.leadScreening.finish, { ...failure, failureReason: 'refused' })).toBe(false)
   const lead = (await t.run(ctx => ctx.db.get(claim.leadId)))!
-  expect(lead).toMatchObject({ enrichmentStatus: 'error', screeningRefused: true, screeningFailures: 1 })
+  expect(lead).toMatchObject({ screeningStatus: 'error', screeningRefused: true, screeningFailures: 1 })
   if (saved) expect(lead).toMatchObject(prior)
   for (const field of ['screeningToken', 'screeningProfileId', 'screeningAutomationId', 'screeningListId', 'screeningUntil', 'senderId'])
     expect(lead).not.toHaveProperty(field)
@@ -87,23 +87,23 @@ test('indexed retries skip a refused backlog, include missing and false flags, a
   const t = createConvexTest()
   await t.run(async ctx => {
     for (let i = 0; i < 500; i++) await ctx.db.insert('leads', {
-      username: `refused${i}`, enrichmentStatus: 'error', screeningRefused: true,
+      username: `refused${i}`, screeningStatus: 'error', screeningRefused: true,
       screeningFailures: 1, dmSent: false, followed: false, createdAt: 0,
     })
     for (let i = 0; i < 125; i++) await ctx.db.insert('leads', {
-      username: `retry${i}`, enrichmentStatus: 'error', screeningRefused: i < 60 ? undefined : false,
+      username: `retry${i}`, screeningStatus: 'error', screeningRefused: i < 60 ? undefined : false,
       screeningFailures: 3, screeningUntil: Date.now() + 60_000, dmSent: false, followed: false, createdAt: 0,
     })
   })
   expect(await t.mutation(api.scraper.retryEnrichment, {})).toBe(100)
   const first = await t.run(ctx => ctx.db.query('leads').collect())
-  expect(first.filter(row => row.enrichmentStatus === 'pending')).toHaveLength(100)
-  expect(first.filter(row => row.screeningRefused).every(row => row.enrichmentStatus === 'error')).toBe(true)
+  expect(first.filter(row => row.screeningStatus === 'pending')).toHaveLength(100)
+  expect(first.filter(row => row.screeningRefused).every(row => row.screeningStatus === 'error')).toBe(true)
   expect(await t.mutation(api.scraper.retryEnrichment, {})).toBe(25)
   expect(await t.mutation(api.scraper.retryEnrichment, {})).toBe(0)
   const final = await t.run(ctx => ctx.db.query('leads').collect())
   const retryable = final.filter(row => !row.screeningRefused)
   expect(retryable).toHaveLength(125)
-  expect(retryable.every(row => row.enrichmentStatus === 'pending' && row.screeningFailures === undefined && row.screeningUntil === undefined)).toBe(true)
+  expect(retryable.every(row => row.screeningStatus === 'pending' && row.screeningFailures === undefined && row.screeningUntil === undefined)).toBe(true)
   expect(final.filter(row => row.screeningRefused)).toHaveLength(500)
 })

@@ -71,7 +71,7 @@ export function RoutinePopup({
 }) {
   const [tab, setTab] = useState<TabId>('general')
   const [name, setName] = useState(automation?.name ?? '')
-  const [listIds, setListIds] = useState<Id<'lists'>[]>(automation?.listIds ?? [])
+  const [modelIds, setListIds] = useState<Id<'models'>[]>(automation?.modelIds ?? [])
   const [policy, setPolicy] = useState<RoutinePolicy>(() => {
     const initial = automation?.routine ?? defaultRoutine
     const { warmup_topics, ...activity } = initial.activity
@@ -87,7 +87,7 @@ export function RoutinePopup({
   })
   const [saving, setSaving] = useState(false)
   const [interestPending, setInterestPending] = useState(false)
-  const lists = useQuery(api.lists.list, {})
+  const lists = useQuery(api.models.list, {})
   const automations = useQuery(api.automations.queries.list, {})
   const leadLists = useQuery(api.leads.lists, {})
   const profiles = useQuery(api.profiles.queries.modelOptions, {})
@@ -100,13 +100,13 @@ export function RoutinePopup({
     automation?.status === 'pending'
   const formDisabled = locked || saving
   // Compares the current values with the starting values to detect unsaved changes.
-  const snapshot = JSON.stringify({ name, listIds, policy })
+  const snapshot = JSON.stringify({ name, modelIds, policy })
   const [savedSnapshot] = useState(snapshot)
   const dirty = snapshot !== savedSnapshot
   // The first reason the automation cannot be saved yet. The footer shows it next to the disabled button.
   const blocker = !name.trim()
     ? 'Add a name'
-    : listIds.length !== 1
+    : modelIds.length !== 1
       ? 'Choose a model'
       : interestPending ? 'Add or discard the interest draft' : routineProblem(policy)
   const canSave = !blocker && dirty && !locked && !saving
@@ -195,7 +195,7 @@ export function RoutinePopup({
       validateRoutine(policy)
       const data = {
         name: name.trim(),
-        listIds,
+        modelIds,
         routine: policy,
         nodes: [],
         edges: [],
@@ -285,9 +285,9 @@ export function RoutinePopup({
                     <p className="text-sm text-subtle-copy">No models yet.</p>
                   ) : (
                     <Select
-                      value={listIds[0] ?? ''}
+                      value={modelIds[0] ?? ''}
                       onValueChange={(id) => {
-                        setListIds([id as Id<'lists'>])
+                        setListIds([id as Id<'models'>])
                         change(
                           'outreachRoutes',
                           policy.outreachRoutes?.map((route) => ({ ...route, profileIds: [] })),
@@ -306,7 +306,7 @@ export function RoutinePopup({
                             (row) =>
                               row._id !== automation?._id &&
                               row.routine &&
-                              row.listIds?.includes(list._id),
+                              row.modelIds?.includes(list._id),
                           )
                           return (
                             <SelectItem key={list._id} value={list._id} disabled={inUse}>
@@ -463,7 +463,7 @@ export function RoutinePopup({
                     lists={leadLists ?? []}
                     profiles={(profiles ?? []).filter(
                       (profile) =>
-                        profile.status !== 'deleting' && profile.listIds?.includes(listIds[0]!),
+                        profile.status !== 'deleting' && profile.modelIds?.includes(modelIds[0]!),
                     )}
                     loading={leadLists === undefined || profiles === undefined}
                     disabled={formDisabled}
@@ -482,7 +482,7 @@ export function RoutinePopup({
 
             {tab === 'profiles' &&
               (automation ? (
-                <RoutineProfiles automationId={automation._id} modelId={automation.listIds?.[0]} />
+                <RoutineProfiles automationId={automation._id} modelId={automation.modelIds?.[0]} />
               ) : (
                 <p className="text-sm text-subtle-copy">Save the automation to see its profiles.</p>
               ))}

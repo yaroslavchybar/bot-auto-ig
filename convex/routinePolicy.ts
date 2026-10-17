@@ -161,7 +161,7 @@ export function validateRoutine(p: RoutinePolicy) {
 export const dayKey = (now = Date.now()) =>
   new Date(now).toISOString().slice(0, 10);
 
-export function followAllowance(
+export function outreachAllowance(
   p: RoutinePolicy,
   accumulatedIncrease: number) {
   return p.outreachEnabled
@@ -170,16 +170,16 @@ export function followAllowance(
 }
 
 /** Source lists in Start are the single source of truth for graph membership. */
-export function routineLists(automation: {
+export function routineModels(automation: {
   nodes: unknown;
-  listIds?: string[];
+  modelIds?: string[];
 }): string[] {
   const nodes = Array.isArray(automation.nodes) ? automation.nodes : [];
   const start = nodes.find((n) => n.type === "start");
   return [
     ...new Set<string>(
-      automation.listIds?.length
-        ? automation.listIds
+      automation.modelIds?.length
+        ? automation.modelIds
         : (start?.data?.config?.sourceLists ?? []),
     ),
   ];

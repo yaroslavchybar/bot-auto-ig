@@ -8,7 +8,7 @@ import type { Id } from '../_generated/dataModel';
 import { recordedPostsReady } from '../modelSetupPolicy';
 
 function assertProfileEditable(profile: any) {
-	if (profile.status === 'deleting' || profile.renameFrom)
+	if (profile.status === 'deleting' || profile.pendingRenameFrom)
 		throw new DomainError('CONFLICT', 'Profile maintenance is in progress');
 }
 
@@ -23,16 +23,12 @@ async function assertProfileNameAvailable(ctx: any, name: string, exceptId?: str
 		throw new DomainError('VALIDATION', 'Invalid profile name');
 	const rows = await ctx.db.query('profiles').collect();
 	if (rows.some((p: any) => p._id !== exceptId &&
-		[p.name, p.renameFrom].some(n => n?.toLowerCase() === name.toLowerCase())))
+		[p.name, p.pendingRenameFrom].some(n => n?.toLowerCase() === name.toLowerCase())))
 		throw new DomainError('CONFLICT', 'Profile name is already in use');
 }
-export function computeProfileMode(proxy: unknown): "proxy" | "direct" {
-	const s = typeof proxy === "string" ? proxy.trim() : "";
-	return s ? "proxy" : "direct";
-}
 
-export function getProfileListIds(profile: any): any[] {
-	const merged = Array.isArray(profile?.listIds) ? profile.listIds : [];
+export function getProfileModelIds(profile: any): any[] {
+	const merged = Array.isArray(profile?.modelIds) ? profile.modelIds : [];
 	const seen = new Set<string>();
 	const deduped: any[] = [];
 	for (const id of merged) {
@@ -44,15 +40,15 @@ export function getProfileListIds(profile: any): any[] {
 	return deduped;
 }
 
-/** Keep the indexed membership table in sync with the profile's listIds. */
-export async function syncProfileListAssignments(ctx: MutationCtx, profileId: Id<'profiles'>, listIds: Id<'lists'>[]) {
-	const desired = new Map<string, Id<'lists'>>();
-	for (const listId of getProfileListIds({ listIds })) desired.set(String(listId), listId);
+/** Keep the indexed membership table in sync with the profile's modelIds. */
+export async function syncProfileModelAssignments(ctx: MutationCtx, profileId: Id<'profiles'>, modelIds: Id<'models'>[]) {
+	const desired = new Map<string, Id<'models'>>();
+	for (const modelId of getProfileModelIds({ modelIds })) desired.set(String(modelId), modelId);
 	const existing = await ctx.db
-		.query("profileListAssignments")
+		.query("profileModelAssignments")
 		.withIndex("by_profile", (q) => q.eq("profileId", profileId))
 		.collect();
-	const current = new Set(existing.map((row) => String(row.listId)));
+	const current = new Set(existing.map((row) => String(row.modelId)));
 	if (current.size !== desired.size || [...desired.keys()].some(key => !current.has(key))) {
 		const setup = await ctx.db.query('modelSetupStates')
 			.withIndex('by_profile', q => q.eq('profileId', profileId)).first();
@@ -63,16 +59,16 @@ export async function syncProfileListAssignments(ctx: MutationCtx, profileId: Id
 		await ctx.db.patch(profileId, { outreachReady });
 	}
 	for (const row of existing) {
-		if (!desired.has(String(row.listId))) await ctx.db.delete(row._id);
+		if (!desired.has(String(row.modelId))) await ctx.db.delete(row._id);
 	}
-	for (const [key, listId] of desired) {
-		if (!current.has(key)) await ctx.db.insert("profileListAssignments", { profileId, listId });
+	for (const [key, modelId] of desired) {
+		if (!current.has(key)) await ctx.db.insert("profileModelAssignments", { profileId, modelId });
 	}
 }
 
-export function buildListPatch(listIds: any[]): { listIds: any[] } {
+export function buildModelPatch(modelIds: any[]): { modelIds: any[] } {
 	return {
-		listIds,
+		modelIds,
 	};
 }
 
@@ -147,17 +143,17 @@ export async function getProfileByNameRow(ctx: any, name: string) {
 	return row ?? null;
 }
 
-export async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[], cooldownMinutesRaw: number) {
-	const cleanIds = (listIdsRaw || []).map((v) => String(v || "").trim()).filter(Boolean);
+export async function getAvailableProfilesForModels(ctx: any, modelIdsRaw: string[], cooldownMinutesRaw: number) {
+	const cleanIds = (modelIdsRaw || []).map((v) => String(v || "").trim()).filter(Boolean);
 	if (cleanIds.length === 0) return [];
 	const cooldownMs = Math.max(0, (Number.isFinite(cooldownMinutesRaw) ? cooldownMinutesRaw : 0) * 60 * 1000);
 	const cutoffMs = Date.now() - cooldownMs;
 	const allowed = new Set(cleanIds);
 	const rows = await ctx.db.query("profiles").collect();
 	const filtered = rows.filter((p: any) => {
-		if (p.paused || p.status === 'deleting' || p.renameFrom) return false;
-		const listIds = getProfileListIds(p);
-		if (!listIds.some((listId) => allowed.has(String(listId)))) return false;
+		if (p.paused || p.status === 'deleting' || p.pendingRenameFrom) return false;
+		const modelIds = getProfileModelIds(p);
+		if (!modelIds.some((modelId) => allowed.has(String(modelId)))) return false;
 		if (typeof p.lastOpenedAt !== "number") return true;
 		return p.lastOpenedAt < cutoffMs;
 	});
@@ -165,14 +161,14 @@ export async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[
 	return filtered;
 }
 
-export async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
-	const cleanIds = (listIdsRaw || []).map((v) => String(v || "").trim()).filter(Boolean);
+export async function getProfilesByModelIds(ctx: any, modelIdsRaw: string[]) {
+	const cleanIds = (modelIdsRaw || []).map((v) => String(v || "").trim()).filter(Boolean);
 	if (cleanIds.length === 0) return [];
 	const allowed = new Set(cleanIds);
 	const rows = await ctx.db.query("profiles").collect();
 	const filtered = rows.filter((p: any) => {
-		const listIds = getProfileListIds(p);
-		return listIds.some((listId) => allowed.has(String(listId)));
+		const modelIds = getProfileModelIds(p);
+		return modelIds.some((modelId) => allowed.has(String(modelId)));
 	});
 	filtered.sort((a: any, b: any) => a.createdAt - b.createdAt);
 	return filtered;
@@ -202,13 +198,12 @@ export async function insertProfileRow(ctx: any, args: any) {
 		proxy: args.proxy,
 		proxyType: args.proxyType,
 		status: "idle",
-		mode: computeProfileMode(args.proxy),
 		cookiesJson: cookiesJsonRaw ? cookiesJsonRaw : undefined,
-		sessionId: sessionIdFromCookies(cookiesJsonRaw),
-		using: false,
+		instagramSessionId: sessionIdFromCookies(cookiesJsonRaw),
+		inUse: false,
 		fingerprintOs: args.fingerprintOs,
 		fingerprintSeed: args.fingerprintSeed,
-		listIds: args.listIds ?? [],
+		modelIds: args.modelIds ?? [],
 		lastOpenedAt: undefined,
 	});
 	await syncProxyUsage(ctx, { _id: id, name: args.name, proxy: args.proxy, proxyType: args.proxyType });
@@ -232,11 +227,10 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 
 	const next: Record<string, unknown> = { name };
 	if (name !== existing.name) await assertProfileNameAvailable(ctx, name, existing._id);
-	if (name !== existing.name) next.renameFrom = existing.name;
+	if (name !== existing.name) next.pendingRenameFrom = existing.name;
 
 	if (typeof args.proxy === "string") {
 		next.proxy = args.proxy;
-		next.mode = computeProfileMode(args.proxy);
 	}
 	if (typeof args.proxyType === "string") {
 		next.proxyType = args.proxyType;
@@ -252,7 +246,7 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	if (typeof args.cookiesJson === "string") {
 		const cleaned = args.cookiesJson.trim();
 		next.cookiesJson = cleaned ? cleaned : undefined;
-		next.sessionId = sessionIdFromCookies(cleaned);
+		next.instagramSessionId = sessionIdFromCookies(cleaned);
 	}
 	const effectiveProxyByName = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 	const effectiveTypeByName = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
@@ -281,11 +275,10 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 
 	const next: Record<string, unknown> = { name };
 	if (name !== existing.name) await assertProfileNameAvailable(ctx, name, existing._id);
-	if (name !== existing.name) next.renameFrom = existing.name;
+	if (name !== existing.name) next.pendingRenameFrom = existing.name;
 
 	if (typeof args.proxy === "string") {
 		next.proxy = args.proxy;
-		next.mode = computeProfileMode(args.proxy);
 	}
 	if (typeof args.proxyType === "string") {
 		next.proxyType = args.proxyType;
@@ -301,7 +294,7 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	if (typeof args.cookiesJson === "string") {
 		const cleaned = args.cookiesJson.trim();
 		next.cookiesJson = cleaned ? cleaned : undefined;
-		next.sessionId = sessionIdFromCookies(cleaned);
+		next.instagramSessionId = sessionIdFromCookies(cleaned);
 	}
 	const effectiveProxyById = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 	const effectiveTypeById = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
@@ -340,7 +333,7 @@ export async function removeProfileByIdRow(ctx: MutationCtx, profileId: Id<'prof
   return true
 }
 
-export async function syncProfileStatusRow(ctx: any, name: string, status: string, using?: boolean) {
+export async function syncProfileStatusRow(ctx: any, name: string, status: string, inUse?: boolean) {
 	const cleanedName = String(name || "").trim();
 	const cleanedStatus = String(status || "").trim();
 	if (!cleanedName || !cleanedStatus) throw new DomainError('VALIDATION', "name and status are required");
@@ -350,8 +343,8 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 		.first();
 	if (!existing) return true;
 	if (existing.status === 'deleting') return true;
-	const next: Record<string, unknown> = { status: cleanedStatus, using: Boolean(using) };
-  if (existing.status === cleanedStatus && existing.using === Boolean(using)) return true;
+	const next: Record<string, unknown> = { status: cleanedStatus, inUse: Boolean(inUse) };
+  if (existing.status === cleanedStatus && existing.inUse === Boolean(inUse)) return true;
 	if (cleanedStatus.toLowerCase() === "running") {
 		next.lastOpenedAt = Date.now();
 	}
@@ -359,8 +352,8 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 	return true;
 }
 
-export async function listAssignedProfilesRow(ctx: any, listId: any) {
-	const assignments = await ctx.db.query("profileListAssignments").withIndex("by_list", (q: any) => q.eq("listId", listId)).collect();
+export async function listAssignedProfilesRow(ctx: any, modelId: any) {
+	const assignments = await ctx.db.query("profileModelAssignments").withIndex("by_model", (q: any) => q.eq("modelId", modelId)).collect();
 	const rows = (await Promise.all(assignments.map((assignment: any) => ctx.db.get(assignment.profileId)))).filter(Boolean);
 	const result = rows
 		.map((r: any) => ({ _id: r._id, name: r.name, createdAt: r.createdAt }))
@@ -372,53 +365,53 @@ export async function listAssignedProfilesRow(ctx: any, listId: any) {
 export async function listUnassignedProfilesRow(ctx: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	const result = rows
-		.filter((r: any) => getProfileListIds(r).length === 0)
+		.filter((r: any) => getProfileModelIds(r).length === 0)
 		.map((r: any) => ({ _id: r._id, name: r.name, createdAt: r.createdAt }))
 		.sort((a: any, b: any) => a.createdAt - b.createdAt)
 		.map((r: any) => ({ profileId: r._id, name: r.name }));
 	return result;
 }
 
-export async function bulkSetProfileListIdRow(ctx: any, profileIds: any[], listId: any) {
+export async function bulkSetProfileModelIdRow(ctx: any, profileIds: any[], modelId: any) {
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
-	const nextListIds = listId === null || typeof listId === "undefined" ? [] : [listId];
-	if (listId && !await ctx.db.get(listId)) throw new DomainError('NOT_FOUND', 'Model not found');
+	const nextListIds = modelId === null || typeof modelId === "undefined" ? [] : [modelId];
+	if (modelId && !await ctx.db.get(modelId)) throw new DomainError('NOT_FOUND', 'Model not found');
 	for (const id of profileIds) await assertProfileModelChange(ctx, await ctx.db.get(id), nextListIds);
-	await Promise.all(profileIds.map((id) => ctx.db.patch(id, buildListPatch(nextListIds))));
-	await Promise.all(profileIds.map((id) => syncProfileListAssignments(ctx, id, nextListIds)));
+	await Promise.all(profileIds.map((id) => ctx.db.patch(id, buildModelPatch(nextListIds))));
+	await Promise.all(profileIds.map((id) => syncProfileModelAssignments(ctx, id, nextListIds)));
     await assertAssignments(ctx);
 	return true;
 }
 
-export async function bulkAddProfilesToListRow(ctx: any, profileIds: any[], listId: any) {
+export async function bulkAddProfilesToModelRow(ctx: any, profileIds: any[], modelId: any) {
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
-	if (!await ctx.db.get(listId)) throw new DomainError('NOT_FOUND', 'Model not found');
+	if (!await ctx.db.get(modelId)) throw new DomainError('NOT_FOUND', 'Model not found');
 	// Single-list invariant: a profile lives in at most one list.
 	// Adding to a new list moves it (replaces), it never copies.
 	await Promise.all(
 		profileIds.map(async (id) => {
 			const row = await ctx.db.get(id);
 			if (!row) return;
-			const next = [listId];
+			const next = [modelId];
 			await assertProfileModelChange(ctx, row, next);
-			await ctx.db.patch(id, buildListPatch(next));
-			await syncProfileListAssignments(ctx, id, next);
+			await ctx.db.patch(id, buildModelPatch(next));
+			await syncProfileModelAssignments(ctx, id, next);
 		}),
 	);
     await assertAssignments(ctx);
 	return true;
 }
 
-export async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[], listId: any) {
+export async function bulkRemoveProfilesFromModelRow(ctx: any, profileIds: any[], modelId: any) {
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
 	await Promise.all(
 		profileIds.map(async (id) => {
 			const row = await ctx.db.get(id);
 			if (!row) return;
-			const next = getProfileListIds(row).filter((existingListId) => String(existingListId) !== String(listId));
+			const next = getProfileModelIds(row).filter((existingListId) => String(existingListId) !== String(modelId));
 			await assertProfileModelChange(ctx, row, next);
-			await ctx.db.patch(id, buildListPatch(next));
-			await syncProfileListAssignments(ctx, id, next);
+			await ctx.db.patch(id, buildModelPatch(next));
+			await syncProfileModelAssignments(ctx, id, next);
 		}),
 	);
 	await assertAssignments(ctx);
@@ -429,9 +422,9 @@ import { assertAssignments } from '../routines';
 // A model move must not discard an action whose Instagram result is still unknown.
 async function assertProfileModelChange(ctx: any, profile: any, next: any[]) {
   if (!profile) return;
-  const current = getProfileListIds(profile);
+  const current = getProfileModelIds(profile);
   if (current.length === next.length && current.every(id => next.includes(id))) return;
-  if (profile.using || ['running', 'starting', 'deleting'].includes(profile.status) || profile.renameFrom)
+  if (profile.inUse || ['running', 'starting', 'deleting'].includes(profile.status) || profile.pendingRenameFrom)
     throw new DomainError('CONFLICT', 'Stop the profile and wait for maintenance before changing models');
   const setup = await ctx.db.query('modelSetupStates')
     .withIndex('by_profile', (q: any) => q.eq('profileId', profile._id)).first();

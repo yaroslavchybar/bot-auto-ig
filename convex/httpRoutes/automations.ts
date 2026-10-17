@@ -96,12 +96,12 @@ export function registerAutomationRoutes(http: HttpRouter): void {
       const url = new URL(request.url);
       const automationId = url.searchParams.get('automationId') || '';
       if (!automationId) throw new ValidationError('automationId is required');
-      const listId = url.searchParams.get('listId') || '';
-      if (!listId) throw new ValidationError('listId is required');
+      const modelId = url.searchParams.get('modelId') || '';
+      if (!modelId) throw new ValidationError('modelId is required');
       const cursor = url.searchParams.get('cursor') || undefined;
       const page = await ctx.runQuery(internal.automations.queries.runtimeListPageInternal, {
         id: automationId as any,
-        listId,
+        modelId,
         cursor,
       });
       return jsonResponse(page);

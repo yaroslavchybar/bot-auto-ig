@@ -128,7 +128,7 @@ test('saved screening prompts and model order drive the real screening request',
     model: 'typesafe/jev-1.14',
     category: 'male',
     confidence: 0.9,
-    followCheckPassed: true,
+    englishTextCheckPassed: true,
   })
   // Untouched fields keep their default wording.
   assert.deepEqual(requests[0], {

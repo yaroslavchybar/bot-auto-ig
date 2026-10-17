@@ -1,7 +1,7 @@
 /** Internal profile DTO. Field names and timestamps match Convex. */
 export type ProfileRecord = {
   paused?: boolean
-  renameFrom?: string
+  pendingRenameFrom?: string
   id: string
   igAccountId?: string
   name: string
@@ -13,16 +13,12 @@ export type ProfileRecord = {
   proxy?: string
   proxyType?: string
   status?: string
-  mode?: string
-  using: boolean
+  inUse: boolean
   fingerprintOs?: string
   fingerprintSeed?: number
   cookiesJson?: string
-  sessionId?: string
-  scraperDailyLimit?: number | null
-  scraperUsageDate?: string
-  scraperUsageCount?: number
-  listIds?: string[]
+  instagramSessionId?: string
+  modelIds?: string[]
   lastOpenedAt?: number
 }
 

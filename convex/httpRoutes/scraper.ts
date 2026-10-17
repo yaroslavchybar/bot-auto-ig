@@ -69,7 +69,6 @@ export function registerScraperRoutes(http: HttpRouter): void {
         ),
         averageLikes: b.averageLikes ?? undefined,
         postCount: b.postCount,
-        postsFromApify: b.postsFromApify,
       })
       return jsonResponse({ ok: true })
     }),

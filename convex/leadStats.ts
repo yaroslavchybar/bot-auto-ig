@@ -6,18 +6,15 @@ import { leadAvailable } from './leadMemberships'
 
 type Counts = Doc<'leadStats'>['counts']
 type Lead = Parameters<typeof leadAvailable>[0]
-const empty = (): Counts => ({ total: 0, pending: 0, enriched: 0, male: 0, ready: 0, assigned: 0 })
-const keys = ['total', 'pending', 'enriched', 'male', 'ready', 'assigned'] as const
+const empty = (): Counts => ({ total: 0, male: 0, assigned: 0 })
+const keys = ['total', 'male', 'assigned'] as const
 
 function countsFor(lead: Lead | null): Counts {
   if (!lead) return empty()
-  const enriched = lead.enrichmentStatus === 'ready'
+  const enriched = lead.screeningStatus === 'ready'
   return {
     total: 1,
-    pending: Number(lead.enrichmentStatus === 'pending'),
-    enriched: Number(enriched),
     male: Number(enriched && lead.classification === 'male'),
-    ready: Number(enriched && !!lead.classification && leadAvailable(lead)),
     assigned: Number(!!lead.senderId),
   }
 }
@@ -39,8 +36,8 @@ export class LeadStatsChanges {
     const state = await ctx.db.query('leadStats').unique()
     // First Analytics visit backfills existing data; ordinary writes need no migration scan.
     if (!state) return
-    if (!state.complete) {
-      await ctx.db.patch(state._id, { revision: state.revision + 1 })
+    if (!state.backfillComplete) {
+      await ctx.db.patch(state._id, { dataRevision: state.dataRevision + 1 })
       return
     }
     if (!keys.some((key) => this.delta[key])) return
@@ -55,27 +52,27 @@ export const initialize = mutation({
   args: {},
   handler: async (ctx) => {
     let state = await ctx.db.query('leadStats').unique()
-    if (state?.complete) return
-    if (state?.jobId) {
-      const job = await ctx.db.system.get(state.jobId)
+    if (state?.backfillComplete) return
+    if (state?.backfillJobId) {
+      const job = await ctx.db.system.get(state.backfillJobId)
       if (job?.state.kind === 'pending' || job?.state.kind === 'inProgress') return
     }
     if (!state) {
-      const complete = !(await ctx.db.query('leads').first())
+      const backfillComplete = !(await ctx.db.query('leads').first())
       const id = await ctx.db.insert('leadStats', {
         counts: empty(),
-        revision: 0,
-        scanRevision: 0,
-        cursor: null,
-        complete,
+        dataRevision: 0,
+        backfillRevision: 0,
+        backfillCursor: null,
+        backfillComplete,
       })
       state = (await ctx.db.get(id))!
-      if (complete) return
+      if (backfillComplete) return
     }
-    const jobId = await ctx.scheduler.runAfter(0, internal.leadStats.backfill, {
-      cursor: state.cursor,
+    const backfillJobId = await ctx.scheduler.runAfter(0, internal.leadStats.backfill, {
+      cursor: state.backfillCursor,
     })
-    await ctx.db.patch(state._id, { jobId })
+    await ctx.db.patch(state._id, { backfillJobId })
   },
 })
 
@@ -84,8 +81,8 @@ export const backfill = internalMutation({
   args: { cursor: v.union(v.string(), v.null()) },
   handler: async (ctx, { cursor }) => {
     const state = await ctx.db.query('leadStats').unique()
-    if (!state || state.complete || state.cursor !== cursor) return
-    const unchanged = state.scanRevision === state.revision
+    if (!state || state.backfillComplete || state.backfillCursor !== cursor) return
+    const unchanged = state.backfillRevision === state.dataRevision
     const page = await ctx.db
       .query('leads')
       .paginate({
@@ -99,17 +96,17 @@ export const backfill = internalMutation({
       const next = countsFor(lead)
       for (const key of keys) counts[key] += next[key]
     }
-    const jobId = page.isDone
+    const backfillJobId = page.isDone
       ? undefined
       : await ctx.scheduler.runAfter(0, internal.leadStats.backfill, {
           cursor: page.continueCursor,
         })
     await ctx.db.patch(state._id, {
       counts,
-      cursor: page.continueCursor,
-      scanRevision: state.revision,
-      complete: page.isDone,
-      jobId,
+      backfillCursor: page.continueCursor,
+      backfillRevision: state.dataRevision,
+      backfillComplete: page.isDone,
+      backfillJobId,
     })
   },
 })

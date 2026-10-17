@@ -8,10 +8,10 @@ test('startup drains interrupted warmups without scanning leads', async () => {
   await seedAutomation(t, { status: 'running' })
   const profile = (await seedProfile(t))!
   const ids = await t.run(async ctx => {
-    const idleWarmup = await ctx.db.insert('warmupStates', { profileId: profile._id, date: '2026-09-20', day: 1, runsToday: 1, todayMinutes: 30, minutesUsedToday: 10, updatedAt: 1 })
+    const idleWarmup = await ctx.db.insert('warmupStates', { profileId: profile._id, date: '2026-09-20', day: 1, runsToday: 1, todayMinutes: 30, minutesUsedToday: 10, })
     for (let i = 0; i < 101; i++) {
-      const profileId = await ctx.db.insert('profiles', { name: `Profile ${i}`, createdAt: 1, using: false })
-      await ctx.db.insert('warmupStates', { profileId, date: '2026-09-20', day: 1, runsToday: 1, todayMinutes: 30, minutesUsedToday: 10, activeRun: { id: `run-${i}`, minutes: 5, restMinutes: 60 }, updatedAt: 1 })
+      const profileId = await ctx.db.insert('profiles', { name: `Profile ${i}`, createdAt: 1, inUse: false })
+      await ctx.db.insert('warmupStates', { profileId, date: '2026-09-20', day: 1, runsToday: 1, todayMinutes: 30, minutesUsedToday: 10, activeRun: { id: `run-${i}`, minutes: 5, restMinutes: 60 }, })
     }
     return { idleWarmup }
   })
@@ -23,7 +23,7 @@ test('startup drains interrupted warmups without scanning leads', async () => {
     const warmups = await ctx.db.query('warmupStates').collect()
     expect(warmups.every(row => !row.activeRun)).toBe(true)
     expect(warmups.filter(row => row._id !== ids.idleWarmup).every(row => row.minutesUsedToday === 15)).toBe(true)
-    expect(await ctx.db.get(ids.idleWarmup)).toMatchObject({ minutesUsedToday: 10, updatedAt: 1 })
+    expect(await ctx.db.get(ids.idleWarmup)).toMatchObject({ minutesUsedToday: 10 })
 
   })
   expect(await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})).toEqual({ reconciled: 0 })
@@ -97,11 +97,11 @@ test('restart charges reserved time once without shortening an existing cooldown
     const warmup = await ctx.db.insert('warmupStates', {
       profileId: profile._id, date: '2026-10-01', day: 1, runsToday: 1,
       todayMinutes: 30, minutesUsedToday: 28, nextRunAt,
-      activeRun: { id: 'reserved-run', minutes: 5, restMinutes: 60 }, updatedAt: 1,
+      activeRun: { id: 'reserved-run', minutes: 5, restMinutes: 60 },
     })
     const progress = await ctx.db.insert('accountProgress', {
-      profileId: profile._id, paused: false, activeDays: 1, outreachDays: 1,
-      date: '2026-10-01', used: 10, allowance: 10, nextRunAt, startedAt: 1, updatedAt: 1,
+      profileId: profile._id, paused: false, activeDays: 1,
+      outreachUsedToday: 10, outreachAllowanceToday: 10, nextRunAt, updatedAt: 1,
     })
     return { warmup, progress }
   })

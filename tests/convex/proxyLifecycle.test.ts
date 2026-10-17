@@ -38,13 +38,13 @@ test('proxy edits atomically update all assigned profiles and retain their usage
   const saved = await t.mutation(api.proxies.create, { name: 'Shared', ...endpoint, maxProfiles: 2 })
   const first = await seedProfile(t, { name: 'A', ...endpoint })
   // Existing unnormalized rows must also follow edits.
-  const second = await insertDoc(t, 'profiles', { name: 'B', ...endpoint, using: false, createdAt: 1 })
+  const second = await insertDoc(t, 'profiles', { name: 'B', ...endpoint, inUse: false, createdAt: 1 })
   await t.mutation(api.proxies.update, {
     id: saved!._id, name: 'Shared', proxy: 'socks5://host:1080:user:new', proxyType: 'socks5', maxProfiles: 2,
   })
   for (const id of [first!._id, second!._id]) {
     expect(await t.run(ctx => ctx.db.get(id))).toMatchObject({
-      proxy: 'socks5://user:new@host:1080', proxyType: 'socks5', mode: 'proxy',
+      proxy: 'socks5://user:new@host:1080', proxyType: 'socks5',
     })
   }
   await expect(seedProfile(t, { name: 'C', proxy: 'socks5://user:new@host:1080' })).rejects.toThrow(/limit 2/)
@@ -54,7 +54,7 @@ test('connection changes are rejected while assigned profiles run', async () => 
   const t = createConvexTest()
   const p = await seedProfile(t, { name: 'A', ...endpoint })
   const [saved] = await t.query(api.proxies.list, {})
-  await t.run(ctx => ctx.db.patch(p!._id, { using: true, status: 'running' }))
+  await t.run(ctx => ctx.db.patch(p!._id, { inUse: true, status: 'running' }))
   await expect(t.mutation(api.proxies.update, {
     id: saved._id, name: saved.name, proxy: 'http://other:8080', proxyType: 'http',
   })).rejects.toThrow(/Stop assigned profiles/)

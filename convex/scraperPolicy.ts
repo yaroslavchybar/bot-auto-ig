@@ -2,8 +2,8 @@ import type { Doc, Id } from './_generated/dataModel'
 import type { QueryCtx } from './_generated/server'
 
 export const DAY = 86_400_000
-export const scraperBusy = (profile: Pick<Doc<'profiles'>, 'using' | 'status'>) =>
-  profile.using || profile.status === 'running'
+export const scraperBusy = (profile: Pick<Doc<'profiles'>, 'inUse' | 'status'>) =>
+  profile.inUse || profile.status === 'running'
 
 /** Worker subscriptions read only the metadata kept in sync by profile/session writes. */
 export async function scraperProfiles(ctx: Pick<QueryCtx, 'db'>) {

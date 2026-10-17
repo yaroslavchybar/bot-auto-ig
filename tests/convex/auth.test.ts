@@ -9,20 +9,13 @@ import { createUnauthenticatedConvexTest } from './helpers'
 test('allows unauthenticated public queries', async () => {
   const t = createUnauthenticatedConvexTest()
 
-  await expect(t.query(api.lists.list, {})).resolves.toEqual([])
+  await expect(t.query(api.models.list, {})).resolves.toEqual([])
   await expect(t.query(api.profiles.queries.list, {})).resolves.toEqual([])
   await expect(t.query(api.automations.queries.list, {})).resolves.toEqual([])
 })
 
 test('allows unauthenticated public mutations', async () => {
   const t = createUnauthenticatedConvexTest()
-
-  await expect(
-    t.mutation(api.messageTemplates.upsert, {
-      kind: 'intro',
-      texts: ['hello'],
-    }),
-  ).resolves.toBe(true)
 
   const created = await t.mutation(api.automations.mutations.create, {
     name: 'Automation A',

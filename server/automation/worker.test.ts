@@ -16,8 +16,8 @@ for (const initialState of ['empty', 'busy', 'cooldown'] as const) {
       if (u.endsWith('/api/profiles')) {
         const first = ++reads === 1
         return Response.json(first && initialState === 'empty' ? [] : [{
-          id: 'chosen', name: 'chosen', listIds: ['chosen'],
-          using: first && initialState === 'busy',
+          id: 'chosen', name: 'chosen', modelIds: ['chosen'],
+          inUse: first && initialState === 'busy',
           lastOpenedAt: first && initialState === 'cooldown' ? Date.now() : 0,
         }])
       }
@@ -49,7 +49,7 @@ test('retry skips completed profiles without launching or changing their status'
   let launches = 0
   globalThis.fetch = (async url => {
     assert.ok(String(url).endsWith('/api/profiles'))
-    return Response.json([{ name: 'done', id: 'done', listIds: ['chosen'], using: false }])
+    return Response.json([{ name: 'done', id: 'done', modelIds: ['chosen'], inUse: false }])
   }) as typeof fetch
   try {
     await runAutomation({ automation: {
@@ -67,7 +67,7 @@ for (const mode of ['routine', 'graph'] as const) {
     const config = { warmup_min_minutes: 30, warmup_max_minutes: 40 }
     globalThis.fetch = (async (url, init) => {
       const path = new URL(String(url)).pathname
-      if (path === '/api/profiles') return Response.json([{ id: 'rest-day', name: 'rest-day', listIds: ['chosen'], using: false }])
+      if (path === '/api/profiles') return Response.json([{ id: 'rest-day', name: 'rest-day', modelIds: ['chosen'], inUse: false }])
       if (path === '/api/warmup/by-profile') return Response.json(null)
       if (path === '/api/routines/ready') return Response.json(true)
       if (path === '/api/warmup/prepare') {
@@ -80,7 +80,7 @@ for (const mode of ['routine', 'graph'] as const) {
     }) as typeof fetch
     try {
       await runAutomation({ automation: mode === 'routine'
-        ? { routine: { activity: config }, listIds: ['chosen'] }
+        ? { routine: { activity: config }, modelIds: ['chosen'] }
         : { nodes: [
           { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
           { id: 'warm', data: { activityId: 'browse_feed', config } },
@@ -96,7 +96,7 @@ test('repeating warm-ups requeue completed profiles but never open resting or ex
   const originalFetch = globalThis.fetch
   setProfilePollIntervalMs(10)
   const date = new Date().toISOString().slice(0, 10)
-  const profiles = ['ready', 'resting', 'exhausted'].map(id => ({ name: id, id, listIds: ['chosen'], using: false }))
+  const profiles = ['ready', 'resting', 'exhausted'].map(id => ({ name: id, id, modelIds: ['chosen'], inUse: false }))
   let used = 0
   let nextRunAt = 0
   let checks = 0
@@ -134,7 +134,7 @@ test('repeating warm-ups requeue completed profiles but never open resting or ex
 
 test('close browser ends the session and final cleanup stays safe', async () => {
   const originalFetch = globalThis.fetch
-  const profile = { name: 'chosen', id: 'chosen', listIds: ['chosen'], using: false }
+  const profile = { name: 'chosen', id: 'chosen', modelIds: ['chosen'], inUse: false }
   globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
   const sessions: Array<{ closed: boolean; visits: number }> = []
   try {
@@ -155,7 +155,7 @@ test('close browser ends the session and final cleanup stays safe', async () => 
 
 test('nodes after close browser never run against the closed session', async () => {
   const originalFetch = globalThis.fetch
-  const profile = { name: 'chosen', id: 'chosen', listIds: ['chosen'], using: false }
+  const profile = { name: 'chosen', id: 'chosen', modelIds: ['chosen'], inUse: false }
   globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
   let navigations = 0
   try {
@@ -187,14 +187,14 @@ test('automation action failures reject the run and close the browser', async ()
         {
           name: 'excluded',
           id: 'other',
-          listIds: ['other'],
-          using: false,
+          modelIds: ['other'],
+          inUse: false,
         },
         {
           name: 'chosen',
           id: 'chosen',
-          listIds: ['chosen'],
-          using: false,
+          modelIds: ['chosen'],
+          inUse: false,
         },
       ])
     if (String(url).includes('/api/warmup/by-profile')) return Response.json(null)
@@ -265,8 +265,8 @@ test('browser startup failures never clear another session’s busy status', asy
       {
         name: 'chosen',
         id: 'chosen',
-        listIds: ['chosen'],
-        using: false,
+        modelIds: ['chosen'],
+        inUse: false,
       },
     ])
   }) as typeof fetch
@@ -301,7 +301,7 @@ test('browser startup failures never clear another session’s busy status', asy
 test('running automations pick up newly added profiles on each poll', async () => {
   setProfilePollIntervalMs(10)
   const originalFetch = globalThis.fetch
-  const profiles = [{ name: 'old', id: 'old', listIds: ['chosen'], using: false, proxy: 'proxy-a:8080' }]
+  const profiles = [{ name: 'old', id: 'old', modelIds: ['chosen'], inUse: false, proxy: 'proxy-a:8080' }]
   let watchChecks = 0
   globalThis.fetch = (async (url: RequestInfo | URL) => {
     const u = String(url)
@@ -311,8 +311,8 @@ test('running automations pick up newly added profiles on each poll', async () =
       if (watchChecks <= 2) {
         if (watchChecks === 1) {
           profiles.push(
-            { name: 'same', id: 'same', listIds: ['chosen'], using: false, proxy: 'proxy-a:8080' },
-            { name: 'different', id: 'different', listIds: ['chosen'], using: false, proxy: 'proxy-b:8080' },
+            { name: 'same', id: 'same', modelIds: ['chosen'], inUse: false, proxy: 'proxy-a:8080' },
+            { name: 'different', id: 'different', modelIds: ['chosen'], inUse: false, proxy: 'proxy-b:8080' },
           )
         }
         return Response.json({ status: 'running', isActive: true })
@@ -350,7 +350,7 @@ test('running automations pick up newly added profiles on each poll', async () =
 test('queue interleaves proxies after excluding completed checkpoints', async () => {
   const originalFetch = globalThis.fetch
   const profiles = ['a1', 'a2', 'b1', 'b2', 'b3'].map(id => ({
-    id, name: id, listIds: ['chosen'], using: false, proxy: `proxy-${id[0]}:8080`,
+    id, name: id, modelIds: ['chosen'], inUse: false, proxy: `proxy-${id[0]}:8080`,
   }))
   globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? profiles : {})) as typeof fetch
   const opened: string[] = []

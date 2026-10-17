@@ -1,32 +1,32 @@
 import { ModelContentProvider } from './hooks/useModelContent'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ModelCreateForm } from './components/ModelCreateForm'
-import { ListsList } from './components/ListsList'
+import { ModelsList } from './components/ModelsList'
 import { ModelContentPanel } from './components/ModelContentPanel'
 import { ModelIdentityPanel } from './components/ModelIdentityPanel'
 import { ModelProfilesPanel } from './components/ModelProfilesPanel'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useListsPage } from './hooks/useListsPage'
+import { useModelsPage } from './hooks/useModelsPage'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 
-export function ListsPage() {
+export function ModelsPage() {
   return (
     <ModelContentProvider>
-      <ListsPageContent />
+      <ModelsPageContent />
     </ModelContentProvider>
   )
 }
 
-function ListsPageContent() {
-  const state = useListsPage()
+function ModelsPageContent() {
+  const state = useModelsPage()
   const [contentModelId, setContentModelId] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<'content' | 'names' | 'profiles'>('content')
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set(['content']))
-  const contentModel = state.lists.find((model) => model.id === contentModelId)
+  const contentModel = state.models.find((model) => model.id === contentModelId)
 
   return (
     <div className="relative flex h-full flex-col bg-shell text-ink">
@@ -34,8 +34,8 @@ function ListsPageContent() {
 
       <div className="relative z-10 flex-1 overflow-auto px-4 pt-2 pb-4 md:px-6 md:pt-3 md:pb-6">
         <div className="mx-auto max-w-[2000px]">
-          <ListsList
-            lists={state.lists}
+          <ModelsList
+            models={state.models}
             loading={state.loading}
             onOpenContent={(model) => {
               setContentModelId(model.id)
@@ -52,7 +52,7 @@ function ListsPageContent() {
         </div>
       </div>
 
-      <ListsDialogs state={state} />
+      <ModelsDialogs state={state} />
       <Dialog
         open={Boolean(contentModel)}
         onOpenChange={(open) => {
@@ -159,7 +159,7 @@ function ListsHeader({
   )
 }
 
-function ListsDialogs({ state }: { state: ReturnType<typeof useListsPage> }) {
+function ModelsDialogs({ state }: { state: ReturnType<typeof useModelsPage> }) {
   return (
     <>
       <Dialog open={state.isCreateOpen} onOpenChange={state.setIsCreateOpen}>
@@ -176,17 +176,17 @@ function ListsDialogs({ state }: { state: ReturnType<typeof useListsPage> }) {
         </DialogContent>
       </Dialog>
 
-      {state.deleteListTarget ? (
+      {state.deleteModelTarget ? (
         <ConfirmDeleteDialog
-          open={Boolean(state.deleteListTarget)}
+          open={Boolean(state.deleteModelTarget)}
           title="Delete Model?"
           entityLabel=""
-          itemName={state.deleteListTarget.name}
+          itemName={state.deleteModelTarget.name}
           confirmLabel="Delete Model"
           saving={state.saving}
           error={null}
           onConfirm={state.handleDelete}
-          onCancel={() => state.setDeleteListTargetId(null)}
+          onCancel={() => state.setDeleteModelTargetId(null)}
         />
       ) : null}
     </>

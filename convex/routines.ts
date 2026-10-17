@@ -11,7 +11,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { followAllowance, dayKey, routineLists, profileOutreachRoutes } from "./routinePolicy";
+import { outreachAllowance, dayKey, routineModels, profileOutreachRoutes } from "./routinePolicy";
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
 import { leadAvailable, setLeadAvailability } from './leadMemberships';
 import { isRetryableRoutineIssue, isRoutineLoginIssue, ROUTINE_RETRY_MS, routineRetryState,
@@ -41,8 +41,8 @@ export async function assertAssignments(
   const active = automations.filter((a) => a.isActive !== false);
   for (const profile of await ctx.db.query("profiles").collect()) {
     const matches = active.filter((a) =>
-      routineLists(a).some((id) =>
-        profile.listIds?.includes(id as Id<"lists">)),
+      routineModels(a).some((id) =>
+        profile.modelIds?.includes(id as Id<"models">)),
     );
     if (matches.length > 1)
       throw new Error(
@@ -60,12 +60,9 @@ export async function ensureProgress(ctx: MutationCtx, profileId: Id<"profiles">
     profileId,
     paused: false,
     activeDays: 0,
-    outreachDays: 0,
-    date: "",
-    used: 0,
-    allowance: 0,
+    outreachUsedToday: 0,
+    outreachAllowanceToday: 0,
     nextRunAt: 0,
-    startedAt: Date.now(),
     updatedAt: Date.now(),
   });
   return (await ctx.db.get(id))!;
@@ -86,7 +83,7 @@ export async function eligibility(
     !p ||
     p.paused ||
     p.status === "deleting" ||
-    p.renameFrom
+    p.pendingRenameFrom
   )
     return null;
   const igAccount = p.igAccountId ? await ctx.db.get(p.igAccountId) : null;
@@ -94,12 +91,12 @@ export async function eligibility(
   if (p.igAccountId && igAccount?.status !== 'connected' &&
     !(igAccount?.status === 'assigned' && igAccount.browserLoggedInAt))
     return null;
-  if (!routineLists(a).some((id) => p.listIds?.includes(id as Id<"lists">)))
+  if (!routineModels(a).some((id) => p.modelIds?.includes(id as Id<"models">)))
     return null;
   const matches = (await ctx.db.query("automations").collect()).filter(
     (other) =>
       other.isActive !== false &&
-      routineLists(other).some((id) => p.listIds?.includes(id as Id<"lists">)),
+      routineModels(other).some((id) => p.modelIds?.includes(id as Id<"models">)),
   );
   if (matches.length !== 1 || !p.igLoggedIn || state?.paused || state?.issue)
     return null;
@@ -156,7 +153,7 @@ export const accounts = query({
     const a = await ctx.db.get(automationId);
     if (!a) return [];
     const profiles = (await ctx.db.query("profiles").collect()).filter((p) =>
-      routineLists(a).some((id) => p.listIds?.includes(id as Id<"lists">)),
+      routineModels(a).some((id) => p.modelIds?.includes(id as Id<"models">)),
     );
     return Promise.all(
       profiles.map(async (p) => {
@@ -178,17 +175,17 @@ export const accounts = query({
               ? "Warm-up"
               : "Outreach",
           activeDays: state?.activeDays ?? 0,
-          used: state?.followQuotaDate === date ? state.used : 0,
-          sent: state?.dmDate === date ? (state.sentToday ?? 0) : 0,
-          followed: state?.followQuotaDate === date ? (state.followedToday ?? 0) : 0,
+          used: state?.outreachQuotaDate === date ? state.outreachUsedToday : 0,
+          sent: state?.dmCountDate === date ? (state.sentToday ?? 0) : 0,
+          followed: state?.outreachQuotaDate === date ? (state.followedToday ?? 0) : 0,
           budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
           allowance:
             a.routine && a.routine.outreachEnabled && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
-              ? state?.followQuotaDate === date
-                ? state.allowance
-                : followAllowance(
+              ? state?.outreachQuotaDate === date
+                ? state.outreachAllowanceToday
+                : outreachAllowance(
                     a.routine,
-                    state?.followIncrease ?? 0)
+                    state?.outreachIncrease ?? 0)
               : 0,
           nextRunAt: state?.nextRunAt,
         };
@@ -206,11 +203,11 @@ export const target = internalQuery({
       !e.profile.outreachReady || !e.policy.outreachEnabled || !profileOutreachRoutes(e.policy, args.profileId).length) return { target: 0, remaining: 0, sent: 0 };
     const today = dayKey();
     const s = e.state;
-    const allowance = Math.min(e.policy.maxDms, s?.followQuotaDate === today ? s.allowance
-      : followAllowance(e.policy, s?.followIncrease ?? 0),
+    const allowance = Math.min(e.policy.maxDms, s?.outreachQuotaDate === today ? s.outreachAllowanceToday
+      : outreachAllowance(e.policy, s?.outreachIncrease ?? 0),
     );
-    return { target: allowance, remaining: Math.max(0, allowance - (s?.followQuotaDate === today ? s.used : 0)),
-      sent: s?.followQuotaDate === today ? (s.followedToday ?? 0) : 0,
+    return { target: allowance, remaining: Math.max(0, allowance - (s?.outreachQuotaDate === today ? s.outreachUsedToday : 0)),
+      sent: s?.outreachQuotaDate === today ? (s.followedToday ?? 0) : 0,
     };
   },
 });
@@ -296,8 +293,8 @@ export const reserve = internalMutation({
     if (!routes.length) return null;
     const date = dayKey();
     const state = await ensureProgress(ctx, args.profileId);
-    const used = state.followQuotaDate === date ? state.used : 0;
-    const allowance = Math.min(e.policy.maxDms, state.followQuotaDate === date ? state.allowance : followAllowance(e.policy, state.followIncrease ?? 0),
+    const used = state.outreachQuotaDate === date ? state.outreachUsedToday : 0;
+    const allowance = Math.min(e.policy.maxDms, state.outreachQuotaDate === date ? state.outreachAllowanceToday : outreachAllowance(e.policy, state.outreachIncrease ?? 0),
     );
     if (used >= allowance) return null;
     let lead: Doc<'leads'> | undefined;
@@ -318,12 +315,12 @@ export const reserve = internalMutation({
           }
           if ((candidate.screeningUntil ?? 0) > Date.now()) continue
           if (
-            candidate.enrichedAt !== undefined &&
+            candidate.screenedAt !== undefined &&
             candidate.classification &&
             // A category this policy excludes, or a male lead that failed the
             // English text check, is never screened again by the same policy.
             (!(e.policy.allowedCategories ?? ['male']).includes(candidate.classification) ||
-              (candidate.classification === 'male' && candidate.followCheckPassed !== true))
+              (candidate.classification === 'male' && candidate.englishTextCheckPassed !== true))
           )
             continue
           lead = candidate
@@ -362,7 +359,7 @@ export const beginFollow = internalMutation({
     const now = args.now ?? Date.now();
     const today = dayKey(now);
     const allowed = !!(lead && lead.senderId === args.profileId &&
-      lead.enrichedAt !== undefined &&
+      lead.screenedAt !== undefined &&
       lead.classification &&
       lead.isPrivate === true &&
       e &&
@@ -376,14 +373,14 @@ export const beginFollow = internalMutation({
     if (!allowed || !lead || !e) return false;
     // Screening already reserves the initial day's slot. A later-day follow
     // must reserve today's slot in the same transaction as its follow intent.
-    if (dayKey(lead.enrichedAt!) !== today) {
+    if (dayKey(lead.screenedAt!) !== today) {
       const state = await ensureProgress(ctx, args.profileId);
-      const used = state.followQuotaDate === today ? state.used : 0;
-      const allowance = Math.min(e.policy.maxDms, state.followQuotaDate === today
-        ? state.allowance : followAllowance(e.policy, state.followIncrease ?? 0));
+      const used = state.outreachQuotaDate === today ? state.outreachUsedToday : 0;
+      const allowance = Math.min(e.policy.maxDms, state.outreachQuotaDate === today
+        ? state.outreachAllowanceToday : outreachAllowance(e.policy, state.outreachIncrease ?? 0));
       if (used >= allowance) return false;
-      await ctx.db.patch(state._id, { date: today, followQuotaDate: today, used: used + 1, allowance,
-        followedToday: state.followQuotaDate === today ? (state.followedToday ?? 0) : 0, updatedAt: now });
+      await ctx.db.patch(state._id, { outreachQuotaDate: today, outreachUsedToday: used + 1, outreachAllowanceToday: allowance,
+        followedToday: state.outreachQuotaDate === today ? (state.followedToday ?? 0) : 0, updatedAt: now });
     }
     // Persist cleanup intent before the browser click, including a lost confirmation/restart.
     await ctx.db.patch(lead._id, { followStartedAt: now, unfollowAt: now + (lead.unfollowDays ?? 7) * 86_400_000,
@@ -506,9 +503,9 @@ export const finishSend = internalMutation({
     if (!state) return;
     if (args.sent) {
       await ctx.db.patch(state._id, {
-        ...(!lead.followed ? outreachDayProgress(state, args.date, Date.now()) : {}),
-        dmDate: args.date,
-        sentToday: (state.dmDate === args.date ? (state.sentToday ?? 0) : 0) + 1,
+        ...(!lead.followed ? outreachDayProgress(state, args.date) : {}),
+        dmCountDate: args.date,
+        sentToday: (state.dmCountDate === args.date ? (state.sentToday ?? 0) : 0) + 1,
       });
     } else if (args.blocked) {
       // A confirmed blocked message is never retried.
@@ -523,13 +520,11 @@ export const finishSend = internalMutation({
 
 const followDelay = 7 * 24 * 60 * 60_000;
 
-function outreachDayProgress(state: Doc<'accountProgress'>, date: string, now: number) {
+function outreachDayProgress(state: Doc<'accountProgress'>, date: string) {
   const firstToday = (state.lastOutreachDate ?? state.lastFollowDate) !== date;
   return {
-    outreachDays: state.outreachDays + (firstToday ? 1 : 0),
-    followIncrease: (state.followIncrease ?? 0) + (firstToday ? 1 + Math.floor(Math.random() * 4) : 0),
+    outreachIncrease: (state.outreachIncrease ?? 0) + (firstToday ? 1 + Math.floor(Math.random() * 4) : 0),
     lastOutreachDate: date,
-    outreachStartedAt: state.outreachStartedAt ?? now,
   };
 }
 export const followTasks = internalQuery({
@@ -575,9 +570,9 @@ export const recordFollow = internalMutation({
       const date = dayKey(now);
       await recordActivity(ctx, date, { follows: 1 });
       await ctx.db.patch(state._id, {
-        ...outreachDayProgress(state, date, lead.followStartedAt ?? now),
+        ...outreachDayProgress(state, date),
         lastFollowDate: date,
-        ...(state.followQuotaDate === date ? { followedToday: (state.followedToday ?? 0) + 1 } : {}),
+        ...(state.outreachQuotaDate === date ? { followedToday: (state.followedToday ?? 0) + 1 } : {}),
       });
     }
   },

@@ -13,9 +13,9 @@ export function mapProfileRecord(
     | 'proxyType'
     | 'fingerprintOs'
     | 'status'
-    | 'using'
+    | 'inUse'
     | 'paused'
-    | 'renameFrom'
+    | 'pendingRenameFrom'
     | 'igLoggedIn'
     | 'outreachReady'
     | 'unreadChatCount'
@@ -31,9 +31,9 @@ export function mapProfileRecord(
     proxyType: record.proxyType,
     fingerprintOs: record.fingerprintOs,
     status: record.status,
-    using: record.using,
+    inUse: record.inUse,
     paused: record.paused,
-    renameFrom: record.renameFrom,
+    pendingRenameFrom: record.pendingRenameFrom,
     igLoggedIn: record.igLoggedIn,
     outreachReady: record.outreachReady,
     unreadChatCount: record.unreadChatCount,

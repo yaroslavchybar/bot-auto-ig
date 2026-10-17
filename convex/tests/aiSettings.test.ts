@@ -1,25 +1,25 @@
 import { expect, test } from 'vite-plus/test'
 import { api } from '../_generated/api'
 import { defaultRoutine } from '../routinePolicy'
-import { createConvexTest, seedList } from '../../tests/convex/helpers'
+import { createConvexTest, seedModel } from '../../tests/convex/helpers'
 
 test('AI settings save per automation and reset without affecting another automation', async () => {
   const t = createConvexTest(),
-    first = await seedList(t),
-    second = await seedList(t, 'Second model')
+    first = await seedModel(t),
+    second = await seedModel(t, 'Second model')
   const ai = { interestMatch: { model: 'liquid/d1-ultra', prompt: 'Only fishing activities.' } }
   const a = await t.mutation(api.automations.mutations.create, {
     name: 'First',
     nodes: [],
     edges: [],
-    listIds: [first!._id],
+    modelIds: [first!._id],
     routine: { ...defaultRoutine, ai },
   })
   const b = await t.mutation(api.automations.mutations.create, {
     name: 'Second',
     nodes: [],
     edges: [],
-    listIds: [second!._id],
+    modelIds: [second!._id],
     routine: defaultRoutine,
   })
   expect(a?.routine?.ai).toEqual(ai)
@@ -33,7 +33,7 @@ test('AI settings save per automation and reset without affecting another automa
 
 test('saved profile screening prompts and models round-trip and reject unusable ones', async () => {
   const t = createConvexTest(),
-    list = await seedList(t)
+    list = await seedModel(t)
   const profileScreening = {
     model: 'typesafe/jev-1.14',
     followModel: 'typesafe/jev-1.14',
@@ -50,7 +50,7 @@ test('saved profile screening prompts and models round-trip and reject unusable 
     name: 'Screening',
     nodes: [],
     edges: [],
-    listIds: [list!._id],
+    modelIds: [list!._id],
     routine: { ...defaultRoutine, ai: { profileScreening } },
   })
   expect(created?.routine?.ai?.profileScreening).toEqual(profileScreening)

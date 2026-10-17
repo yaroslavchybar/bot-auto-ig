@@ -1,11 +1,11 @@
 import { expect, test } from 'vite-plus/test'
 import { api } from '../_generated/api'
 import { defaultRoutine, validateRoutine } from '../routinePolicy'
-import { createConvexTest, seedList } from '../../tests/convex/helpers'
+import { createConvexTest, seedModel } from '../../tests/convex/helpers'
 
 test('automation interest tags and rewritten intent persist and can be removed without restoring old topics', async () => {
   const t = createConvexTest(),
-    list = await seedList(t)
+    list = await seedModel(t)
   const interests = [
     { label: 'fishing content', description: 'Fishing techniques, catches, and angling trips.' },
     { label: 'ecom income', description: 'Practical advice on earning income through e-commerce.' },
@@ -14,7 +14,7 @@ test('automation interest tags and rewritten intent persist and can be removed w
     name: 'Interests',
     nodes: [],
     edges: [],
-    listIds: [list!._id],
+    modelIds: [list!._id],
     routine: { ...defaultRoutine, interests },
   })
   expect(automation?.routine?.interests).toEqual(interests)

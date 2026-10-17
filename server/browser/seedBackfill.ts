@@ -7,7 +7,7 @@ import { profilesList, profilesUpdateByName } from '../shared/convexClient.js'
 export async function backfillLocalCloakSeeds(): Promise<number> {
   let saved = 0
   for (const profile of await profilesList()) {
-    if (Number.isSafeInteger(profile.fingerprintSeed) || profile.status === 'deleting' || profile.renameFrom) continue
+    if (Number.isSafeInteger(profile.fingerprintSeed) || profile.status === 'deleting' || profile.pendingRenameFrom) continue
     let raw: string
     try {
       raw = fs.readFileSync(path.join(profileDirectory(profile.name), 'cloak-seed.json'), 'utf8')

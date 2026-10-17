@@ -1,17 +1,17 @@
 import { expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { defaultRoutine } from '../../convex/routinePolicy'
-import { createConvexTest, seedList, seedProfile } from './helpers'
+import { createConvexTest, seedModel, seedProfile } from './helpers'
 
 async function setup(min = 3, max = 6) {
   const t = createConvexTest()
-  const model = (await seedList(t))!
+  const model = (await seedModel(t))!
   const automation = (await t.mutation(api.automations.mutations.create, {
-    name: 'Random setup', nodes: [], edges: [], listIds: [model._id],
+    name: 'Random setup', nodes: [], edges: [], modelIds: [model._id],
     routine: { ...defaultRoutine, warmupMinPosts: min, warmupMaxPosts: max },
   }))!
   const profile = (await seedProfile(t))!
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: model._id })
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: model._id })
   const enroll = () => t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
     profileId: profile._id, modelId: model._id, startedAt: 1,
   })
@@ -25,7 +25,7 @@ test('each account draws and retains its own warm-up post target', async () => {
     expect((await enroll())?.postTarget).toBe(3)
     rng.mockReturnValue(0.999)
     const other = (await seedProfile(t, { name: 'Other' }))!
-    await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [other._id], listId: model._id })
+    await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [other._id], modelId: model._id })
     expect((await t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
       profileId: other._id, modelId: model._id, startedAt: 1,
     }))?.postTarget).toBe(6)
@@ -45,28 +45,28 @@ test('returning to the same model restores completed setup without resetting act
   const savedSetup = (await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]
   await t.run(async ctx => {
     await ctx.db.insert('accountProgress', { profileId: profile._id, paused: false, activeDays: 20,
-      outreachDays: 4, date: '', used: 0, allowance: 0, nextRunAt: 0, startedAt: 1, updatedAt: 1 })
+      outreachUsedToday: 0, outreachAllowanceToday: 0, nextRunAt: 0, updatedAt: 1 })
     await ctx.db.insert('warmupStates', { profileId: profile._id, day: 20, date: '2026-09-27',
-      runsToday: 2, todayMinutes: 30, minutesUsedToday: 15, updatedAt: 1 })
+      runsToday: 2, todayMinutes: 30, minutesUsedToday: 15, })
   })
   const activity = await t.run(async ctx => ({ progress: await ctx.db.query('accountProgress').unique(),
     warmup: await ctx.db.query('warmupStates').unique() }))
-  await t.mutation(api.profiles.mutations.bulkRemoveFromList, { profileIds: [profile._id], listId: model._id })
+  await t.mutation(api.profiles.mutations.bulkRemoveFromModel, { profileIds: [profile._id], modelId: model._id })
   expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(false)
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: model._id })
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: model._id })
   expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true)
   expect(await enroll()).toEqual(savedSetup)
   expect(await t.run(async ctx => ({ progress: await ctx.db.query('accountProgress').unique(),
     warmup: await ctx.db.query('warmupStates').unique() }))).toEqual(activity)
-  const other = (await seedList(t, 'Other model'))!
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: other._id })
+  const other = (await seedModel(t, 'Other model'))!
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: other._id })
   expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(false)
 })
 
 test.each(['unfinished', 'invalid posts', 'pending'])('returning to a model does not restore %s setup', async reason => {
   const { t, model, profile, enroll } = await setup(3, 3)
   const state = (await enroll())!
-  await t.mutation(api.profiles.mutations.bulkRemoveFromList, { profileIds: [profile._id], listId: model._id })
+  await t.mutation(api.profiles.mutations.bulkRemoveFromModel, { profileIds: [profile._id], modelId: model._id })
   // An already detached setup may carry stale completion or an uncertain action.
   await t.run(ctx => ctx.db.patch(state._id, {
     postSourceIds: ['p1', 'p2', 'p3'],
@@ -76,10 +76,10 @@ test.each(['unfinished', 'invalid posts', 'pending'])('returning to a model does
   }))
   if (reason === 'pending') {
     // Membership changes correctly reject uncertain actions, preserving the false flag.
-    await expect(t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: model._id }))
+    await expect(t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: model._id }))
       .rejects.toThrow('Resolve the pending')
   } else {
-    await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: model._id })
+    await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: model._id })
   }
   expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(false)
 })
@@ -150,7 +150,7 @@ test('changing the range updates unfinished setups and preserves completed accou
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: model._id,
     patch: { postSourceIds: ['p1', 'p2'], postDates: ['2026-09-25', '2026-09-26'] }, clear: [] })
   const done = (await seedProfile(t, { name: 'Done' }))!
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [done._id], listId: model._id })
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [done._id], modelId: model._id })
   await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: done._id, modelId: model._id, startedAt: 1 })
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: done._id, modelId: model._id,
     patch: { postSourceIds: Array.from({ length: 9 }, (_, i) => `p${i}`),
@@ -175,10 +175,10 @@ test('changing the range updates unfinished setups and preserves completed accou
 test.each([2, 3])('a model-only update applies the existing policy to destination accounts with %s posts', async postCount => {
   const { t, automation, profile, enroll } = await setup(3, 6)
   const sourceState = await enroll()
-  const destination = (await seedList(t, 'Destination'))!
+  const destination = (await seedModel(t, 'Destination'))!
   const recipient = (await seedProfile(t, { name: 'Destination account' }))!
-  await t.mutation(api.profiles.mutations.bulkAddToList, {
-    profileIds: [recipient._id], listId: destination._id,
+  await t.mutation(api.profiles.mutations.bulkAddToModel, {
+    profileIds: [recipient._id], modelId: destination._id,
   })
   await t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
     profileId: recipient._id, modelId: destination._id, startedAt: 1,
@@ -191,7 +191,7 @@ test.each([2, 3])('a model-only update applies the existing policy to destinatio
   const rng = vi.spyOn(Math, 'random').mockReturnValue(0)
   try {
     const updated = await t.mutation(api.automations.mutations.update, {
-      id: automation._id, listIds: [destination._id],
+      id: automation._id, modelIds: [destination._id],
     })
     expect(updated?.routine).toEqual(automation.routine)
     const states = await t.query(internal.igAccounts.modelSetupListInternal, {})
@@ -203,7 +203,7 @@ test.each([2, 3])('a model-only update applies the existing policy to destinatio
     expect(states.find(row => row.profileId === profile._id)).toEqual(sourceState)
     rng.mockReturnValue(0.999)
     await t.mutation(api.automations.mutations.update, {
-      id: automation._id, listIds: [destination._id],
+      id: automation._id, modelIds: [destination._id],
     })
     expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))
       .find(row => row.profileId === recipient._id)?.postTarget).toBe(3)

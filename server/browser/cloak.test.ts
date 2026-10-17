@@ -38,7 +38,7 @@ test('missing and pending profiles cannot recreate folders and always release th
     const { openBrowserSession } = await import('./server/browser/cloak.ts')
 
     try {
-      for (const value of [null, { name: 'test', status: 'deleting' }, { name: 'test', renameFrom: 'old' }]) {
+      for (const value of [null, { name: 'test', status: 'deleting' }, { name: 'test', pendingRenameFrom: 'old' }]) {
         row = value
         await assert.rejects(openBrowserSession('test'), /not found|maintenance/)
         assert.equal(fs.existsSync(path.join(root, 'data/profiles/test')), false)

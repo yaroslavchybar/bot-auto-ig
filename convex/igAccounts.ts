@@ -128,7 +128,7 @@ export const loginWork = query({
         .filter((row) => row.profileId)
         .map(async (row) => {
           const profile = await ctx.db.get(row.profileId!)
-          return profile && !profile.paused && profile.status !== 'deleting' && !profile.renameFrom
+          return profile && !profile.paused && profile.status !== 'deleting' && !profile.pendingRenameFrom
             ? { profileId: row.profileId!, retryAfter: row.retryAfter ?? 0 }
             : null
         }),
@@ -152,9 +152,9 @@ export const connectedNamesInternal = internalQuery({
           return {
             account,
             profileName: profile?.name,
-            renameFrom: profile?.renameFrom,
+            pendingRenameFrom: profile?.pendingRenameFrom,
             profileStatus: profile?.status,
-            profileUsing: profile?.using,
+            profileUsing: profile?.inUse,
           }
         }),
       ),
@@ -180,12 +180,12 @@ export const modelSetupListInternal = internalQuery({
 })
 
 export const modelSetupEnrollInternal = internalMutation({
-  args: { profileId: v.id('profiles'), modelId: v.id('lists'), startedAt: v.number() },
+  args: { profileId: v.id('profiles'), modelId: v.id('models'), startedAt: v.number() },
   handler: async (ctx, { profileId, modelId, startedAt }) => {
     if (startedAt < 1 || !Number.isSafeInteger(Math.ceil(startedAt)))
       throw new DomainError('VALIDATION', 'Invalid setup start time')
     const profile = await ctx.db.get(profileId)
-    if (!profile?.listIds?.includes(modelId) || !(await ctx.db.get(modelId)))
+    if (!profile?.modelIds?.includes(modelId) || !(await ctx.db.get(modelId)))
       throw new DomainError('VALIDATION', 'Profile is not assigned to this model')
     const existing = await ctx.db
       .query('modelSetupStates')
@@ -218,9 +218,8 @@ export const modelSetupEnrollInternal = internalMutation({
 const modelSetupPatchKeys = new Set([
   'targetUsername',
   'fullName',
-  'nameDone',
+  'usernameDone',
   'fullNameDone',
-  'avatarSourceId',
   'avatarDone',
   'postSourceIds',
   'postDates',
@@ -232,7 +231,7 @@ const modelSetupPatchKeys = new Set([
 export const modelSetupPatchInternal = internalMutation({
   args: {
     profileId: v.id('profiles'),
-    modelId: v.id('lists'),
+    modelId: v.id('models'),
     patch: v.any(),
     clear: v.array(v.string()),
   },
@@ -262,7 +261,7 @@ export const modelSetupPatchInternal = internalMutation({
       .first()
     if (!state) throw new DomainError('NOT_FOUND', 'Model setup not found')
     const profile = await ctx.db.get(profileId)
-    if (state.modelId !== modelId || !profile?.listIds?.includes(modelId))
+    if (state.modelId !== modelId || !profile?.modelIds?.includes(modelId))
       throw new DomainError('CONFLICT', 'Profile moved to another model')
     const postsChanged = patch.postSourceIds !== undefined || patch.postDates !== undefined
     const ready = recordedPostsReady(
@@ -297,14 +296,14 @@ export const modelSetupReconcileInternal = internalMutation({
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .first()
     const profile = await ctx.db.get(profileId)
-    if (!state?.pending || !profile?.listIds?.includes(state.modelId))
+    if (!state?.pending || !profile?.modelIds?.includes(state.modelId))
       throw new DomainError('CONFLICT', 'No active model setup action needs review')
     const action = state.pending
     if (resolution === 'failed') {
       await ctx.db.patch(state._id, { pending: undefined, error: undefined })
-    } else if (action.kind === 'username' || action.kind === 'name') {
+    } else if (action.kind === 'username') {
       if (!state.targetUsername) throw new DomainError('VALIDATION', 'Target username is missing')
-      await ctx.db.patch(state._id, { nameDone: true, pending: undefined, error: undefined })
+      await ctx.db.patch(state._id, { usernameDone: true, pending: undefined, error: undefined })
     } else if (action.kind === 'fullName') {
       if (!state.fullName) throw new DomainError('VALIDATION', 'Target full name is missing')
       await ctx.db.patch(state._id, { fullNameDone: true, pending: undefined, error: undefined })
@@ -330,7 +329,7 @@ export const modelSetupReconcileInternal = internalMutation({
 })
 
 export const modelSetupGroupNameInternal = internalQuery({
-  args: { modelId: v.id('lists'), group: v.number() },
+  args: { modelId: v.id('models'), group: v.number() },
   handler: async (ctx, { modelId, group }) =>
     (
       await ctx.db
@@ -341,7 +340,7 @@ export const modelSetupGroupNameInternal = internalQuery({
 })
 
 export const modelSetupSaveGroupNameInternal = internalMutation({
-  args: { modelId: v.id('lists'), group: v.number(), name: v.string() },
+  args: { modelId: v.id('models'), group: v.number(), name: v.string() },
   handler: async (ctx, { modelId, group, name }) => {
     const existing = await ctx.db
       .query('modelSetupGroupNames')

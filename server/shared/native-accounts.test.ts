@@ -53,14 +53,14 @@ for (const outcome of ['applied', 'uncertain', 'disconnect']) {
       }
       await new Promise((resolve) => setTimeout(resolve, 30))
       if (outcome === 'applied') {
-        expect(native.states[0].nameDone).toBe(true)
+        expect(native.states[0].usernameDone).toBe(true)
         expect(native.states[0].pending).toBeUndefined()
         const credentials = await (
           await fetch(native.publicUrl + '/api/ig-accounts/credentials/a0')
         ).json()
         expect(credentials.username).toBe('new')
         expect(native.profile!.name).toBe('Old')
-        expect(native.profile!.using).toBe(true)
+        expect(native.profile!.inUse).toBe(true)
       } else {
         expect(native.states[0].pending.kind).toBe('username')
         const retry = await lease(native, '/accounts/setup-lease', {
@@ -83,9 +83,9 @@ async function fixture() {
     id: 'p',
     name: 'Old',
     status: 'running',
-    using: true,
+    inUse: true,
     cookiesJson: '[]',
-    listIds: ['model'],
+    modelIds: ['model'],
     igLoggedIn: true,
     proxy: 'work.test:80',
   }
@@ -103,22 +103,22 @@ async function fixture() {
     res.setHeader('Content-Type', 'application/json')
     const reply = (value: unknown) => res.end(JSON.stringify(value))
     calls.push(route + ':' + (body.operation || req.method))
-    if (route === '/api/lists') return reply([{ id: 'model', usernames: ['new', 'other'] }])
+    if (route === '/api/models') return reply([{ id: 'model', usernames: ['new', 'other'] }])
     if (route === '/api/automations/by-id')
-      return reply({ isActive: true, routine: {}, listIds: ['model'] })
+      return reply({ isActive: true, routine: {}, modelIds: ['model'] })
     if (route === '/api/routines/ready') return reply(true)
     if (route === '/api/profiles/by-id' || route === '/api/profiles/by-name') return reply(profile)
     if (route === '/api/profiles' && req.method === 'GET') return reply(profile ? [profile] : [])
     if (route === '/api/profiles/sync-status') {
-      profile = { ...profile!, status: body.status, using: body.using }
+      profile = { ...profile!, status: body.status, inUse: body.inUse }
       return reply({ ok: true })
     }
     if (route === '/api/profiles/update-by-name') {
-      profile = { ...profile!, ...body, renameFrom: body.oldName }
+      profile = { ...profile!, ...body, pendingRenameFrom: body.oldName }
       return reply(profile)
     }
     if (route === '/api/profiles/finish-rename') {
-      delete profile!.renameFrom
+      delete profile!.pendingRenameFrom
       return reply({ ok: true })
     }
     if (route === '/api/profiles/begin-delete') {
@@ -283,7 +283,7 @@ test('Rust owns profile locks, rename, restart cleanup and reconciliation withou
     expect(() => db.exec('BEGIN IMMEDIATE')).toThrow()
     db.close()
     expect((await native.internal('/profiles/reconcile')).status).toBe(200)
-    expect(native.profile!.using).toBe(true)
+    expect(native.profile!.inUse).toBe(true)
     const renamedWhileOpen = await fetch(native.publicUrl + '/api/profiles/Old', {
       method: 'PUT',
       body: JSON.stringify({ name: 'New' }),
@@ -305,7 +305,7 @@ test('Rust owns profile locks, rename, restart cleanup and reconciliation withou
     expect(await fs.readFile(path.join(native.root, 'data/profiles/New/cookies'), 'utf8')).toBe(
       'preserve',
     )
-    expect(native.profile!.renameFrom).toBeUndefined()
+    expect(native.profile!.pendingRenameFrom).toBeUndefined()
     expect(await (await native.internal('/profiles/reconcile')).json()).toEqual({
       cleared: 1,
       errors: [],

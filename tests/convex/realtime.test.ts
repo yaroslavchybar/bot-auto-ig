@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vite-plus/test'
 
 import { api, internal } from '../../convex/_generated/api'
-import { createConvexTest, insertDoc, seedList, seedAutomation } from './helpers'
+import { createConvexTest, insertDoc, seedModel, seedAutomation } from './helpers'
 
 function stubBridgeKey(key: string) {
   vi.stubGlobal('process', { env: { INTERNAL_API_KEY: key } })
@@ -9,28 +9,27 @@ function stubBridgeKey(key: string) {
 
 test('lists.remove cleans up assignment rows', async () => {
   const t = createConvexTest()
-  const list = await seedList(t, 'List A')
+  const list = await seedModel(t, 'List A')
   const profile = await insertDoc(t, 'profiles', {
     createdAt: Date.now(),
     name: 'Profile A',
-    using: false,
-    mode: 'direct',
-    listIds: [],
+    inUse: false,
+    modelIds: [],
   })
 
-  await t.mutation(api.profiles.mutations.bulkAddToList, {
+  await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [profile!._id],
-    listId: list!._id,
+    modelId: list!._id,
   })
   const before = await t.run(async (ctx) =>
-    ctx.db.query('profileListAssignments').collect(),
+    ctx.db.query('profileModelAssignments').collect(),
   )
   expect(before.length).toBe(1)
 
-  await t.mutation(api.lists.remove, { id: list!._id })
+  await t.mutation(api.models.remove, { id: list!._id })
 
   const after = await t.run(async (ctx) =>
-    ctx.db.query('profileListAssignments').collect(),
+    ctx.db.query('profileModelAssignments').collect(),
   )
   expect(after).toEqual([])
 })
@@ -38,22 +37,21 @@ test('lists.remove cleans up assignment rows', async () => {
 test('runtimeSnapshot returns timing fields and requires the bridge token', async () => {
   const t = createConvexTest()
   stubBridgeKey('bridge-secret')
-  const list = await seedList(t, 'List A')
+  const list = await seedModel(t, 'List A')
   const profile = await insertDoc(t, 'profiles', {
     createdAt: Date.now(),
     name: 'Profile A',
-    using: false,
-    mode: 'direct',
-    listIds: [],
+    inUse: false,
+    modelIds: [],
   })
-  await t.mutation(api.profiles.mutations.bulkAddToList, {
+  await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [profile!._id],
-    listId: list!._id,
+    modelId: list!._id,
   })
   const automation = await seedAutomation(t, {
     status: 'running',
     isActive: true,
-    listIds: [list!._id],
+    modelIds: [list!._id],
     routine: {
       outreachStartDay: 7,
       initialDms: 3,
@@ -74,18 +72,14 @@ test('runtimeSnapshot returns timing fields and requires the bridge token', asyn
       todayMinutes: 30,
       minutesUsedToday: 10,
       nextRunAt: now + 60_000,
-      updatedAt: now,
     })
     await ctx.db.insert('accountProgress', {
       profileId: profile!._id,
       paused: false,
       activeDays: 1,
-      outreachDays: 0,
-      date: '2026-09-21',
-      used: 0,
-      allowance: 3,
+      outreachUsedToday: 0,
+      outreachAllowanceToday: 3,
       nextRunAt: now + 120_000,
-      startedAt: now,
       updatedAt: now,
     })
   })
@@ -93,7 +87,7 @@ test('runtimeSnapshot returns timing fields and requires the bridge token', asyn
   const snapshot = await t.query(api.automations.queries.runtimeSnapshot, {
     bridgeToken: 'bridge-secret',
     id: automation!._id,
-    listIds: [String(list!._id)],
+    modelIds: [String(list!._id)],
   })
   expect(snapshot?.profiles.length).toBe(1)
   expect(snapshot?.warmups?.[0]?.nextRunAt).toBeGreaterThan(now - 1000)
@@ -103,7 +97,7 @@ test('runtimeSnapshot returns timing fields and requires the bridge token', asyn
     t.query(api.automations.queries.runtimeSnapshot, {
       bridgeToken: 'wrong',
       id: automation!._id,
-      listIds: [String(list!._id)],
+      modelIds: [String(list!._id)],
     }),
   ).rejects.toThrow('Unauthorized')
 
@@ -117,24 +111,23 @@ test('runtimeSnapshot returns timing fields and requires the bridge token', asyn
 test('runtimeSnapshot stays bounded and list pages sweep every assignment', async () => {
   const t = createConvexTest()
   stubBridgeKey('bridge-secret')
-  const list = await seedList(t, 'List Paged')
+  const list = await seedModel(t, 'List Paged')
   for (let i = 0; i < 3; i++) {
     const profile = await insertDoc(t, 'profiles', {
       createdAt: Date.now() + i,
       name: `Paged ${i}`,
-      using: false,
-      mode: 'direct',
-      listIds: [],
+      inUse: false,
+      modelIds: [],
     })
-    await t.mutation(api.profiles.mutations.bulkAddToList, {
+    await t.mutation(api.profiles.mutations.bulkAddToModel, {
       profileIds: [profile!._id],
-      listId: list!._id,
+      modelId: list!._id,
     })
   }
   const automation = await seedAutomation(t, {
     status: 'running',
     isActive: true,
-    listIds: [list!._id],
+    modelIds: [list!._id],
     routine: {
       outreachStartDay: 7,
       initialDms: 3,
@@ -149,7 +142,7 @@ test('runtimeSnapshot stays bounded and list pages sweep every assignment', asyn
   const first = await t.query(api.automations.queries.runtimeSnapshot, {
     bridgeToken: 'bridge-secret',
     id: automation!._id,
-    listIds: [String(list!._id)],
+    modelIds: [String(list!._id)],
   })
   expect(first?.profiles.length).toBe(3)
   expect(first?.truncated).toBe(false)
@@ -157,7 +150,7 @@ test('runtimeSnapshot stays bounded and list pages sweep every assignment', asyn
   // Keyset page over the single list index covers the same set in one bounded read.
   const page = await t.query(internal.automations.queries.runtimeListPageInternal, {
     id: automation!._id,
-    listId: String(list!._id),
+    modelId: String(list!._id),
   })
   expect(page?.profiles.length).toBe(3)
   expect(page?.isDone).toBe(true)
@@ -168,7 +161,7 @@ test('runtimeSnapshot stays bounded and list pages sweep every assignment', asyn
   const classic = await seedAutomation(t, { status: 'running', isActive: true })
   const rejected = await t.query(internal.automations.queries.runtimeListPageInternal, {
     id: classic!._id,
-    listId: String(list!._id),
+    modelId: String(list!._id),
   })
   expect(rejected).toBe(null)
 })

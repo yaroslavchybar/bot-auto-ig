@@ -9,11 +9,10 @@ type Lead = {
   username: string
   igId?: string
   fullName?: string
-  enrichmentConfidence?: number
-  enrichedAt?: number
+  screenedAt?: number
   classification?: 'male' | 'female' | 'business'
-  followCheckPassed?: boolean
-  enrichmentStatus?: 'pending' | 'ready' | 'error'
+  englishTextCheckPassed?: boolean
+  screeningStatus?: 'pending' | 'ready' | 'error'
   dmSent: boolean
   followed: boolean
   followDate?: number
@@ -35,11 +34,11 @@ const details = (lead: Lead) => [
   ['ID', lead.igId ?? '—'],
   ['Full name', lead.fullName ?? '—'],
   ['Type', lead.classification ??
-      (lead.enrichmentStatus === 'ready' ? 'unclear' : (lead.enrichmentStatus ?? 'pending')),
+      (lead.screeningStatus === 'ready' ? 'unclear' : (lead.screeningStatus ?? 'pending')),
   ],
-  ['Screened', lead.enrichedAt ? new Date(lead.enrichedAt).toLocaleString() : 'On profile visit'],
+  ['Screened', lead.screenedAt ? new Date(lead.screenedAt).toLocaleString() : 'On profile visit'],
   ['Language check passed', lead.classification === 'male'
-      ? lead.followCheckPassed === undefined ? 'Not checked' : lead.followCheckPassed ? 'Yes' : 'No'
+      ? lead.englishTextCheckPassed === undefined ? 'Not checked' : lead.englishTextCheckPassed ? 'Yes' : 'No'
       : '—'],
   ['DM sent', lead.dmSent ? 'Yes' : 'No'],
   ['Followed', lead.followed ? 'Yes' : 'No'],

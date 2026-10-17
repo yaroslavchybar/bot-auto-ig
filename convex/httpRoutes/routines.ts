@@ -19,7 +19,7 @@ export function registerRoutineRoutes(http: HttpRouter) {
           category: b.category,
           confidence: b.confidence,
           model: b.model,
-          followCheckPassed: b.followCheckPassed,
+          englishTextCheckPassed: b.englishTextCheckPassed,
           failureReason: b.failureReason,
         }),
       )

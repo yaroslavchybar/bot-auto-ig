@@ -3,7 +3,7 @@ import { internalMutation } from './_generated/server'
 import { eligibility, ensureProgress } from './routines'
 import {
   dayKey,
-  followAllowance,
+  outreachAllowance,
   profileOutreachRoutes,
   randomInRange,
   unfollowRange,
@@ -24,7 +24,7 @@ export const finish = internalMutation({
     ),
     confidence: v.optional(v.number()),
     model: v.optional(v.string()),
-    followCheckPassed: v.optional(v.boolean()),
+    englishTextCheckPassed: v.optional(v.boolean()),
     failureReason: v.optional(v.literal('refused')),
   },
   handler: async (ctx, args) => {
@@ -50,18 +50,18 @@ export const finish = internalMutation({
     )
       throw new Error('Invalid screening confidence')
     if (args.category && !args.model?.trim()) throw new Error('Missing screening model')
-    if (args.category === 'male' && typeof args.followCheckPassed !== 'boolean')
+    if (args.category === 'male' && typeof args.englishTextCheckPassed !== 'boolean')
       throw new Error('A male screening must include the English text check')
     const e = await eligibility(ctx, args.automationId, args.profileId)
     const state = e ? await ensureProgress(ctx, args.profileId) : null
-    const used = state?.followQuotaDate === args.date ? state.used : 0
+    const used = state?.outreachQuotaDate === args.date ? state.outreachUsedToday : 0
     const allowance =
       e && state
         ? Math.min(
             e.policy.maxDms,
-            state.followQuotaDate === args.date
-              ? state.allowance
-              : followAllowance(e.policy, state.followIncrease ?? 0),
+            state.outreachQuotaDate === args.date
+              ? state.outreachAllowanceToday
+              : outreachAllowance(e.policy, state.outreachIncrease ?? 0),
           )
         : 0
     const classification = args.category
@@ -87,7 +87,7 @@ export const finish = internalMutation({
       args.date === dayKey(now) &&
       used < allowance &&
       (e.policy.allowedCategories ?? ['male']).includes(classification) &&
-      (classification !== 'male' || args.followCheckPassed === true) &&
+      (classification !== 'male' || args.englishTextCheckPassed === true) &&
       lead.screeningListId &&
       (await ctx.db.get(lead.screeningListId)) &&
       membership?.available &&
@@ -100,19 +100,17 @@ export const finish = internalMutation({
       ...(args.category
         ? {
             classification,
-            enrichmentStatus: 'ready' as const,
-            enrichmentModel: args.model!,
-            enrichedAt: now,
-            enrichmentConfidence: args.confidence,
+            screeningStatus: 'ready' as const,
+            screenedAt: now,
             ...(classification === 'male'
-              ? { followCheckPassed: args.followCheckPassed }
+              ? { englishTextCheckPassed: args.englishTextCheckPassed }
               : {}),
             screeningFailures: undefined,
             screeningUntil: undefined,
           }
         : {
             // A failed attempt does not replace an earlier successful decision.
-            enrichmentStatus: 'error' as const,
+            screeningStatus: 'error' as const,
             screeningFailures: failures,
             ...(args.failureReason === 'refused' ? { screeningRefused: true } : {}),
             screeningUntil:
@@ -141,11 +139,10 @@ export const finish = internalMutation({
     await setLeadAvailability(ctx, lead._id, leadAvailable(next))
     if (accepted)
       await ctx.db.patch(state!._id, {
-        date: args.date,
-        followQuotaDate: args.date,
-        used: used + 1,
-        allowance,
-        followedToday: state!.followQuotaDate === args.date ? (state!.followedToday ?? 0) : 0,
+        outreachQuotaDate: args.date,
+        outreachUsedToday: used + 1,
+        outreachAllowanceToday: allowance,
+        followedToday: state!.outreachQuotaDate === args.date ? (state!.followedToday ?? 0) : 0,
         updatedAt: now,
       })
     return accepted

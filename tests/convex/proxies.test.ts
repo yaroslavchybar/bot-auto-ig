@@ -155,7 +155,7 @@ test('edits that keep the current proxy pass even at the limit', async () => {
       proxy: 'http://legacy:8080:user:pass',
       proxyType: 'http',
       status: 'idle',
-      using: false,
+      inUse: false,
     })
     firstId ??= row!._id
   }

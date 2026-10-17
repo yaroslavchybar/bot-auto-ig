@@ -192,7 +192,7 @@ for (const category of ['male', 'female', 'business'] as const)
   test(`the highest ${category} score wins without a category confidence cutoff`, async () => {
     assert.deepEqual(await decideLead(Buffer.from('jpeg'), 100, options(response(category, 0.4))), {
       category, confidence: 0.4, model: LEAD_SCREENING_MODEL,
-      ...(category === 'male' ? { followCheckPassed: true } : {}),
+      ...(category === 'male' ? { englishTextCheckPassed: true } : {}),
     })
   })
 
@@ -206,7 +206,7 @@ test('only a male lead is checked again by the strongest model, on the same scre
     return body.questions.non_english_text ? followCheck(0.05) : response('male')
   }) as typeof fetch
   assert.deepEqual(await decideLead(Buffer.from('male jpeg'), 100, { key: 'fixture', fetcher }), {
-    category: 'male', confidence: 0.97, model: LEAD_SCREENING_MODEL, followCheckPassed: true,
+    category: 'male', confidence: 0.97, model: LEAD_SCREENING_MODEL, englishTextCheckPassed: true,
   })
   assert.deepEqual(asked, [LEAD_SCREENING_MODEL, DEFAULT_SCREENING_SETTINGS.followModel])
   assert.deepEqual(new Set(screenshots).size, 1)
@@ -218,7 +218,7 @@ test('only a male lead is checked again by the strongest model, on the same scre
   }) as typeof fetch
   assert.equal(
     (await decideLead(Buffer.from('jpeg'), 100, { key: 'fixture', fetcher: femaleFetcher }))
-      .followCheckPassed,
+      .englishTextCheckPassed,
     undefined,
   )
   assert.deepEqual(female, [LEAD_SCREENING_MODEL])
@@ -231,7 +231,7 @@ test('a male lead is skipped only when non-English text reaches 70% probability'
       return body.questions.non_english_text ? followCheck(confidence) : response('male')
     }) as typeof fetch
     assert.equal(
-      (await decideLead(Buffer.from('jpeg'), 100, { key: 'fixture', fetcher })).followCheckPassed,
+      (await decideLead(Buffer.from('jpeg'), 100, { key: 'fixture', fetcher })).englishTextCheckPassed,
       expected,
       String(confidence),
     )
@@ -270,7 +270,7 @@ test('a lead is classified from screenshot evidence alone, never from a text evi
     category: 'male',
     confidence: 0.9,
     model: LEAD_SCREENING_MODEL,
-    followCheckPassed: true,
+    englishTextCheckPassed: true,
   })
 })
 

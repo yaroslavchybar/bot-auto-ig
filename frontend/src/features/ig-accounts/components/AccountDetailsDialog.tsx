@@ -26,7 +26,7 @@ type WarmupProgress = {
   startedAt: number
   targetUsername?: string
   fullName?: string
-  nameDone?: boolean
+  usernameDone?: boolean
   fullNameDone?: boolean
   avatarDone?: boolean
   postSourceIds: string[]
@@ -191,7 +191,7 @@ function WarmupStages({
     {
       label: 'Username change',
       detail: progress.targetUsername ? `@${progress.targetUsername}` : undefined,
-      state: progress.nameDone ? 'done' : day >= 3 && !progress.pending ? 'current' : 'waiting',
+      state: progress.usernameDone ? 'done' : day >= 3 && !progress.pending ? 'current' : 'waiting',
     },
     {
       label: 'Full name',

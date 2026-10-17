@@ -21,8 +21,8 @@ export type ProfileListRow = Pick<
   | 'proxyType'
   | 'fingerprintOs'
   | 'status'
-  | 'using'
-  | 'renameFrom'
+  | 'inUse'
+  | 'pendingRenameFrom'
   | 'igLoggedIn'
   | 'outreachReady'
   | 'paused'
@@ -47,8 +47,8 @@ export const listBatchInternal = internalQuery({
           proxyType,
           fingerprintOs,
           status,
-          using,
-          renameFrom,
+          inUse,
+          pendingRenameFrom,
           igLoggedIn,
           outreachReady,
           paused,
@@ -61,8 +61,8 @@ export const listBatchInternal = internalQuery({
           proxyType,
           fingerprintOs,
           status,
-          using,
-          renameFrom,
+          inUse,
+          pendingRenameFrom,
           igLoggedIn,
           outreachReady,
           paused,
@@ -93,7 +93,7 @@ export const listPage = query({
           row.proxy,
           row.proxyType,
           row.fingerprintOs,
-          row.using ? 'active' : (row.status ?? 'idle'),
+          row.inUse ? 'active' : (row.status ?? 'idle'),
         ]),
       cursor,
       pageSize,
@@ -112,13 +112,13 @@ export const maintenanceWork = query({
         .take(100),
       ctx.db
         .query('profiles')
-        .withIndex('by_rename', (q) => q.gt('renameFrom', undefined))
+        .withIndex('by_rename', (q) => q.gt('pendingRenameFrom', undefined))
         .take(100),
     ])
     const cleanup = await ctx.db.query('modelContentCleanup').take(100)
     return {
       profileIds: [...new Set([...deleting, ...renaming].map((p) => p._id))],
-      modelIds: cleanup.map((row) => row.modelId),
+      contentKeys: cleanup.map((row) => row.contentKey),
     }
   },
 })
@@ -126,8 +126,8 @@ export const maintenanceWork = query({
 import {
   listProfileRows,
   getProfileByNameRow,
-  getAvailableProfilesForLists,
-  getProfilesByListIds,
+  getAvailableProfilesForModels,
+  getProfilesByModelIds,
   listAssignedProfilesRow,
   listUnassignedProfilesRow,
   normalizeProfileRow,
@@ -151,7 +151,7 @@ export const list = query({
   args: {},
   handler: async (ctx) => {
     return (await listProfileRows(ctx)).map(
-      ({ sessionId: _sessionId, cookiesJson: _cookiesJson, ...row }: any) => row,
+      ({ instagramSessionId: _sessionId, cookiesJson: _cookiesJson, ...row }: any) => row,
     )
   },
 })
@@ -168,34 +168,34 @@ export const getById = query({
   handler: async (ctx, args) => {
     const row = normalizeProfileRow((await ctx.db.get(args.profileId)) ?? null)
     if (!row) return null
-    const { sessionId: _sessionId, ...publicRow } = row
+    const { instagramSessionId: _sessionId, ...publicRow } = row
     return publicRow
   },
 })
 
-export const getAvailableForListsInternal = internalQuery({
+export const getAvailableForModelsInternal = internalQuery({
   args: {
-    listIds: v.array(v.string()),
+    modelIds: v.array(v.string()),
     cooldownMinutes: v.number(),
   },
   handler: async (ctx, args) => {
-    return await getAvailableProfilesForLists(ctx, args.listIds, args.cooldownMinutes)
+    return await getAvailableProfilesForModels(ctx, args.modelIds, args.cooldownMinutes)
   },
 })
 
-export const getByListIdsInternal = internalQuery({
+export const getByModelIdsInternal = internalQuery({
   args: {
-    listIds: v.array(v.string()),
+    modelIds: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    return await getProfilesByListIds(ctx, args.listIds)
+    return await getProfilesByModelIds(ctx, args.modelIds)
   },
 })
 
 export const listAssignedInternal = internalQuery({
-  args: { listId: v.id('lists') },
+  args: { modelId: v.id('models') },
   handler: async (ctx, args) => {
-    return await listAssignedProfilesRow(ctx, args.listId)
+    return await listAssignedProfilesRow(ctx, args.modelId)
   },
 })
 
@@ -211,7 +211,7 @@ export const modelOptions = query({
   args: {},
   handler: async (ctx) =>
     (await ctx.db.query('profiles').collect()).map(
-      ({ _id, name, status, igLoggedIn, listIds }) => ({ _id, name, status, igLoggedIn, listIds }),
+      ({ _id, name, status, igLoggedIn, modelIds }) => ({ _id, name, status, igLoggedIn, modelIds }),
     ),
 })
 
@@ -222,7 +222,7 @@ export const automationAccess = query({
     requireServerBridgeAuth(bridgeToken)
     const profile = await ctx.db.get(profileId)
     return Boolean(
-      profile && !profile.paused && profile.status !== 'deleting' && !profile.renameFrom,
+      profile && !profile.paused && profile.status !== 'deleting' && !profile.pendingRenameFrom,
     )
   },
 })

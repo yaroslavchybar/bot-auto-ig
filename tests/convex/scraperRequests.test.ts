@@ -22,7 +22,7 @@ async function setup(country = 'ua') {
       name: 'browser',
       proxy: 'proxy.test:8000',
       proxyType: 'http',
-      using: false,
+      inUse: false,
       createdAt: 1,
     })
   })

@@ -22,17 +22,17 @@ export function ModelCreateForm({
   onCancel,
 }: {
   saving: boolean
-  onSave: (values: { name: string; fullName: string; usernames: string[] }) => void
+  onSave: (values: { name: string; baseFullName: string; usernames: string[] }) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
-  const [fullName, setFullName] = useState('')
+  const [baseFullName, setBaseFullName] = useState('')
   const [usernames, setUsernames] = useState('')
   const [error, setError] = useState('')
   const trimmed = name.trim()
   const parsed = parseUsernames(usernames)
   const save = () => {
-    if (trimmed && !saving) onSave({ name: trimmed, fullName: fullName.trim(), usernames: parsed })
+    if (trimmed && !saving) onSave({ name: trimmed, baseFullName: baseFullName.trim(), usernames: parsed })
   }
 
   return (
@@ -66,8 +66,8 @@ export function ModelCreateForm({
         </Label>
         <Input
           id="model-full-name"
-          value={fullName}
-          onChange={(event) => setFullName(event.target.value)}
+          value={baseFullName}
+          onChange={(event) => setBaseFullName(event.target.value)}
           disabled={saving}
           placeholder="e.g. Anna Kowalska"
           className="h-10 brand-focus border-line bg-field text-ink"

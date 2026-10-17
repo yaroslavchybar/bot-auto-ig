@@ -144,8 +144,8 @@ function AutomationMobileCard({
             </Badge>
           </div>
           <p className="mt-2 text-xs text-subtle-copy">
-            {automation.listIds?.length
-              ? `${automation.listIds.length} model${automation.listIds.length === 1 ? '' : 's'}`
+            {automation.modelIds?.length
+              ? `${automation.modelIds.length} model${automation.modelIds.length === 1 ? '' : 's'}`
               : 'No model selected'}
           </p>
           {automation.error && (
@@ -217,8 +217,8 @@ function AutomationDesktopRow({
         <div className="flex flex-col gap-0.5">
           <span className="truncate text-ink">{automation.name}</span>
           <span className="text-xs text-subtle-copy">
-            {automation.listIds?.length
-              ? `${automation.listIds.length} model${automation.listIds.length === 1 ? '' : 's'}`
+            {automation.modelIds?.length
+              ? `${automation.modelIds.length} model${automation.modelIds.length === 1 ? '' : 's'}`
               : 'No model selected'}
           </span>
           {automation.error && (

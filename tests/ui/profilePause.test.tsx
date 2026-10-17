@@ -56,7 +56,7 @@ test.each([false, true])(
     mocks.mobile = mobile
     mocks.pause.mockResolvedValue(undefined)
     view = mount()
-    const profile = { id: 'profile', name: 'Model', using: false, paused: false }
+    const profile = { id: 'profile', name: 'Model', inUse: false, paused: false }
     const render = (paused: boolean) =>
       view!.render(
         <ProfilesList

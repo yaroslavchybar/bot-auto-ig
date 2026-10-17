@@ -6,14 +6,14 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ModelCopiesDialog } from './ModelCopiesDialog'
 import { ModelImage } from './ModelImage'
-import type { List, ModelContentItem } from '../types'
+import type { Model, ModelContentItem } from '../types'
 
 const kinds = [
   { kind: 'posts' as const, label: 'Post images', icon: Images },
   { kind: 'avatars' as const, label: 'Avatars', icon: UserRound },
 ]
 
-export function ModelContentPanel({ model }: { model: List }) {
+export function ModelContentPanel({ model }: { model: Model }) {
   const { items, loading, error: loadError, reload } = useModelContent(model.id)
   const [busy, setBusy] = useState(false)
   const [generatingId, setGeneratingId] = useState<string | null>(null)

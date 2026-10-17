@@ -111,7 +111,7 @@ function useProfileCrud(
     async (profile: Profile) => {
       setSaving(true)
       try {
-        if (profile.using) {
+        if (profile.inUse) {
           try {
             await apiFetch(`/api/profiles/${encodeURIComponent(profile.name)}/stop`, {
               method: 'POST',

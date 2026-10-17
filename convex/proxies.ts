@@ -309,11 +309,11 @@ export const update = mutation({
       if (
         assigned.some(
           (profile) =>
-            profile.using ||
+            profile.inUse ||
             profile.status === 'running' ||
             profile.status === 'starting' ||
             profile.status === 'deleting' ||
-            profile.renameFrom,
+            profile.pendingRenameFrom,
         )
       )
         throw new DomainError(
@@ -326,7 +326,7 @@ export const update = mutation({
       if (targetCount + assigned.length > maxProfiles)
         throw new DomainError('VALIDATION', 'Profile limit is too small for the assigned profiles')
       for (const profile of assigned) {
-        await patchProfile(ctx, profile._id, { proxy, proxyType, mode: 'proxy' })
+        await patchProfile(ctx, profile._id, { proxy, proxyType })
         await syncProxyUsage(ctx, { ...profile, proxy, proxyType })
       }
     }

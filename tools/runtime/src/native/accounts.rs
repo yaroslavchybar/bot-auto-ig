@@ -253,7 +253,7 @@ impl Accounts {
                     .ok_or_else(|| Failure::invalid("Choose 1–100 profiles"))?
                     as usize;
                 let model = profiles::text(&body, "modelId");
-                let models = self.api.convex(Method::GET, "/api/lists", None).await?;
+                let models = self.api.convex(Method::GET, "/api/models", None).await?;
                 if !models
                     .as_array()
                     .into_iter()
@@ -549,7 +549,7 @@ impl Accounts {
             if profile.is_null() {
                 return Err(Failure::missing("Profile not found"));
             }
-            if profile["renameFrom"].is_string() {
+            if profile["pendingRenameFrom"].is_string() {
                 return Err(profiles::conflict("Profile rename is still in progress"));
             }
             if profile["name"] != username {
@@ -606,8 +606,8 @@ impl Accounts {
             || profile.is_null()
             || profile["paused"] == true
             || profile["status"] == "deleting"
-            || profile["renameFrom"].is_string()
-            || profile["using"] == true
+            || profile["pendingRenameFrom"].is_string()
+            || profile["inUse"] == true
         {
             return Ok(());
         }
@@ -812,7 +812,7 @@ impl Accounts {
             if work["profileIds"].as_array().is_some_and(|v| !v.is_empty()) {
                 self.profiles.retry().await?;
             }
-            self.cleanup_content(&work["modelIds"]).await;
+            self.cleanup_content(&work["contentKeys"]).await;
         }
     }
     async fn cleanup_content(&self, models: &Value) {
@@ -827,8 +827,8 @@ impl Accounts {
                 self.api
                     .convex(
                         Method::POST,
-                        "/api/lists/content-cleanup",
-                        Some(&json!({"operation":"finish","modelId":model})),
+                        "/api/models/content-cleanup",
+                        Some(&json!({"operation":"finish","contentKey":model})),
                     )
                     .await?;
                 Ok::<_, Failure>(())
@@ -856,18 +856,20 @@ impl Accounts {
         if directories.is_empty() {
             return Ok(());
         }
-        let models = self.api.convex(Method::GET, "/api/lists", None).await?;
+        let models = self.api.convex(Method::GET, "/api/models", None).await?;
         let models = models
             .as_array()
             .ok_or_else(|| Failure::unavailable("Invalid model list"))?;
         for model in directories {
-            if !models.iter().any(|row| row["id"] == model) {
+            if !models.iter().any(|row| {
+                row["contentKey"].as_str().or(row["id"].as_str()) == Some(model.as_str())
+            }) {
                 if let Err(error) = self
                     .api
                     .convex_retry(
                         Method::POST,
-                        "/api/lists/content-cleanup",
-                        Some(&json!({"operation":"queue","modelId":model})),
+                        "/api/models/content-cleanup",
+                        Some(&json!({"operation":"queue","contentKey":model})),
                     )
                     .await
                 {
@@ -890,7 +892,7 @@ impl Accounts {
                 };
                 let profile = profiles::text(&account, "profileId");
                 if profile.is_empty()
-                    || row["renameFrom"].is_string()
+                    || row["pendingRenameFrom"].is_string()
                     || row["profileStatus"] == "deleting"
                     || row["profileStatus"] == "running"
                     || row["profileUsing"] == true

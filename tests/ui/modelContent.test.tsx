@@ -1,6 +1,6 @@
 import { act, StrictMode } from 'react'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
-import { ModelContentProvider, useModelContent } from '@/features/lists/hooks/useModelContent'
+import { ModelContentProvider, useModelContent } from '@/features/models/hooks/useModelContent'
 import { apiFetch } from '@/lib/api'
 import { mount } from './mount'
 

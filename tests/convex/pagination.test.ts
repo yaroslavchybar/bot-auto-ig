@@ -42,7 +42,7 @@ test('profile and proxy searches return partial cursors before distant matches',
   await t.run(async (ctx) => {
     for (let i = 0; i < 310; i++) {
       const name = i === 300 ? 'distant-target' : `other-${i}`
-      await ctx.db.insert('profiles', { name, createdAt: i, using: false })
+      await ctx.db.insert('profiles', { name, createdAt: i, inUse: false })
       await ctx.db.insert('proxies', {
         name,
         createdAt: i,
@@ -73,9 +73,9 @@ test('profile pagination stays bounded, excludes cookies, and searches beyond th
       await ctx.db.insert('profiles', {
         name: i >= 60 ? `target-${i}` : `profile-${i}`,
         createdAt: 1,
-        using: false,
+        inUse: false,
         cookiesJson: 'private',
-        sessionId: 'private',
+        instagramSessionId: 'private',
       })
   })
   const first = await t.query(api.profiles.queries.listPage, {
@@ -86,7 +86,7 @@ test('profile pagination stays bounded, excludes cookies, and searches beyond th
   expect(first.page).toHaveLength(50)
   expect(first.isDone).toBe(false)
   expect(first.page[0]).not.toHaveProperty('cookiesJson')
-  expect(first.page[0]).not.toHaveProperty('sessionId')
+  expect(first.page[0]).not.toHaveProperty('instagramSessionId')
   const second = await t.query(api.profiles.queries.listPage, {
     search: '',
     cursor: first.continueCursor,
@@ -120,7 +120,7 @@ test('profile pages honor the chosen page size and reject sizes outside the foot
   const t = createConvexTest()
   await t.run(async (ctx) => {
     for (let i = 0; i < 30; i++)
-      await ctx.db.insert('profiles', { name: `profile-${i}`, createdAt: i, using: false })
+      await ctx.db.insert('profiles', { name: `profile-${i}`, createdAt: i, inUse: false })
   })
   const page = await t.query(api.profiles.queries.listPage, {
     search: '',
@@ -140,7 +140,7 @@ test('proxy pages count profiles on every page without leaking login claims', as
       const profileId = await ctx.db.insert('profiles', {
         name: `profile-${i}`,
         createdAt: i,
-        using: false,
+        inUse: false,
         proxy: 'http://proxy.example:8000',
         proxyType: 'http',
       })
@@ -162,7 +162,7 @@ test('proxy pages count profiles on every page without leaking login claims', as
 test('account pages and available counts cover all records and filter connectable options', async () => {
   const t = createConvexTest()
   const profileId = await t.run(async (ctx) => {
-    const profile = await ctx.db.insert('profiles', { name: 'Owner', using: false, createdAt: 1 })
+    const profile = await ctx.db.insert('profiles', { name: 'Owner', inUse: false, createdAt: 1 })
     for (let i = 0; i < 110; i++)
       await ctx.db.insert('igAccounts', {
         ciphertext: 'encrypted',
@@ -197,7 +197,7 @@ test('account pages and available counts cover all records and filter connectabl
 test('account option scans stop at a bounded cursor before distant available credentials', async () => {
   const t = createConvexTest()
   const profileId = await t.run(async ctx => {
-    const id = await ctx.db.insert('profiles', { name: 'Owner', using: false, createdAt: 0 })
+    const id = await ctx.db.insert('profiles', { name: 'Owner', inUse: false, createdAt: 0 })
     for (let i = 0; i < 310; i++) await ctx.db.insert('igAccounts', {
       ciphertext: 'encrypted', usernameHash: String(i), createdAt: i,
       status: i === 300 ? 'available' : 'assigned',

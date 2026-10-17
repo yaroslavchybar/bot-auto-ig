@@ -8,7 +8,6 @@ import { normalizeUsername } from './instagramUsername'
 import { capacityAt, DAY, scraperBusy, scraperProfiles } from './scraperPolicy'
 import { scraperRequestState, publishSleep } from './scraperRequests'
 import {
-  DEFAULT_MONITOR_DAYS,
   DEFAULT_SCRAPE_POST_LIMIT,
   HOUR,
   monitorDelay,
@@ -17,7 +16,6 @@ import { patchProfile, syncSourceCount } from './workerMetadata'
 
 const LEASE = 10 * 60_000
 export const lookbackDays = (list: Doc<'leadLists'>) => list.scrapeLookbackDays ?? 90
-const monitorDays = (_list: Doc<'leadLists'>) => DEFAULT_MONITOR_DAYS
 const postLimit = (list: Doc<'leadLists'>) => list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT
 const firstScrape = (post: Doc<'scrapePosts'>) => post.firstScrapedAt ?? post.lastScrapedAt
 const withinMonitorRange = (list: Doc<'leadLists'>, firstScrapedAt: number | undefined) =>
@@ -27,10 +25,7 @@ const withinMonitorRange = (list: Doc<'leadLists'>, firstScrapedAt: number | und
 /** Backfill the oldest known scrape time once; rediscovery never extends the window. */
 async function ensureExpiry(ctx: MutationCtx, post: Doc<'scrapePosts'>) {
   if (post.firstScrapedAt !== undefined || post.lastScrapedAt === undefined) return
-  const firstScrapedAt = Math.min(
-    post.lastScrapedAt,
-    ...(post.checks ?? []).map((check) => check.at - check.elapsedMs),
-  )
+  const firstScrapedAt = post.lastScrapedAt
   await ctx.db.patch(post._id, { firstScrapedAt })
   await ctx.scheduler.runAt(
     Math.max(Date.now(), firstScrapedAt + DAY),
@@ -55,14 +50,14 @@ export const sources = query({
         username: s.username,
         enabled: s.enabled,
         running: s.running,
-        kind: s.kind,
+        runKind: s.runKind,
         currentPostId: s.currentPostId,
         nextCheckAt: s.nextCheckAt,
-        lastCheckAt: s.lastCheckAt,
+        lastPostsCheckAt: s.lastPostsCheckAt,
         lastLikerCheckAt: s.lastLikerCheckAt,
         averageLikes: s.averageLikes,
         postCount: s.postCount,
-        discovered: s.discovered,
+        leadsAdded: s.leadsAdded,
         error: s.error,
       })),
 })
@@ -145,7 +140,7 @@ export const add = mutation({
         running: false,
         nextCheckAt: now,
         postCount: 0,
-        discovered: 0,
+        leadsAdded: 0,
         createdAt: now,
       })
     await syncSourceCount(ctx, listId)
@@ -168,27 +163,19 @@ export const settings = mutation({
       throw new Error('Days must be from 1 to 3650')
     const list = await ctx.db.get(listId)
     if (!list) throw new Error('Lead list not found')
-    const monitoringDays = DEFAULT_MONITOR_DAYS
     const latestPosts = requestedPostLimit ?? postLimit(list)
     if (!Number.isSafeInteger(latestPosts) || latestPosts < 1 || latestPosts > 5000)
       throw new Error('Post limit must be from 1 to 5000')
     if (
       lookbackDays(list) === days &&
       (list.scrapeMonitor ?? true) === monitor &&
-      monitorDays(list) === monitoringDays &&
       postLimit(list) === latestPosts
     )
       return
-    const monitorAgeOnly =
-      lookbackDays(list) === days &&
-      (list.scrapeMonitor ?? true) === monitor &&
-      postLimit(list) === latestPosts
     await ctx.db.patch(listId, {
       scrapeLookbackDays: days,
       scrapeMonitor: monitor,
-      scrapeMonitorDays: monitoringDays,
       scrapePostLimit: latestPosts,
-      scrapeIncludePrivate: undefined,
     })
     const sources = await ctx.db
       .query('scrapeSources')
@@ -200,12 +187,9 @@ export const settings = mutation({
         running: false,
         runId: undefined,
         leaseUntil: undefined,
-        kind: undefined,
+        runKind: undefined,
         currentPostId: undefined,
-        // An age-only change can reconcile stored posts without another Instagram discovery.
-        ...(!monitorAgeOnly || (source.running && source.kind === 'posts')
-          ? { nextCheckAt: Date.now() }
-          : {}),
+        nextCheckAt: Date.now(),
         error: undefined,
       })
       await ctx.scheduler.runAfter(0, internal.scrapeSources.trimPosts, { sourceId: source._id })
@@ -225,7 +209,7 @@ export const setEnabled = mutation({
       runId: undefined,
       leaseUntil: undefined,
       currentPostId: undefined,
-      kind: undefined,
+      runKind: undefined,
       ...(enabled ? { nextCheckAt: Date.now(), error: undefined } : {}),
     })
     if (!enabled)
@@ -325,10 +309,10 @@ export const trimPosts = internalMutation({
   },
   handler: async (ctx, args) => {
     const source = await ctx.db.get(args.sourceId)
-    if (!source || source.deleting || (source.running && source.kind === 'posts')) return
+    if (!source || source.deleting || (source.running && source.runKind === 'posts')) return
     const list = await ctx.db.get(source.listId)
     if (!list) return
-    const key = `${lookbackDays(list)}:${postLimit(list)}:${monitorDays(list)}:${list.scrapeMonitor !== false}:${source.lastCheckAt ?? 0}`
+    const key = `${lookbackDays(list)}:${postLimit(list)}:${list.scrapeMonitor !== false}:${source.lastPostsCheckAt ?? 0}`
     // A later settings save starts a fresh pass; stale continuations must not delete posts.
     if (args.settingsKey && args.settingsKey !== key) return
     const batch = await ctx.db
@@ -371,7 +355,7 @@ export const trimPosts = internalMutation({
         runId: undefined,
         leaseUntil: undefined,
         currentPostId: undefined,
-        kind: undefined,
+        runKind: undefined,
       })
     if (!batch.isDone)
       await ctx.scheduler.runAfter(0, internal.scrapeSources.trimPosts, {
@@ -421,7 +405,7 @@ export async function nextWork(ctx: Pick<QueryCtx, 'db'>, likerAt: number | null
     ctx.db
       .query('scrapeSources')
       .withIndex('by_lease', (q) => q.eq('running', true))
-      .filter((q) => (likerAt !== null ? true : q.neq(q.field('kind'), 'likers')))
+      .filter((q) => (likerAt !== null ? true : q.neq(q.field('runKind'), 'likers')))
       .first(),
     ctx.db
       .query('scrapePosts')
@@ -437,7 +421,7 @@ export async function nextWork(ctx: Pick<QueryCtx, 'db'>, likerAt: number | null
     running
       ? {
           at:
-            running.kind === 'likers'
+            running.runKind === 'likers'
               ? Math.max((running.leaseUntil ?? 0) + 1, likerAt ?? Infinity)
               : (running.leaseUntil ?? 0) + 1,
           key: `lease:${running._id}:${running.leaseUntil}`,
@@ -456,7 +440,7 @@ export async function activeSource(
   ctx: Pick<QueryCtx, 'db'>,
   sourceId: Id<'scrapeSources'>,
   runId: string,
-  kind?: 'posts' | 'likers',
+  runKind?: 'posts' | 'likers',
 ) {
   const source = await ctx.db.get(sourceId)
   if (
@@ -466,17 +450,17 @@ export async function activeSource(
     !source.running ||
     source.runId !== runId ||
     (source.leaseUntil ?? 0) < Date.now() ||
-    (kind && source.kind !== kind)
+    (runKind && source.runKind !== runKind)
   )
     throw new Error('Source run is no longer active')
   const list = await ctx.db.get(source.listId)
   if (!list) throw new Error('Lead list was deleted')
-  if (source.kind === 'likers') {
+  if (source.runKind === 'likers') {
     const profile = source.profileId ? await ctx.db.get(source.profileId) : null
     if (!profile) throw new Error('Scraper profile was deleted')
     if (profile.paused) throw new Error('Profile is paused')
     if (scraperBusy(profile)) throw new Error('Scraper profile is busy in the browser')
-    if (!profile.sessionId) throw new Error('Browser session is missing')
+    if (!profile.instagramSessionId) throw new Error('Browser session is missing')
     const post = source.currentPostId ? await ctx.db.get(source.currentPostId) : null
     if (!post || (!post.monitoring && post.takenAt < Date.now() - lookbackDays(list) * DAY))
       throw new Error('Post is outside the selected range')
@@ -496,7 +480,7 @@ export const claim = internalMutation({
         p.scraperReady &&
         !scraperBusy(p) &&
         p.status !== 'deleting' &&
-        !p.renameFrom &&
+        !p.pendingRenameFrom &&
         capacityAt(p) <= now,
     )
     const states = await Promise.all(
@@ -514,10 +498,10 @@ export const claim = internalMutation({
     let source = await ctx.db
       .query('scrapeSources')
       .withIndex('by_lease', (q) => q.eq('running', true).lt('leaseUntil', now))
-      .filter((q) => (profiles.length ? true : q.neq(q.field('kind'), 'likers')))
+      .filter((q) => (profiles.length ? true : q.neq(q.field('runKind'), 'likers')))
       .first()
     let post = source?.currentPostId ? await ctx.db.get(source.currentPostId) : null
-    let kind: 'posts' | 'likers' = source?.kind ?? 'posts'
+    let runKind: 'posts' | 'likers' = source?.runKind ?? 'posts'
     if (!source) {
       // Due monitoring must not wait behind a large initial discovery backlog.
       for (const queue of ['monitor', 'source', 'pending'] as const) {
@@ -563,7 +547,7 @@ export const claim = internalMutation({
           if (owner.running) continue
           source = owner
           post = candidate
-          kind = 'likers'
+          runKind = 'likers'
           break
         }
         if (source) break
@@ -585,7 +569,7 @@ export const claim = internalMutation({
       return null
     }
     if (
-      kind === 'likers' &&
+      runKind === 'likers' &&
       (!post ||
         (!post.monitoring && post.takenAt < now - lookbackDays(list) * DAY) ||
         (post.lastScrapedAt !== undefined &&
@@ -597,16 +581,16 @@ export const claim = internalMutation({
         runId: undefined,
         leaseUntil: undefined,
         currentPostId: undefined,
-        kind: undefined,
+        runKind: undefined,
       })
       return null
     }
-    const profile = kind === 'likers' ? profiles[0] : undefined
-    if (kind === 'likers' && !profile) return null
+    const profile = runKind === 'likers' ? profiles[0] : undefined
+    if (runKind === 'likers' && !profile) return null
     const runId = `${now}-${Math.random()}`
     await ctx.db.patch(source._id, {
       running: true,
-      kind,
+      runKind,
       profileId: profile?._id,
       runId,
       currentPostId: post?._id,
@@ -617,7 +601,7 @@ export const claim = internalMutation({
       _id: source._id,
       listId: source.listId,
       username: source.username,
-      kind,
+      runKind,
       profileId: profile?._id ?? '',
       runId,
       sinceDate: Math.max(0, now - lookbackDays(list) * DAY),
@@ -641,7 +625,6 @@ export const registerPosts = internalMutation({
     runId: v.string(),
     averageLikes: v.optional(v.number()),
     postCount: v.number(),
-    postsFromApify: v.boolean(),
     posts: v.array(
       v.object({
         id: v.string(),
@@ -680,7 +663,6 @@ export const registerPosts = internalMutation({
         .first()
       if (old) await ensureExpiry(ctx, old)
       // Daily discovery must not extend a post's original monitoring window.
-      const monitorEligible = true
       const eligible =
         list.scrapeMonitor !== false && withinMonitorRange(list, old ? firstScrape(old) : undefined)
       const pending = old?.lastScrapedAt === undefined
@@ -689,7 +671,6 @@ export const registerPosts = internalMutation({
         code: post.code,
         takenAt: post.takenAt,
         likeCount: post.likeCount,
-        monitorEligible,
         monitoring,
         scheduled: pending || eligible,
         nextCheckAt: pending
@@ -707,7 +688,6 @@ export const registerPosts = internalMutation({
     await ctx.db.patch(source._id, {
       averageLikes: args.averageLikes,
       postCount: args.postCount,
-      postsFromApify: args.postsFromApify,
       leaseUntil: now + LEASE,
     })
   },
@@ -737,15 +717,15 @@ export const finish = internalMutation({
     const delay = success ? DAY : args.status === 'paused' ? 0 : HOUR
     const patch: Partial<Doc<'scrapeSources'>> = {
       running: false,
-      kind: undefined,
+      runKind: undefined,
       runId: undefined,
       leaseUntil: undefined,
       currentPostId: undefined,
       error: args.error?.slice(0, 500),
     }
-    if (source.kind === 'posts') {
+    if (source.runKind === 'posts') {
       patch.nextCheckAt = now + delay
-      if (success) patch.lastCheckAt = now
+      if (success) patch.lastPostsCheckAt = now
       await ctx.scheduler.runAfter(0, internal.scrapeSources.trimPosts, { sourceId: source._id })
     } else if (source.currentPostId) {
       if (success) patch.lastLikerCheckAt = now
@@ -824,7 +804,7 @@ export const expirePost = internalMutation({
         runId: undefined,
         leaseUntil: undefined,
         currentPostId: undefined,
-        kind: undefined,
+        runKind: undefined,
       })
   },
 })

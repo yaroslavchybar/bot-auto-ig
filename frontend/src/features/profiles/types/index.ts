@@ -4,7 +4,7 @@ export type Profile = {
   outreachReady?: boolean
   unreadChatCount?: number
   unreadChatsCheckedAt?: number
-  renameFrom?: string
+  pendingRenameFrom?: string
   id: string
   name: string
   proxy?: string
@@ -12,5 +12,5 @@ export type Profile = {
   fingerprintOs?: string
   cookiesJson?: string
   status?: string
-  using?: boolean
+  inUse?: boolean
 }

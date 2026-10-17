@@ -1,8 +1,8 @@
-export type List = {
+export type Model = {
   id: string
   name: string
-  fullName?: string
-  fullNames?: string[]
+  baseFullName?: string
+  fullNameVariations?: string[]
   usernames?: string[]
 }
 

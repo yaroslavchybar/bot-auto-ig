@@ -37,7 +37,7 @@ pub struct Web {
 }
 impl Web {
     pub fn new(profile: &Value) -> Result<Self> {
-        let session = profile["sessionId"]
+        let session = profile["instagramSessionId"]
             .as_str()
             .filter(|v| !v.is_empty())
             .ok_or_else(|| {

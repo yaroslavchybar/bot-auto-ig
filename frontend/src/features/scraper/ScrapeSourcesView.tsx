@@ -31,7 +31,7 @@ const stamp = (at?: number) => (at ? new Date(at).toLocaleString() : 'Not checke
 function SourceStatusBadge({
   source,
 }: {
-  source: { enabled: boolean; running?: boolean; kind?: 'posts' | 'likers'; error?: string | null }
+  source: { enabled: boolean; running?: boolean; runKind?: 'posts' | 'likers'; error?: string | null }
 }) {
   const state = !source.enabled
     ? {
@@ -42,9 +42,9 @@ function SourceStatusBadge({
     : source.running
       ? {
           label:
-            source.kind === 'posts'
+            source.runKind === 'posts'
               ? 'Finding posts'
-              : source.kind === 'likers'
+              : source.runKind === 'likers'
                 ? 'Checking likers'
                 : 'Checking',
           className: 'bg-status-info-soft text-status-info border-status-info-border',
@@ -390,12 +390,12 @@ function SourceCards({
                     <SourceStatusBadge source={source} />
                   </div>
                   <p className="mt-1.5 text-xs text-muted-copy tabular-nums">
-                    {source.postCount} posts · {source.discovered.toLocaleString()} leads · avg{' '}
+                    {source.postCount} posts · {source.leadsAdded.toLocaleString()} leads · avg{' '}
                     {source.averageLikes === undefined ? '—' : Math.round(source.averageLikes)}{' '}
                     likes
                   </p>
                   <p className="mt-0.5 text-xs text-subtle-copy">
-                    Last post discovery: {stamp(source.lastCheckAt)}
+                    Last post discovery: {stamp(source.lastPostsCheckAt)}
                     {source.enabled ? ` · Next discovery: ${stamp(source.nextCheckAt)}` : ''}
                   </p>
                   <p className="mt-0.5 text-xs text-subtle-copy">

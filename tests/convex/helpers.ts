@@ -30,8 +30,7 @@ export function createUnauthenticatedConvexTest() {
 export async function insertDoc(
   t: ReturnType<typeof createConvexTest>,
   table:
-    | 'lists'
-    | 'messageTemplates'
+    | 'models'
     | 'profiles'
     | 'proxies'
     | 'automations'
@@ -42,8 +41,8 @@ export async function insertDoc(
   return await t.run(async (ctx) => ctx.db.get(id))
 }
 
-export async function seedList(t: ReturnType<typeof createConvexTest>, name = 'List A') {
-  return await t.mutation(api.lists.create, { name })
+export async function seedModel(t: ReturnType<typeof createConvexTest>, name = 'List A') {
+  return await t.mutation(api.models.create, { name })
 }
 
 export async function seedProfile(
@@ -68,11 +67,9 @@ export async function seedAutomation(
     description: 'test automation',
     nodes: [],
     edges: [],
-    listIds: [],
+    modelIds: [],
     status: 'idle',
     isActive: true,
-    retryCount: 0,
-    maxRetries: 2,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,

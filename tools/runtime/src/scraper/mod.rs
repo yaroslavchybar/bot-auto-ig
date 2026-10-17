@@ -64,7 +64,7 @@ struct Task {
     since_date: u64,
     post_limit: u64,
     list_id: String,
-    kind: TaskKind,
+    run_kind: TaskKind,
     post: Option<Value>,
 }
 #[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Debug)]
@@ -199,12 +199,12 @@ impl Scraper {
         self.request("finish", body).await?;
         println!(
             "{}",
-            json!({"id":uuid::Uuid::new_v4().to_string(),"ts":api::now_ms(),"event":"scraper.source","message":"scraper source check finished","source":"runtime","requestId":job.run_id,"level":if status=="failed"{"error"}else{"info"},"outcome":if status=="completed"{"success"}else if status=="paused"{"paused"}else{"error"},"durationMs":start.elapsed().as_millis() as u64,"context":{"sourceId":job.id,"profileId":job.profile_id,"listId":job.list_id,"kind":job.kind,"postId":job.post.as_ref().map(|p| &p["id"]),"status":status,"reason":message},"environment":{"service":"runtime","runtime":"rust","commitHash":api::env("COMMIT_SHA","unknown")}})
+            json!({"id":uuid::Uuid::new_v4().to_string(),"ts":api::now_ms(),"event":"scraper.source","message":"scraper source check finished","source":"runtime","requestId":job.run_id,"level":if status=="failed"{"error"}else{"info"},"outcome":if status=="completed"{"success"}else if status=="paused"{"paused"}else{"error"},"durationMs":start.elapsed().as_millis() as u64,"context":{"sourceId":job.id,"profileId":job.profile_id,"listId":job.list_id,"runKind":job.run_kind,"postId":job.post.as_ref().map(|p| &p["id"]),"status":status,"reason":message},"environment":{"service":"runtime","runtime":"rust","commitHash":api::env("COMMIT_SHA","unknown")}})
         );
         Ok(())
     }
     async fn run_task(&self, job: &Task) -> Result<Option<Activity>> {
-        if job.kind == TaskKind::Posts {
+        if job.run_kind == TaskKind::Posts {
             let posts = self
                 .apify_posts(&job.username, job.since_date, job.post_limit)
                 .await?;
@@ -221,7 +221,7 @@ impl Scraper {
                 self.request(
                     "posts",
                     json!({"sourceId":job.id,"runId":job.run_id,"posts":chunk,
-                    "averageLikes":average,"postCount":posts.len(),"postsFromApify":true}),
+                    "averageLikes":average,"postCount":posts.len()}),
                 )
                 .await?;
             }
@@ -334,9 +334,9 @@ impl Scraper {
                 return Err(Error::failed("Scraper profile was deleted"));
             }
             if profile["paused"] == true
-                || profile["renameFrom"].is_string()
+                || profile["pendingRenameFrom"].is_string()
                 || profile["status"] == "deleting"
-                || profile["using"] == true
+                || profile["inUse"] == true
                 || profile["status"] == "running"
             {
                 return Err(Error {

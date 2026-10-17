@@ -239,7 +239,7 @@ impl Processes {
             return Err(Failure::missing("Profile not found"));
         }
         if profile["status"] == "deleting"
-            || profile["renameFrom"]
+            || profile["pendingRenameFrom"]
                 .as_str()
                 .is_some_and(|s| !s.is_empty())
         {
@@ -707,12 +707,12 @@ impl Processes {
             .await?;
         Ok(())
     }
-    async fn profile_status(&self, name: &str, status: &str, using: bool) -> Result<()> {
+    async fn profile_status(&self, name: &str, status: &str, in_use: bool) -> Result<()> {
         self.api
             .convex_retry(
                 axum::http::Method::POST,
                 "/api/profiles/sync-status",
-                Some(&json!({"name": name, "status": status, "using": using})),
+                Some(&json!({"name": name, "status": status, "inUse": in_use})),
             )
             .await?;
         Ok(())

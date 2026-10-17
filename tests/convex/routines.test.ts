@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vite-plus/test';
 import { api, internal } from '../../convex/_generated/api';
 import { defaultRoutine, dayKey, validateRoutine } from '../../convex/routinePolicy';
 import { ROUTINE_RETRY_MS } from '../../convex/routineErrors';
-import { createConvexTest, seedList, seedProfile } from './helpers';
+import { createConvexTest, seedModel, seedProfile } from './helpers';
 import type { Id, Doc } from '../../convex/_generated/dataModel';
 import type { MutationCtx } from '../../convex/_generated/server';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -41,16 +41,14 @@ test('confirmed posts automatically unlock outreach on day eight without a profi
   const { t, profile, list, args } = await setup();
   await t.mutation(api.profiles.mutations.setIgState, { profileId: profile._id, igLoggedIn: true });
   await t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
-    profileId: profile._id, modelId: list._id, startedAt: Date.now(),
-  });
+    profileId: profile._id, modelId: list._id, startedAt: Date.now(), });
   await t.run(async ctx => {
     const warmup = await ctx.db.query('warmupStates').unique();
     await ctx.db.patch(warmup!._id, { day: 7 });
   });
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
     profileId: profile._id, modelId: list._id,
-    patch: { postSourceIds: ['one', 'two', 'three'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [],
-  });
+    patch: { postSourceIds: ['one', 'two', 'three'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [], });
   expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true);
   expect((await t.query(internal.routines.target, args)).target).toBe(0);
   await t.run(async ctx => {
@@ -98,21 +96,21 @@ test.each([0, 0.999])('daily growth is saved once and applies next day (random=%
   rng.mockRestore();
   const increase = random === 0 ? 1 : 4;
   const read = () => t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0]);
-  expect(await read()).toMatchObject({ allowance: 2, followIncrease: increase, outreachDays: 1 });
+  expect(await read()).toMatchObject({ outreachAllowanceToday: 2, outreachIncrease: increase });
   await t.mutation(internal.routines.recordFollow, finish);
   const second = (await reserveFollow(t, args))!;
   await t.mutation(internal.routines.recordFollow, { ...finish, leadId: second.leadId });
-  expect(await read()).toMatchObject({ allowance: 2, followIncrease: increase, outreachDays: 1 });
+  expect(await read()).toMatchObject({ outreachAllowanceToday: 2, outreachIncrease: increase });
   expect(await reserveFollow(t, args)).toBeNull();
   vi.setSystemTime(new Date('2026-09-22T10:00:00Z'));
   expect((await t.query(api.routines.accounts, { automationId: automation._id }))[0].allowance).toBe(2 + increase);
   await reserveFollow(t, args);
-  expect(await read()).toMatchObject({ allowance: 2 + increase, used: 1 });
+  expect(await read()).toMatchObject({ outreachAllowanceToday: 2 + increase, outreachUsedToday: 1 });
   // An unsuccessful day does not increase the limit, even across missed days.
   vi.setSystemTime(new Date('2026-09-25T10:00:00Z'));
   await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, maxDms: 3 } }));
   await reserveFollow(t, args);
-  expect(await read()).toMatchObject({ allowance: 3, followIncrease: increase, outreachDays: 1 });
+  expect(await read()).toMatchObject({ outreachAllowanceToday: 3, outreachIncrease: increase });
 });
 
 const readLeads = (t: ReturnType<typeof createConvexTest>) =>
@@ -151,15 +149,15 @@ test('outreach reservations move unique leads from ready to assigned without res
     await t.mutation(api.analytics.initialize, {});
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     const readStats = () => t.run(async ctx => (await ctx.db.query('leadStats').unique())!.counts);
-    expect(await readStats()).toMatchObject({ total: 4, male: 4, ready: 4, assigned: 0 });
+    expect(await readStats()).toMatchObject({ total: 4, male: 4, assigned: 0 });
     const claim = (await reserveFollow(t, args))!;
-    expect(await readStats()).toMatchObject({ total: 4, male: 4, ready: 3, assigned: 1 });
+    expect(await readStats()).toMatchObject({ total: 4, male: 4, assigned: 1 });
     await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
     await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
-    expect(await readStats()).toMatchObject({ ready: 3, assigned: 1 });
+    expect(await readStats()).toMatchObject({ assigned: 1 });
     vi.setSystemTime(Date.now() + 10 * 86_400_000);
     await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: false });
-    expect(await readStats()).toMatchObject({ ready: 3, assigned: 1 });
+    expect(await readStats()).toMatchObject({ assigned: 1 });
     expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals.follows).toBe(1);
   } finally { vi.useRealTimers(); }
 });
@@ -217,7 +215,7 @@ test('assignment validation prevents foreign profiles and multiple scraped lists
   for (const second of [route, { ...route, leadListId: other }]) {
     const invalid = { ...routine, outreachRoutes: [route, second] };
     await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: invalid })).rejects.toThrow('Use one scraped list per automation');
-    await expect(t.mutation(api.automations.mutations.create, { name: 'Invalid', nodes: [], edges: [], listIds: automation.listIds, routine: invalid })).rejects.toThrow('Use one scraped list per automation');
+    await expect(t.mutation(api.automations.mutations.create, { name: 'Invalid', nodes: [], edges: [], modelIds: automation.modelIds, routine: invalid })).rejects.toThrow('Use one scraped list per automation');
   }
   await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...routine, outreachRoutes: [route] } })).resolves.toBeTruthy();
 });
@@ -249,8 +247,7 @@ test('uncertain sends remain reserved and show as an incomplete target when time
   await authorizeDm(t, args, claim);
   await t.mutation(internal.routines.finishSend, { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: false });
   await t.run(ctx => putWarmup(ctx, {
-    profileId: profile._id, date: dayKey(), day: 8, runsToday: 1, todayMinutes: 5, minutesUsedToday: 5, updatedAt: Date.now(),
-  }));
+    profileId: profile._id, date: dayKey(), day: 8, runsToday: 1, todayMinutes: 5, minutesUsedToday: 5, }));
   const row = (await t.query(api.routines.accounts, { automationId: args.automationId }))[0];
   expect(row).toMatchObject({ used: 1, sent: 0, allowance: 2, budgetExhausted: true });
   expect(row.issue).toContain('could not be confirmed');
@@ -261,16 +258,14 @@ test('saved routines with a fixed daily increase still load and use random growt
   const { t, args, loggedIn, profile, automation } = await setup();
   await loggedIn();
   await t.run(ctx => ctx.db.patch(automation._id, {
-    routine: { ...automation.routine!, dailyIncrease: 35 },
-  }));
+    routine: { ...automation.routine!, dailyIncrease: 35 }, }));
   const claim = (await reserveFollow(t, args))!;
   await t.mutation(internal.routines.recordFollow, {
-    profileId: profile._id, leadId: claim.leadId, followed: true,
-  });
+    profileId: profile._id, leadId: claim.leadId, followed: true, });
   const state = await t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0]);
-  expect(state.allowance).toBe(2);
-  expect(state.followIncrease).toBeGreaterThanOrEqual(1);
-  expect(state.followIncrease).toBeLessThanOrEqual(4);
+  expect(state.outreachAllowanceToday).toBe(2);
+  expect(state.outreachIncrease).toBeGreaterThanOrEqual(1);
+  expect(state.outreachIncrease).toBeLessThanOrEqual(4);
 });
 
 // Create a previously followed recipient for delivery-specific regression cases.
@@ -282,20 +277,18 @@ async function authorizeDm(t: ReturnType<typeof createConvexTest>, args: { autom
 
 async function setup() {
   const t = createConvexTest();
-  const list = (await seedList(t))!,
+  const list = (await seedModel(t))!,
     profile = (await seedProfile(t))!;
-  await t.mutation(api.profiles.mutations.bulkAddToList, {
+  await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [profile._id],
-    listId: list._id,
-  });
+    modelId: list._id, });
   const leadListId = await t.mutation(api.leads.createList, {
-    name: "Recipients",
-  });
+    name: "Recipients", });
   const automation = (await t.mutation(api.automations.mutations.create, {
     name: "Daily",
     nodes: [],
     edges: [],
-    listIds: [list._id],
+    modelIds: [list._id],
     routine: {
       ...defaultRoutine,
       outreachStartDay: 1,
@@ -303,24 +296,20 @@ async function setup() {
       maxDms: 3,
       outreachEnabled: true,
       leadListId,
-      message: "Hello {{username}}",
-    },
-  }))!;
+      message: "Hello {{username}}", }, }))!;
   await t.mutation(api.automations.mutations.setActive, {
     id: automation._id,
-    isActive: true,
-  });
+    isActive: true, });
   const args = { automationId: automation._id, profileId: profile._id };
   await t.run(ctx => putWarmup(ctx, { profileId: profile._id, day: 8, date: dayKey(), runsToday: 1,
-    todayMinutes: 30, minutesUsedToday: 0, updatedAt: Date.now() }));
+    todayMinutes: 30, minutesUsedToday: 0, }));
   // These fixtures represent accounts already classified by the scraper.
   await t.run(async ctx => {
     for (const username of ['alice', 'bob', 'carol', 'dave']) {
       const createdAt = Date.now();
       const leadId = await ctx.db.insert('leads', {
-        username, isPrivate: true, classification: 'male', enrichmentStatus: 'ready',
-        dmSent: false, followed: false, createdAt,
-      });
+        username, isPrivate: true, classification: 'male', screeningStatus: 'ready',
+        dmSent: false, followed: false, createdAt, });
       await ctx.db.insert('leadMemberships', { leadId, listId: leadListId, available: true, leadCreatedAt: createdAt });
     }
   });
@@ -328,8 +317,7 @@ async function setup() {
   const loggedIn = async () => {
     await t.mutation(api.profiles.mutations.setIgState, {
       profileId: profile._id,
-      igLoggedIn: true,
-    });
+      igLoggedIn: true, });
     await t.run(ctx => ctx.db.patch(profile._id, { outreachReady: true }));
   };
   return { t, list, profile, automation, args, leads, loggedIn, leadListId };
@@ -347,8 +335,7 @@ test('browser login starts warmup the next Kyiv day and outreach after seven war
   const accountId = await t.run(async (ctx) => {
     const id = await ctx.db.insert('igAccounts', {
       ciphertext: 'encrypted', usernameHash: 'account-for-routine', status: 'assigned',
-      profileId: profile._id, createdAt: Date.now(),
-    });
+      profileId: profile._id, createdAt: Date.now(), });
     const warmup=(await ctx.db.query('warmupStates').unique())!;await ctx.db.patch(warmup._id,{day:2});
     await ctx.db.patch(profile._id, { igAccountId: id, igLoggedIn: true,
       outreachReady: true });
@@ -372,8 +359,7 @@ test('browser login starts warmup the next Kyiv day and outreach after seven war
   const session = await t.mutation(internal.warmup.mutations.beginRunInternal, {
     profileId: profile._id, automationId: String(args.automationId), runId: 'day-two',
     minMinutes: 30, maxMinutes: 60, sessionMinMinutes: 5, sessionMaxMinutes: 10,
-    restMinMinutes: 60, restMaxMinutes: 120,
-  });
+    restMinMinutes: 60, restMaxMinutes: 120, });
   expect(session.minutes).toBeGreaterThanOrEqual(5);
   expect(session.minutes).toBeLessThanOrEqual(10);
   expect(session.remainingMinutes).toBeGreaterThanOrEqual(30);
@@ -385,20 +371,16 @@ test('browser login starts warmup the next Kyiv day and outreach after seven war
 test('a copied model automation needs a different model before enabling', async () => {
   const { t, automation, list } = await setup();
   const copy = await t.mutation(api.automations.mutations.duplicate, { id: automation._id });
-  expect(copy?.listIds).toEqual([]);
+  expect(copy?.modelIds).toEqual([]);
   await expect(t.mutation(api.automations.mutations.setActive, {
-    id: copy!._id, isActive: true,
-  })).rejects.toThrow('Select exactly one model');
-  const other = (await seedList(t, 'Other model'))!;
+    id: copy!._id, isActive: true, })).rejects.toThrow('Select exactly one model');
+  const other = (await seedModel(t, 'Other model'))!;
   await expect(t.mutation(api.automations.mutations.update, {
-    id: copy!._id, listIds: [list._id, other._id],
-  })).rejects.toThrow('Select exactly one model');
-  await t.mutation(api.automations.mutations.update, { id: copy!._id, listIds: [other._id] });
+    id: copy!._id, modelIds: [list._id, other._id], })).rejects.toThrow('Select exactly one model');
+  await t.mutation(api.automations.mutations.update, { id: copy!._id, modelIds: [other._id] });
   expect((await t.mutation(api.automations.mutations.setActive, {
-    id: copy!._id, isActive: true,
-  }))?.isActive).toBe(true);
+    id: copy!._id, isActive: true, }))?.isActive).toBe(true);
 });
-
 
 test('classified male leads are claimed exactly once', async () => {
   const { t, args, loggedIn, leadListId } = await setup();
@@ -436,7 +418,7 @@ test('sender, membership and date checks gate interaction; confirmed sends are i
   expect(await t.mutation(internal.routines.beginSend, check)).toBe(false);
   await authorizeDm(t, args, claim);
   expect(await t.mutation(internal.routines.beginSend, { ...check, date: '2000-01-01' })).toBe(false);
-  await t.mutation(api.profiles.mutations.bulkRemoveFromList, { profileIds: [profile._id], listId: list._id });
+  await t.mutation(api.profiles.mutations.bulkRemoveFromModel, { profileIds: [profile._id], modelId: list._id });
   expect(await t.mutation(internal.routines.beginSend, check)).toBe(false);
   const other = (await seedProfile(t, { name: 'Other sender' }))!;
   await expect(t.mutation(internal.routines.finishSend, { profileId: other._id, leadId: claim.leadId, date: claim.date, sent: true })).rejects.toThrow('another sender');
@@ -445,7 +427,6 @@ test('sender, membership and date checks gate interaction; confirmed sends are i
   await t.mutation(internal.routines.finishSend, result);
   await t.mutation(internal.routines.finishSend, { ...result, sent: false });
   expect((await readLeads(t)).find(l => l._id === claim.leadId)?.dmSent).toBe(true);
-  expect(await t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0].outreachDays)).toBe(1);
 });
 
 test('follows become due after seven days and unfollowing never requeues the lead', async () => {
@@ -471,8 +452,7 @@ test.each([0, 0.999])('random unfollow deadlines are saved and enforced (random=
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
   const { t, args, loggedIn, profile, automation } = await setup(); await loggedIn();
   await t.run(ctx => ctx.db.patch(automation._id, { routine: {
-    ...automation.routine!, unfollowMinDays: 3, unfollowMaxDays: 10,
-  } }));
+    ...automation.routine!, unfollowMinDays: 3, unfollowMaxDays: 10, } }));
   const rng = vi.spyOn(Math, 'random').mockReturnValue(random);
   const claim = (await reserveFollow(t, args))!;
   rng.mockRestore();
@@ -482,8 +462,7 @@ test.each([0, 0.999])('random unfollow deadlines are saved and enforced (random=
   const followDate = Date.now();
   const unfollowAt = followDate + days * 86_400_000;
   await t.run(ctx => ctx.db.patch(automation._id, { routine: {
-    ...automation.routine!, unfollowMinDays: 1, unfollowMaxDays: 1,
-  } }));
+    ...automation.routine!, unfollowMinDays: 1, unfollowMaxDays: 1, } }));
   vi.setSystemTime(unfollowAt - 1);
   await t.mutation(internal.routines.recordFollow, follow);
   expect((await readLeads(t)).find(l => l._id === claim.leadId))
@@ -527,16 +506,14 @@ test('a pending request waits until the next day and stays claimed after unfollo
   const check = { ...args, leadId: claim.leadId, date: claim.date };
 
   await t.mutation(internal.routines.recordFollow, {
-    profileId: profile._id, leadId: claim.leadId, followed: true,
-  });
+    profileId: profile._id, leadId: claim.leadId, followed: true, });
   await t.mutation(internal.routines.recordDmCheck, { ...args, leadId: claim.leadId, date: claim.date, canMessage: false });
   expect(await t.mutation(internal.routines.beginSend, check)).toBe(false);
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
 
   vi.setSystemTime(Date.now() + 7 * 86400000);
   await t.mutation(internal.routines.recordFollow, {
-    profileId: profile._id, leadId: claim.leadId, followed: false,
-  });
+    profileId: profile._id, leadId: claim.leadId, followed: false, });
   const lead = (await readLeads(t)).find(l => l._id === claim.leadId)!;
   expect(lead).toMatchObject({ senderId: profile._id, dmSent: false, followed: false });
   expect((await reserveFollow(t, args))?.leadId).not.toBe(claim.leadId);
@@ -551,8 +528,7 @@ test('a blocked DM stays unsent without stopping the sender account', async () =
     leadId: claim.leadId,
     date: claim.date,
     sent: false,
-    blocked: true,
-  });
+    blocked: true, });
   const lead = (await readLeads(t)).find(l => l._id === claim.leadId)!;
   expect(lead).toMatchObject({ senderId: profile._id, dmSent: false, followed: true });
   expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]?.issue).toBeUndefined();
@@ -576,31 +552,26 @@ test('daily allowance grows only after confirmed outreach days', async () => {
 });
 test("one automation owns each model; moving a profile changes its automation", async () => {
   const { t, list, profile } = await setup();
-  const secondList = (await seedList(t, "Second"))!;
+  const secondList = (await seedModel(t, "Second"))!;
   await expect(t.mutation(api.automations.mutations.create, {
-    name: "Duplicate model", nodes: [], edges: [], listIds: [list._id], routine: defaultRoutine,
-  })).rejects.toThrow('already has an automation');
+    name: "Duplicate model", nodes: [], edges: [], modelIds: [list._id], routine: defaultRoutine, })).rejects.toThrow('already has an automation');
   const second = (await t.mutation(api.automations.mutations.create, {
     name: "Second",
     nodes: [],
     edges: [],
-    listIds: [secondList._id],
-    routine: defaultRoutine,
-  }))!;
+    modelIds: [secondList._id],
+    routine: defaultRoutine, }))!;
   await expect(t.mutation(api.automations.mutations.update, {
-    id: second._id, listIds: [list._id],
-  })).rejects.toThrow('already has an automation');
+    id: second._id, modelIds: [list._id], })).rejects.toThrow('already has an automation');
   await t.mutation(api.automations.mutations.setActive, {
     id: second._id,
-    isActive: true,
-  });
+    isActive: true, });
   // Single-list invariant: this moves the profile, it never copies.
-  await t.mutation(api.profiles.mutations.bulkAddToList, {
+  await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [profile._id],
-    listId: secondList._id,
-  });
+    modelId: secondList._id, });
   const moved = await t.run(async (ctx) => ctx.db.get(profile._id));
-  expect(moved?.listIds?.map(String)).toEqual([String(secondList._id)]);
+  expect(moved?.modelIds?.map(String)).toEqual([String(secondList._id)]);
 });
 
 test('moving between models preserves account progress, warm-up budgets, and follow history', async () => {
@@ -612,26 +583,23 @@ test('moving between models preserves account progress, warm-up budgets, and fol
   const restUntil = Date.now() + 60 * 60_000;
   const ids = await t.run(async ctx => {
     const progress = (await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique())!;
-    await ctx.db.patch(progress._id, { activeDays: 18, followIncrease: 10, nextRunAt: restUntil, lastNotificationsDate: dayKey(), lastNotificationsAt: Date.now() });
+    await ctx.db.patch(progress._id, { activeDays: 18, outreachIncrease: 10, nextRunAt: restUntil });
     const warmup = await putWarmup(ctx, {
       profileId: profile._id, day: 18, date: dayKey(), runsToday: 2,
       todayMinutes: 30, minutesUsedToday: 12, nextRunAt: restUntil,
-      recentRunIds: ['completed-run'], lastAutomationId: automation._id, updatedAt: Date.now(),
-    });
+      recentRunIds: ['completed-run'], lastAutomationId: automation._id, });
     return { progress: progress._id, warmup };
   });
   const snapshot = () => t.run(async ctx => ({
-    progress: await ctx.db.get(ids.progress), warmup: await ctx.db.get(ids.warmup), lead: await ctx.db.get(claim.leadId),
-  }));
+    progress: await ctx.db.get(ids.progress), warmup: await ctx.db.get(ids.warmup), lead: await ctx.db.get(claim.leadId), }));
   const before = await snapshot();
-  const destination = (await seedList(t, 'Destination model'))!;
+  const destination = (await seedModel(t, 'Destination model'))!;
   const next = (await t.mutation(api.automations.mutations.create, {
-    name: 'Destination automation', nodes: [], edges: [], listIds: [destination._id], routine: automation.routine,
-  }))!;
+    name: 'Destination automation', nodes: [], edges: [], modelIds: [destination._id], routine: automation.routine, }))!;
   await t.mutation(api.automations.mutations.setActive, { id: next._id, isActive: true });
-  await t.mutation(api.profiles.mutations.bulkRemoveFromList, { profileIds: [profile._id], listId: list._id });
+  await t.mutation(api.profiles.mutations.bulkRemoveFromModel, { profileIds: [profile._id], modelId: list._id });
   expect(await snapshot()).toEqual(before);
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: destination._id });
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: destination._id });
   await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: destination._id, startedAt: Date.now() });
   expect(await snapshot()).toEqual(before);
   await loggedIn();
@@ -640,8 +608,7 @@ test('moving between models preserves account progress, warm-up budgets, and fol
   expect(await t.query(internal.routines.ready, nextArgs)).toBe(false);
   expect(await t.mutation(internal.warmup.mutations.beginRunInternal, {
     profileId: profile._id, automationId: next._id, runId: 'destination-run', minMinutes: 30, maxMinutes: 30,
-    sessionMinMinutes: 5, sessionMaxMinutes: 5, restMinMinutes: 60, restMaxMinutes: 60,
-  })).toEqual({ date: dayKey(), minutes: 0 });
+    sessionMinMinutes: 5, sessionMaxMinutes: 5, restMinMinutes: 60, restMaxMinutes: 60, })).toEqual({ date: dayKey(), minutes: 0 });
   expect(await snapshot()).toEqual(before);
 });
 
@@ -650,8 +617,7 @@ test('session progress preserves fractional stored rest deadlines as integer mil
   const nextRunAt = Date.now() + 60_000.25;
   await t.run(ctx => putWarmup(ctx, {
     profileId: profile._id, day: 1, date: dayKey(), runsToday: 1,
-    todayMinutes: 30, minutesUsedToday: 5, nextRunAt, updatedAt: Date.now(),
-  }));
+    todayMinutes: 30, minutesUsedToday: 5, nextRunAt, }));
   await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false });
   const state = await t.run(ctx => ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique());
   expect(state?.nextRunAt).toBe(Math.ceil(nextRunAt));
@@ -679,8 +645,7 @@ test.each([
     // A failed browser open must not reuse an expired rest deadline or yesterday's budget.
     await t.run(ctx => putWarmup(ctx, {
       profileId: profile._id, day: 16, date: '2026-10-08', runsToday: 3,
-      todayMinutes: 25, minutesUsedToday: 25, nextRunAt: Date.now() - 60_000, updatedAt: Date.now() - 60_000,
-    }));
+      todayMinutes: 25, minutesUsedToday: 25, nextRunAt: Date.now() - 60_000, }));
     const retryAt = Date.now() + ROUTINE_RETRY_MS;
     await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false, issue });
     const row = (await t.query(api.routines.accounts, { automationId: args.automationId }))[0];
@@ -706,8 +671,7 @@ test('retry cooldown preserves a longer rest and resets after another failure', 
     const restAt = Date.now() + 60 * 60_000;
     await t.run(ctx => putWarmup(ctx, {
       profileId: profile._id, day: 1, date: dayKey(), runsToday: 1,
-      todayMinutes: 25, minutesUsedToday: 5, nextRunAt: restAt, updatedAt: Date.now(),
-    }));
+      todayMinutes: 25, minutesUsedToday: 5, nextRunAt: restAt, }));
     await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false, issue: 'Network timeout' });
     expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0].nextRunAt).toBe(restAt);
     vi.setSystemTime(restAt);
@@ -733,8 +697,7 @@ test.each(['goto: Timeout 45000ms exceeded.', 'Element "<ElementHandle>" failed 
       await ctx.db.patch(state._id, { issue, nextRunAt: Date.now() - 60_000 });
     });
     const snapshot = await t.query(api.automations.queries.runtimeSnapshot, {
-      bridgeToken: 'bridge-secret', id: args.automationId, listIds: [String(list._id)],
-    });
+      bridgeToken: 'bridge-secret', id: args.automationId, modelIds: [String(list._id)], });
     expect(snapshot?.progress?.[0]).toMatchObject({ nextRunAt: retryAt });
     expect(snapshot?.progress?.[0].issue).toBeUndefined();
     expect(await t.query(internal.routines.ready, args)).toBe(false);
@@ -801,14 +764,11 @@ test("completed daily browsing advances once; removing and readding profiles pre
       date: dayKey(),
       runsToday: 1,
       todayMinutes: 30,
-      minutesUsedToday: 5,
-      updatedAt: Date.now(),
-    }),
+      minutesUsedToday: 5, }),
   );
   await t.mutation(internal.routines.recordSession, {
     ...args,
-    activityCompleted: true,
-  });
+    activityCompleted: true, });
   expect(
     (
       await t.query(api.routines.accounts, { automationId: args.automationId })
@@ -820,20 +780,16 @@ test("completed daily browsing advances once; removing and readding profiles pre
   });
   await t.mutation(internal.routines.recordSession, {
     ...args,
-    activityCompleted: true,
-  });
+    activityCompleted: true, });
   await t.mutation(internal.routines.recordSession, {
     ...args,
-    activityCompleted: true,
-  });
-  await t.mutation(api.profiles.mutations.bulkRemoveFromList, {
+    activityCompleted: true, });
+  await t.mutation(api.profiles.mutations.bulkRemoveFromModel, {
     profileIds: [profile._id],
-    listId: list._id,
-  });
-  await t.mutation(api.profiles.mutations.bulkAddToList, {
+    modelId: list._id, });
+  await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [profile._id],
-    listId: list._id,
-  });
+    modelId: list._id, });
   expect(
     (
       await t.query(api.routines.accounts, { automationId: args.automationId })
@@ -893,8 +849,7 @@ test('existing followed unsent leads enter the revisit queue without notificatio
   await t.run(ctx => ctx.db.patch(claim.leadId, {
     followed: true, followDate: Date.now() - 86_400_000,
     // Existing leads can have neither a revisit date nor a saved cleanup deadline.
-    unfollowAt: undefined, dmEligible: false,
-  }));
+    unfollowAt: undefined, dmEligible: false, }));
   expect(await t.query(internal.routines.dmTasks, args)).toMatchObject([{ leadId: claim.leadId }]);
   const check = { ...args, leadId: claim.leadId, date: dayKey(), canMessage: true };
   expect(await t.mutation(internal.routines.recordDmCheck, check)).toBe(true);
@@ -980,21 +935,21 @@ test('follow confirmation is idempotent and retains the deadline saved before th
   } finally { vi.useRealTimers(); }
 });
 
-test('new follow ramp starts small independently of previous DM growth and claims', async () => {
+test('outreach ramp starts small independently of stale daily claims', async () => {
   const { t, args, loggedIn } = await setup(); await loggedIn();
   await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false });
   await t.run(async ctx => {
     const state = (await ctx.db.query('accountProgress').collect())[0];
-    await ctx.db.patch(state._id, { dmIncrease: 30, date: dayKey(), used: 30, allowance: 30 });
+    await ctx.db.patch(state._id, { outreachQuotaDate: '2000-01-01', outreachUsedToday: 30, outreachAllowanceToday: 30 });
   });
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 2, sent: 0 });
   const claim = (await reserveFollow(t, args))!;
   expect(claim).not.toBeNull();
   await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
   const state = await t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0]);
-  expect(state.followIncrease).toBeGreaterThanOrEqual(1);
-  expect(state.followIncrease).toBeLessThanOrEqual(4);
-  expect(state.allowance).toBe(2);
+  expect(state.outreachIncrease).toBeGreaterThanOrEqual(1);
+  expect(state.outreachIncrease).toBeLessThanOrEqual(4);
+  expect(state.outreachAllowanceToday).toBe(2);
 });
 
 // Existing follow/DM tests include the now-required browser-screening approval step.
@@ -1013,8 +968,7 @@ async function reserveFollow(
     category: 'male',
     confidence: 1,
     model: SCREENED_MODEL,
-    followCheckPassed: true,
-  })
+    englishTextCheckPassed: true, })
   return accepted ? claim : null
 }
 
@@ -1025,10 +979,9 @@ test.each(['male', 'female', 'business'] as const)(
     await loggedIn()
     await t.run(async (ctx) => {
       await ctx.db.patch(automation._id, {
-        routine: { ...automation.routine!, allowedCategories: [category] },
-      })
+        routine: { ...automation.routine!, allowedCategories: [category] }, })
       for (const lead of leads)
-        await ctx.db.patch(lead._id, { classification: undefined, enrichmentStatus: 'pending' })
+        await ctx.db.patch(lead._id, { classification: undefined, screeningStatus: 'pending' })
     })
     const claim = (await t.mutation(internal.routines.reserve, args))!
     expect(await t.run((ctx) => ctx.db.get(claim.leadId))).not.toHaveProperty('senderId')
@@ -1037,8 +990,7 @@ test.each(['male', 'female', 'business'] as const)(
       await t.mutation(internal.routines.beginFollow, {
         ...args,
         leadId: claim.leadId,
-        date: claim.date,
-      }),
+        date: claim.date, }),
     ).toBe(false)
     const completion = {
       ...args,
@@ -1049,24 +1001,19 @@ test.each(['male', 'female', 'business'] as const)(
       confidence: 0.4,
       model: SCREENED_MODEL,
       // A male screening always carries the second pass result.
-      ...(category === 'male' ? { followCheckPassed: true } : {}),
-    }
+      ...(category === 'male' ? { englishTextCheckPassed: true } : {}), }
     expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(true)
     expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(false)
     expect(await t.run((ctx) => ctx.db.get(claim.leadId))).toMatchObject({
       senderId: args.profileId,
       classification: category,
-      enrichmentStatus: 'ready',
-      enrichmentModel: SCREENED_MODEL,
-      enrichmentConfidence: 0.4,
-    })
+      screeningStatus: 'ready', })
     expect((await t.query(internal.routines.target, args)).remaining).toBe(1)
     expect(
       await t.mutation(internal.routines.beginFollow, {
         ...args,
         leadId: claim.leadId,
-        date: claim.date,
-      }),
+        date: claim.date, }),
     ).toBe(true)
   },
 )
@@ -1082,8 +1029,7 @@ test('a disallowed category consumes no quota and can be screened by an automati
     screeningToken: claim.screeningToken,
     category: 'female' as const,
     confidence: 0.95,
-    model: SCREENED_MODEL,
-  }
+    model: SCREENED_MODEL, }
   expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(false)
   expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
   await t.run(async (ctx) => {
@@ -1093,16 +1039,14 @@ test('a disallowed category consumes no quota and can be screened by an automati
   expect(await t.mutation(internal.routines.reserve, args)).toBeNull()
   await t.run((ctx) =>
     ctx.db.patch(automation._id, {
-      routine: { ...automation.routine!, allowedCategories: ['female'] },
-    }),
+      routine: { ...automation.routine!, allowedCategories: ['female'] }, }),
   )
   const retry = (await t.mutation(internal.routines.reserve, args))!
   expect(retry.leadId).toBe(claim.leadId)
   expect(
     await t.mutation(internal.leadScreening.finish, {
       ...completion,
-      screeningToken: retry.screeningToken,
-    }),
+      screeningToken: retry.screeningToken, }),
   ).toBe(true)
 })
 
@@ -1130,8 +1074,7 @@ test('expired screening leases are recoverable and stale results cannot assign a
       category: 'male',
       confidence: 1,
       model: SCREENED_MODEL,
-      followCheckPassed: true,
-    }),
+      englishTextCheckPassed: true, }),
   ).toBe(false)
 })
 
@@ -1147,8 +1090,7 @@ test('a male decision without the English text check is never saved', async () =
       screeningToken: claim.screeningToken,
       category: 'male',
       confidence: 1,
-      model: SCREENED_MODEL,
-    }),
+      model: SCREENED_MODEL, }),
   ).rejects.toThrow(/English/)
   expect(await t.run((ctx) => ctx.db.get(claim.leadId))).not.toHaveProperty('senderId')
 });
@@ -1166,13 +1108,11 @@ test('a male lead that failed the check is never screened again by the same poli
       category: 'male',
       confidence: 1,
       model: SCREENED_MODEL,
-      followCheckPassed: false,
-    }),
+      englishTextCheckPassed: false, }),
   ).toBe(false)
   expect(await t.run((ctx) => ctx.db.get(claim.leadId))).toMatchObject({
     classification: 'male',
-    followCheckPassed: false,
-  })
+    englishTextCheckPassed: false, })
   expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId)
 });
 
@@ -1187,8 +1127,7 @@ test('a decision without the model that answered it is never saved', async () =>
       date: claim.date,
       screeningToken: claim.screeningToken,
       category: 'male',
-      confidence: 1,
-    }),
+      confidence: 1, }),
   ).rejects.toThrow(/screening model/)
   expect(await t.run((ctx) => ctx.db.get(claim.leadId))).not.toHaveProperty('senderId')
 });
@@ -1202,12 +1141,10 @@ test('provider failures skip without assignment or quota consumption', async () 
       ...args,
       leadId: failed.leadId,
       date: failed.date,
-      screeningToken: failed.screeningToken,
-    }),
+      screeningToken: failed.screeningToken, }),
   ).toBe(false)
   expect(await t.run((ctx) => ctx.db.get(failed.leadId))).toMatchObject({
-    enrichmentStatus: 'error',
-  })
+    screeningStatus: 'error', })
   expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
   expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(failed.leadId)
 })
@@ -1219,7 +1156,7 @@ test('screening failures back off, preserve decisions, and stop automatic retrie
   await loggedIn()
   let claim = (await t.mutation(internal.routines.reserve, args))!
   const leadId = claim.leadId
-  const decision = { classification: 'male' as const, enrichmentModel: 'openai/gpt-6-luna-decisions', enrichedAt: 123, enrichmentConfidence: 0.95, followCheckPassed: true }
+  const decision = { classification: 'male' as const, screenedAt: 123, englishTextCheckPassed: true }
   await t.run(async ctx => {
     await ctx.db.patch(leadId, decision)
     for (const membership of await ctx.db.query('leadMemberships').collect())
@@ -1235,7 +1172,7 @@ test('screening failures back off, preserve decisions, and stop automatic retrie
     expect(await t.mutation(internal.leadScreening.finish, failure)).toBe(false)
     expect(await t.mutation(internal.leadScreening.finish, failure)).toBe(false)
     const lead = (await t.run(ctx => ctx.db.get(leadId)))!
-    expect(lead).toMatchObject({ ...decision, enrichmentStatus: 'error', screeningFailures: attempt })
+    expect(lead).toMatchObject({ ...decision, screeningStatus: 'error', screeningFailures: attempt })
     for (const field of ['screeningToken', 'screeningProfileId', 'screeningAutomationId', 'screeningListId', 'senderId'])
       expect(lead).not.toHaveProperty(field)
     expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
@@ -1254,10 +1191,10 @@ test('screening failures back off, preserve decisions, and stop automatic retrie
   }
   vi.setSystemTime(Date.now() + 60 * 60_000)
   expect(await t.mutation(internal.routines.reserve, args)).toBeNull()
-  expect(await t.run(ctx => ctx.db.query('leadStats').unique())).toMatchObject({ counts: { ready: 3, assigned: 0, enriched: 3 } })
+  expect(await t.run(ctx => ctx.db.query('leadStats').unique())).toMatchObject({ counts: { assigned: 0, } })
   expect(await t.mutation(api.scraper.retryEnrichment, {})).toBe(1)
   const retried = (await t.run(ctx => ctx.db.get(leadId)))!
-  expect(retried).toMatchObject({ ...decision, enrichmentStatus: 'pending' })
+  expect(retried).toMatchObject({ ...decision, screeningStatus: 'pending' })
   expect(retried).not.toHaveProperty('screeningFailures')
   expect(retried).not.toHaveProperty('screeningUntil')
   expect((await t.mutation(internal.routines.reserve, args))?.leadId).toBe(leadId)
@@ -1268,14 +1205,13 @@ test('a successful screening resets the failure count and replaces the saved dec
   await loggedIn()
   const claim = (await t.mutation(internal.routines.reserve, args))!
   await t.run(ctx => ctx.db.patch(claim.leadId, { screeningFailures: 2,
-    enrichmentStatus: 'error', enrichmentModel: 'previous-model', enrichedAt: 123, enrichmentConfidence: 0.8 }))
+    screeningStatus: 'error', screenedAt: 123 }))
   expect(await t.mutation(internal.leadScreening.finish, { ...args,
     leadId: claim.leadId, date: claim.date, screeningToken: claim.screeningToken,
     category: 'female', confidence: 0.99, model: SCREENED_MODEL })).toBe(false)
   const lead = (await t.run(ctx => ctx.db.get(claim.leadId)))!
-  expect(lead).toMatchObject({ classification: 'female', enrichmentStatus: 'ready',
-    enrichmentModel: SCREENED_MODEL, enrichmentConfidence: 0.99 })
-  expect(lead.enrichedAt).not.toBe(123)
+  expect(lead).toMatchObject({ classification: 'female', screeningStatus: 'ready', })
+  expect(lead.screenedAt).not.toBe(123)
   expect(lead).not.toHaveProperty('screeningFailures')
   expect(lead).not.toHaveProperty('screeningUntil')
   expect(lead).not.toHaveProperty('senderId')
@@ -1303,8 +1239,7 @@ test('concurrent approvals cannot exceed the daily allowance', async () => {
         category: 'male',
         confidence: 1,
         model: SCREENED_MODEL,
-        followCheckPassed: true,
-      }),
+        englishTextCheckPassed: true, }),
     ),
   )
   expect(accepted.filter(Boolean)).toHaveLength(1)
@@ -1329,9 +1264,7 @@ test.each(['pause', 'categories', 'route', 'disabled'] as const)(
                   ...automation.routine!,
                   ...(change === 'categories'
                     ? { allowedCategories: ['business'] as const as ['business'] }
-                    : { leadListId: undefined }),
-                },
-              },
+                    : { leadListId: undefined }), }, },
         ),
       )
     expect(
@@ -1343,8 +1276,7 @@ test.each(['pause', 'categories', 'route', 'disabled'] as const)(
         category: 'male',
         confidence: 1,
         model: SCREENED_MODEL,
-        followCheckPassed: true,
-      }),
+        englishTextCheckPassed: true, }),
     ).toBe(false)
     expect(await t.run((ctx) => ctx.db.get(claim.leadId))).not.toHaveProperty('senderId')
   },

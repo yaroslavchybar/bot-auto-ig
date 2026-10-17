@@ -1,14 +1,14 @@
 import { expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
-import { createConvexTest, seedList, seedProfile } from './helpers'
+import { createConvexTest, seedModel, seedProfile } from './helpers'
 
 test('login retries and setup starts are rounded up, reject invalid times, and allow retry clearing', async () => {
   const t = createConvexTest()
-  const list = (await seedList(t, 'Model'))!
+  const list = (await seedModel(t, 'Model'))!
   const profile = (await seedProfile(t))!
-  await t.mutation(api.profiles.mutations.bulkAddToList, {
+  await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [profile._id],
-    listId: list._id,
+    modelId: list._id,
   })
   await t.mutation(internal.igAccounts.importEncryptedInternal, {
     rows: [{ usernameHash: 'f'.repeat(64), ciphertext: 'encrypted' }],
@@ -102,11 +102,11 @@ test('allocation can scan past unreadable available credentials', async () => {
 
 test('model setup in Convex resets outreach on moves and opens it after three posts', async () => {
   const t = createConvexTest()
-  const first = (await seedList(t, 'First model'))!
-  const second = (await seedList(t, 'Second model'))!
+  const first = (await seedModel(t, 'First model'))!
+  const second = (await seedModel(t, 'Second model'))!
   const profile = (await seedProfile(t, { name: 'model profile' }))!
-  await t.mutation(api.profiles.mutations.bulkAddToList,
-    { profileIds: [profile._id], listId: first._id })
+  await t.mutation(api.profiles.mutations.bulkAddToModel,
+    { profileIds: [profile._id], modelId: first._id })
   await t.mutation(internal.igAccounts.modelSetupEnrollInternal,
     { profileId: profile._id, modelId: first._id, startedAt: 1 })
   for (const postSourceIds of ['123456789', Array.from({ length: 9 }, (_, i) => i)]) {
@@ -135,8 +135,8 @@ test('model setup in Convex resets outreach on moves and opens it after three po
   expect((await t.query(internal.profiles.queries.getByIdInternal,
     { profileId: profile._id }))?.outreachReady).toBe(true)
 
-  await t.mutation(api.profiles.mutations.bulkAddToList,
-    { profileIds: [profile._id], listId: second._id })
+  await t.mutation(api.profiles.mutations.bulkAddToModel,
+    { profileIds: [profile._id], modelId: second._id })
   expect((await t.query(internal.profiles.queries.getByIdInternal,
     { profileId: profile._id }))?.outreachReady).toBe(false)
   await expect(t.mutation(internal.igAccounts.modelSetupPatchInternal,
@@ -150,12 +150,12 @@ test('model setup in Convex resets outreach on moves and opens it after three po
   expect((await t.query(internal.profiles.queries.getByIdInternal,
     { profileId: profile._id }))?.outreachReady).toBe(false)
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
-    patch: { targetUsername: 'legacy_name', pending: { kind: 'name', date: '2026-09-27' } },
+    patch: { targetUsername: 'first_name', pending: { kind: 'username', date: '2026-09-27' } },
     clear: [] })
   await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'completed' })
   expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0])
-    .toMatchObject({ nameDone: true, targetUsername: 'legacy_name', postSourceIds: [] })
+    .toMatchObject({ usernameDone: true, targetUsername: 'first_name', postSourceIds: [] })
   expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.pending).toBeUndefined()
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
     patch: { targetUsername: 'new_name', pending: { kind: 'username', date: '2026-09-27' } },
@@ -163,7 +163,7 @@ test('model setup in Convex resets outreach on moves and opens it after three po
   await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'completed' })
   expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0])
-    .toMatchObject({ nameDone: true, targetUsername: 'new_name' })
+    .toMatchObject({ usernameDone: true, targetUsername: 'new_name' })
   expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.fullNameDone)
     .toBeUndefined()
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
@@ -171,7 +171,7 @@ test('model setup in Convex resets outreach on moves and opens it after three po
   await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'completed' })
   expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0])
-    .toMatchObject({ nameDone: true, fullNameDone: true, fullName: 'New Name' })
+    .toMatchObject({ usernameDone: true, fullNameDone: true, fullName: 'New Name' })
   await t.mutation(internal.igAccounts.modelSetupPatchInternal,
     { profileId: profile._id, modelId: second._id, patch: { pending: { kind: 'avatar', date: '2026-09-27' } }, clear: [] })
   await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
@@ -198,28 +198,28 @@ test('model setup in Convex resets outreach on moves and opens it after three po
 
 test.each(['post', 'avatar', 'username'] as const)('pending %s prevents model changes until resolved', async kind => {
   const t = createConvexTest()
-  const first = (await seedList(t, 'First'))!
-  const second = (await seedList(t, 'Second'))!
+  const first = (await seedModel(t, 'First'))!
+  const second = (await seedModel(t, 'Second'))!
   const profile = (await seedProfile(t))!
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: first._id })
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: first._id })
   await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: first._id, startedAt: 1 })
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
     profileId: profile._id, modelId: first._id, patch: { pending: { kind, date: '2026-10-10' } }, clear: [],
   })
-  await expect(t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: second._id }))
+  await expect(t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: second._id }))
     .rejects.toThrow('pending model setup action')
-  await expect(t.mutation(api.profiles.mutations.bulkRemoveFromList, { profileIds: [profile._id], listId: first._id }))
+  await expect(t.mutation(api.profiles.mutations.bulkRemoveFromModel, { profileIds: [profile._id], modelId: first._id }))
     .rejects.toThrow('pending model setup action')
-  await expect(t.mutation(internal.profiles.mutations.bulkSetListIdInternal, { profileIds: [profile._id], listId: second._id }))
+  await expect(t.mutation(internal.profiles.mutations.bulkSetModelIdInternal, { profileIds: [profile._id], modelId: second._id }))
     .rejects.toThrow('pending model setup action')
-  await expect(t.mutation(api.lists.remove, { id: first._id })).rejects.toThrow('pending model setup actions')
-  await t.run(ctx => ctx.db.patch(profile._id, { listIds: [second._id] }))
+  await expect(t.mutation(api.models.remove, { id: first._id })).rejects.toThrow('pending model setup actions')
+  await t.run(ctx => ctx.db.patch(profile._id, { modelIds: [second._id] }))
   await expect(t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: second._id, startedAt: 1 }))
     .rejects.toThrow('pending model setup action')
   expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.pending?.kind).toBe(kind)
-  await t.run(ctx => ctx.db.patch(profile._id, { listIds: [first._id] }))
+  await t.run(ctx => ctx.db.patch(profile._id, { modelIds: [first._id] }))
   await t.mutation(internal.igAccounts.modelSetupReconcileInternal, { profileId: profile._id, resolution: 'failed' })
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: second._id })
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: second._id })
   await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: second._id, startedAt: 1 })
   await expect(t.mutation(internal.igAccounts.modelSetupPatchInternal, {
     profileId: profile._id, modelId: first._id, patch: { pending: { kind, date: '2026-10-10' } }, clear: [],

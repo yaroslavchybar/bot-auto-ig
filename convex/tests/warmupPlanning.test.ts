@@ -20,7 +20,7 @@ async function setup() {
 test('prelaunch planning saves a rest day once without creating a session reservation', async () => {
   const s = await setup()
   await s.t.run(ctx => ctx.db.insert('warmupStates', { profileId: s.profile._id, day: 8,
-    date: '2026-10-16', runsToday: 1, todayMinutes: 40, minutesUsedToday: 10, updatedAt: Date.now() }))
+    date: '2026-10-16', runsToday: 1, todayMinutes: 40, minutesUsedToday: 10, }))
   const rng = vi.spyOn(Math, 'random').mockReturnValue(0)
   expect(await s.prepare()).toBe(false)
   const saved = await s.state()

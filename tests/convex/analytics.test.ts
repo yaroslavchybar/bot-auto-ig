@@ -3,18 +3,18 @@ import { api } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 import { emptyActivity, recordActivity } from '../../convex/analyticsActivity'
 
-test('analytics counts confirmed daily activity, excludes deleted profiles, and does not reuse old lead quotas', async () => {
+test('analytics counts confirmed daily activity and excludes deleted profiles', async () => {
   const t = createConvexTest()
   await t.run(async (ctx) => {
-    for (const [name, status, usageDate, limit] of [
-      ['active', 'running', '2026-10-11', 1000],
-      ['stale', 'idle', '2026-10-10', null],
-      ['deleted', 'deleting', '2026-10-11', 1000],
+    for (const [name, status, usageDate] of [
+      ['active', 'running', '2026-10-11'],
+      ['stale', 'idle', '2026-10-10'],
+      ['deleted', 'deleting', '2026-10-11'],
     ] as const) {
       const profileId = await ctx.db.insert('profiles', {
         name,
         status,
-        using: false,
+        inUse: false,
         createdAt: 0,
         cookiesJson: 'never needed by analytics',
       })
@@ -22,26 +22,20 @@ test('analytics counts confirmed daily activity, excludes deleted profiles, and 
         profileId,
         name,
         status,
-        using: false,
+        inUse: false,
         scraperReady: true,
-        scraperUsageDate: usageDate,
-        scraperUsageCount: 99,
-        scraperDailyLimit: limit,
       })
       await ctx.db.insert('accountProgress', {
         profileId,
         paused: false,
         activeDays: 5,
-        outreachDays: 3,
-        date: usageDate,
-        used: 10,
-        allowance: 20,
-        followQuotaDate: usageDate,
+        outreachUsedToday: 10,
+        outreachAllowanceToday: 20,
+        outreachQuotaDate: usageDate,
         followedToday: 4,
-        dmDate: usageDate,
+        dmCountDate: usageDate,
         sentToday: 2,
         nextRunAt: 0,
-        startedAt: 0,
         updatedAt: 0,
       })
       await ctx.db.insert('warmupStates', {
@@ -51,7 +45,6 @@ test('analytics counts confirmed daily activity, excludes deleted profiles, and 
         todayMinutes: 30,
         minutesUsedToday: 12.5,
         runsToday: 1,
-        updatedAt: 0,
       })
     }
   })
@@ -83,10 +76,7 @@ test('analytics reads initialized unique lead totals from the small counter', as
   await t.mutation(api.leadStats.initialize, {})
   expect((await t.query(api.analytics.overview, { date: '2026-10-11' })).leads).toEqual({
     total: 0,
-    pending: 0,
-    enriched: 0,
     male: 0,
-    ready: 0,
     assigned: 0,
   })
 })
@@ -121,7 +111,7 @@ test('date ranges include today, respect UTC boundaries and leave current lead i
     expect(result.totals).toEqual({ follows: count, dms: count * 2, warmupMinutes: count / 2 })
     expect(result.quota.totalRequests).toBe(count)
     expect(result.quota.used).toBe(period === 'today' ? 0 : count)
-    expect(result.leads).toMatchObject({ total: 0, pending: 0 })
+    expect(result.leads).toMatchObject({ total: 0 })
     expect(result.period).toBe(period)
   }
   // A result on the next UTC date must not leak into a bounded range.

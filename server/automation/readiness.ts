@@ -12,7 +12,7 @@ export function routineDueAt(snapshot: RuntimeSnapshot, now = Date.now()): numbe
   let earliest = fallback
   for (const profile of snapshot.profiles) {
     if (!profile.igLoggedIn || !accountReady(profile, now)) continue
-    if (profile.paused || profile.using || profile.status === 'running' || profile.status === 'deleting' || profile.renameFrom) continue
+    if (profile.paused || profile.inUse || profile.status === 'running' || profile.status === 'deleting' || profile.pendingRenameFrom) continue
     const state = progress.get(String(profile.id))
     const warmup = warmups.get(String(profile.id))
     if (state?.paused || state?.issue) continue
@@ -32,7 +32,7 @@ export function routineDueAt(snapshot: RuntimeSnapshot, now = Date.now()): numbe
  */
 export async function loadFullRuntimeSnapshot(
   automationId: string,
-  listIds: string[],
+  modelIds: string[],
   first: RuntimeSnapshot,
 ): Promise<NonNullable<RuntimeSnapshot>> {
   const base = first ?? { automation: {}, profiles: [] }
@@ -42,7 +42,7 @@ export async function loadFullRuntimeSnapshot(
   for (const profile of base.profiles ?? []) seen.set(String(profile.id), profile as Record<string, any>)
   for (const row of base.warmups ?? []) warmups.set(String(row.profileId), row)
   for (const row of base.progress ?? []) progress.set(String(row.profileId), row)
-  for (const listId of listIds.map(String)) {
+  for (const listId of modelIds.map(String)) {
     let cursor: string | null | undefined = null
     let guard = 0
     while (guard++ < 500) {

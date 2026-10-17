@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test'
 
 import { api, internal } from '../../convex/_generated/api'
-import { createConvexTest, seedList, seedProfile } from './helpers'
+import { createConvexTest, seedModel, seedProfile } from './helpers'
 
 test('login changes preserve automatic outreach readiness and reject manual overrides', async () => {
   const t = createConvexTest()
@@ -16,25 +16,24 @@ test('login changes preserve automatic outreach readiness and reject manual over
 
 test('creates profiles and selects available profiles by list with cooldown logic', async () => {
   const t = createConvexTest()
-  const list = await seedList(t, 'List A')
+  const list = await seedModel(t, 'List A')
   const profile = await seedProfile(t, {
     name: 'Profile A',
     proxy: 'http://proxy',
     cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
   })
 
-  await t.mutation(api.profiles.mutations.bulkAddToList, {
+  await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [profile!._id],
-    listId: list!._id,
+    modelId: list!._id,
   })
 
-  const available = await t.query(internal.profiles.queries.getAvailableForListsInternal, {
-    listIds: [String(list!._id)],
+  const available = await t.query(internal.profiles.queries.getAvailableForModelsInternal, {
+    modelIds: [String(list!._id)],
     cooldownMinutes: 10,
   })
 
   expect(profile).toMatchObject({
-    mode: 'proxy',
     cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
   })
   expect(available).toHaveLength(1)
@@ -43,22 +42,22 @@ test('creates profiles and selects available profiles by list with cooldown logi
 
 test('syncs profile status', async () => {
   const t = createConvexTest()
-  const list = await seedList(t, 'List A')
+  const list = await seedModel(t, 'List A')
   const profile = await seedProfile(t, { name: 'Profile B' })
 
-  await t.mutation(api.profiles.mutations.bulkAddToList, {
+  await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [profile!._id],
-    listId: list!._id,
+    modelId: list!._id,
   })
   await t.mutation(internal.profiles.mutations.syncStatusInternal, {
     name: 'Profile B',
     status: 'running',
-    using: true,
+    inUse: true,
   })
   await t.mutation(internal.profiles.mutations.syncStatusInternal, {
     name: 'Profile B',
     status: 'idle',
-    using: false,
+    inUse: false,
   })
 
   const updated = await t.query(api.profiles.queries.getById, {
@@ -67,7 +66,7 @@ test('syncs profile status', async () => {
 
   expect(updated).toMatchObject({
     status: 'idle',
-    using: false,
+    inUse: false,
   })
 })
 
@@ -109,7 +108,7 @@ test('editing other fields preserves cookies saved during browser shutdown', asy
 
 test('model batch creation assigns distinct proxy slots and is atomic when capacity is short', async () => {
   const t = createConvexTest()
-  const model = await seedList(t, 'Model A')
+  const model = await seedModel(t, 'Model A')
   await t.run(ctx => ctx.db.insert('proxies', { name: 'Malformed', proxy: 'http://bad/path',
     proxyType: 'http', purpose: 'work', createdAt: 1 }))
   await t.mutation(api.proxies.create, { name: 'P1', proxy: '1.2.3.4:8080:user:pass', proxyType: 'http' })
@@ -124,9 +123,9 @@ test('model batch creation assigns distinct proxy slots and is atomic when capac
   expect(created).toHaveLength(3)
   const rows = await t.query(api.profiles.queries.list, {})
   expect(rows).toHaveLength(3)
-  expect(rows.every(row => row.listIds?.includes(model!._id))).toBe(true)
+  expect(rows.every(row => row.modelIds?.includes(model!._id))).toBe(true)
   expect(rows.map(row => row.igAccountId)).toEqual(accounts.slice(0, 3).map(account => account._id))
-  expect(await t.query(internal.profiles.queries.listAssignedInternal, { listId: model!._id }))
+  expect(await t.query(internal.profiles.queries.listAssignedInternal, { modelId: model!._id }))
     .toHaveLength(3)
   expect((await t.query(internal.igAccounts.availableInternal, { count: 4 })).page).toHaveLength(1)
   await expect(t.mutation(internal.profiles.mutations.createForModelInternal,
@@ -137,7 +136,7 @@ test('model batch creation assigns distinct proxy slots and is atomic when capac
 
 test('model batch creation ignores login proxies', async () => {
   const t = createConvexTest()
-  const model = await seedList(t, 'Model B')
+  const model = await seedModel(t, 'Model B')
   await t.mutation(api.proxies.create, { name: 'Login only', proxy: 'login:8080',
     proxyType: 'http', purpose: 'login', country: 'us' })
   await t.mutation(internal.igAccounts.importEncryptedInternal, { rows: [

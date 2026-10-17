@@ -42,8 +42,8 @@ export const initialize = mutation({
           .withIndex('by_profile', (q) => q.eq('profileId', profile.profileId))
           .unique(),
       ])
-      add(progress?.followQuotaDate, { follows: progress?.followedToday ?? 0 })
-      add(progress?.dmDate, { dms: progress?.sentToday ?? 0 })
+      add(progress?.outreachQuotaDate, { follows: progress?.followedToday ?? 0 })
+      add(progress?.dmCountDate, { dms: progress?.sentToday ?? 0 })
       add(warmup?.date, {
         warmupMinutes: warmup?.minutesUsedToday ?? 0,
         follows: warmup?.followAttempts?.filter((attempt) => attempt.confirmed).length ?? 0,
@@ -96,7 +96,7 @@ export const overview = query({
     return {
       period,
       historySince: new Date(history.startedAt).toISOString().slice(0, 10),
-      leads: leadStats?.complete ? leadStats.counts : null,
+      leads: leadStats?.backfillComplete ? leadStats.counts : null,
       totals: {
         follows: counts.follows,
         dms: counts.dms,

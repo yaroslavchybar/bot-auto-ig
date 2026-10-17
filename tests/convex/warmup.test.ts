@@ -1,6 +1,6 @@
 import { expect, test, vi, afterEach } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
-import { createConvexTest, seedProfile, seedList, seedAutomation } from './helpers'
+import { createConvexTest, seedProfile, seedModel, seedAutomation } from './helpers'
 import { defaultRoutine } from '../../convex/routinePolicy'
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
@@ -51,9 +51,9 @@ test('day one reserves only browsing and preserves the plan across retries', asy
 
 test.each([true, false])('week-one follows have an independent quota and count once (analytics initialized before: %s)', async initializeBefore => {
   const { t, args, begin } = await setup()
-  const listId = (await seedList(t))!._id
-  const automation = await seedAutomation(t, { listIds: [listId], routine: { ...defaultRoutine, outreachEnabled: false } })
-  await t.run(ctx => ctx.db.patch(args.profileId, { listIds: [listId], igLoggedIn: true }))
+  const listId = (await seedModel(t))!._id
+  const automation = await seedAutomation(t, { modelIds: [listId], routine: { ...defaultRoutine, outreachEnabled: false } })
+  await t.run(ctx => ctx.db.patch(args.profileId, { modelIds: [listId], igLoggedIn: true }))
   const plan = await begin()
   await t.run(async ctx => {
     const state = await ctx.db.query('warmupStates').unique()

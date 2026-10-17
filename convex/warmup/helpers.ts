@@ -57,7 +57,7 @@ export async function ensureDailyPlan(ctx: MutationCtx, profileId: Id<'profiles'
   const daily = {
     profileId, day, activityPlan: warmupActivityPlan(day), activityUsed: emptyWarmupActivity(), followAttempts: [],
     date, runsToday: 0, todayMinutes: day > 7 && Math.random() < 0.1 ? 0 : randomMinutes(plan), minutesUsedToday: 0,
-    recentRunIds: [] as string[], updatedAt: now,
+    recentRunIds: [] as string[],
   };
   if (state) {
     await ctx.db.patch(state._id, { ...daily, activeRun: undefined });

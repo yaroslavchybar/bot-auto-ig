@@ -15,16 +15,16 @@ async function setup() {
   vi.stubEnv('INTERNAL_API_KEY', 'test')
   const t = createConvexTest()
   const ids = await t.run(async (ctx) => {
-    const modelId = await ctx.db.insert('lists', { name: 'model', createdAt: 0 })
+    const modelId = await ctx.db.insert('models', { name: 'model', createdAt: 0 })
     const profileId = await ctx.db.insert('profiles', {
       name: 'profile',
-      using: false,
+      inUse: false,
       igLoggedIn: true,
-      sessionId: 'saved-cookie',
+      instagramSessionId: 'saved-cookie',
       createdAt: 0,
       proxy: 'http://proxy.test:8000',
       proxyType: 'http',
-      listIds: [modelId],
+      modelIds: [modelId],
     })
     await ctx.db.insert('proxies', {
       name: 'proxy',
@@ -33,7 +33,7 @@ async function setup() {
       country: 'ua',
       createdAt: 0,
     })
-    await ctx.db.insert('profileListAssignments', { profileId, listId: modelId })
+    await ctx.db.insert('profileModelAssignments', { profileId, modelId: modelId })
     await syncWorkerProfile(ctx, (await ctx.db.get(profileId))!)
     const listId = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 })
     const sourceId = await ctx.db.insert('scrapeSources', {
@@ -42,12 +42,12 @@ async function setup() {
       enabled: true,
       running: true,
       profileId,
-      kind: 'likers',
+      runKind: 'likers',
       runId: 'old-run',
       leaseUntil: Date.now() + 60_000,
       nextCheckAt: 0,
       postCount: 1,
-      discovered: 0,
+      leadsAdded: 0,
       createdAt: 0,
     })
     const postId = await ctx.db.insert('scrapePosts', {
@@ -62,7 +62,7 @@ async function setup() {
     await ctx.db.patch(sourceId, { currentPostId: postId })
     return { profileId, modelId, sourceId, postId }
   })
-  const automation = (await seedAutomation(t, { listIds: [ids.modelId], routine: defaultRoutine }))!
+  const automation = (await seedAutomation(t, { modelIds: [ids.modelId], routine: defaultRoutine }))!
   const pause = (paused: boolean) =>
     t.mutation(api.profiles.mutations.setPaused, { profileId: ids.profileId, paused })
   const reserve = (requestId: string) =>
@@ -84,7 +84,7 @@ test('pause blocks automation, scraping, warm-up, and browser-cookie calls while
     }),
   ).toBe(false)
   const discovery=(await s.t.mutation(internal.scrapeSources.claim, {}))!
-  expect(discovery).toMatchObject({kind:'posts',profileId:''})
+  expect(discovery).toMatchObject({runKind:'posts',profileId:''})
   await s.t.mutation(internal.scrapeSources.finish,{sourceId:s.sourceId,runId:discovery.runId,status:'completed'})
   await expect(
     s.t.mutation(internal.scraper.saveBatch, {

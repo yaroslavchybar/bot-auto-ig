@@ -19,7 +19,7 @@ test('concurrent operations emit once, preserve their own context and redact sen
     import logger, { logOperation, addLogContext, redactLogValues } from './server/shared/logger.ts';
     await Promise.all(['alice', 'bob'].map(profileId => logOperation('test.job', { profileId }, async () => {
       redactLogValues(profileId + '-private-password');
-      logger.info({ event: 'job.step', sessionId: 'private-cookie', message: profileId + '-private-password http://user:pass@proxy.test Bearer hidden' });
+      logger.info({ event: 'job.step', instagramSessionId: 'private-cookie', message: profileId + '-private-password http://user:pass@proxy.test Bearer hidden' });
       await new Promise(resolve => setTimeout(resolve, profileId === 'alice' ? 10 : 1));
       addLogContext({ recordsSaved: profileId === 'alice' ? 2 : 3, apiKey: 'test-private-secret' });
     })));
@@ -31,7 +31,7 @@ test('concurrent operations emit once, preserve their own context and redact sen
   assert.equal(bob.context.recordsSaved, 3)
   assert.notEqual(alice.requestId, bob.requestId)
   assert.equal(alice.environment.commitHash, 'test-commit')
-  assert.equal(alice.context.notes[0].sessionId, '[redacted]')
+  assert.equal(alice.context.notes[0].instagramSessionId, '[redacted]')
   assert.equal(alice.context.apiKey, '[redacted]')
   assert.ok(!JSON.stringify(logs).includes('user:pass'))
   assert.ok(!JSON.stringify(logs).includes('test-private-secret'))
@@ -79,8 +79,8 @@ test('completion is idempotent and notes are bounded while retaining total count
 
 test('sanitizer handles cycles, SDK errors and nested credentials without dropping useful counts', () => {
   const input: Record<string, unknown> = { profileCount: 5, sessionToken: 'hidden', OPENROUTER_API_KEY: 'hidden',
-    nested: { cookie: 'hidden' }, error: Object.assign(new Error('oops'), { request: { password: 'hidden' } }),
-    detail: '{"password":"hidden"}' }
+    nested: { cookie: 'hidden', sessionid: 'hidden', instagramSessionId: 'hidden' }, error: Object.assign(new Error('oops'), { request: { password: 'hidden' } }),
+    detail: '{"password":"hidden","instagramSessionId":"hidden"}' }
   input.self = input
   const clean = sanitizeLogValue(input) as typeof input
   assert.equal(clean.profileCount, 5)

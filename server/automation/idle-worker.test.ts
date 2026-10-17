@@ -8,7 +8,7 @@ test('a resting routine yields its deadline and closes its realtime subscription
     let closed = 0
     const dueAt = Date.now() + 60_000
     const snapshot = { automation: { isActive: true, status: 'running' },
-      profiles: [{ id: 'resting', name: 'Resting', listIds: ['list'], igLoggedIn: true, using: false }],
+      profiles: [{ id: 'resting', name: 'Resting', modelIds: ['list'], igLoggedIn: true, inUse: false }],
       progress: [{ profileId: 'resting', nextRunAt: dueAt }] }
     const realtime = await import('./server/shared/convexRealtime.ts')
     mock.module('./server/shared/convexRealtime.ts', () => ({
@@ -26,7 +26,7 @@ test('a resting routine yields its deadline and closes its realtime subscription
     try {
       const { runAutomation } = await import('./server/automation/worker.ts')
       await runAutomation({ automationId: 'routine', yieldWhenIdle: true,
-        automation: { _id: 'routine', nodes: [], edges: [], listIds: ['list'], routine: { headless: true } } })
+        automation: { _id: 'routine', nodes: [], edges: [], modelIds: ['list'], routine: { headless: true } } })
       assert.equal(closed, 1)
       assert.equal(events.at(-1).type, 'worker_waiting')
       assert.equal(events.at(-1).dueAt, dueAt)

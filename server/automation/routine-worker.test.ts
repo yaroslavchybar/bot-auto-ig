@@ -8,7 +8,7 @@ test('a failed profile does not prevent the next eligible profile from starting'
   const opened: string[] = [], issues: string[] = []
   globalThis.fetch = (async (url, options) => {
     const path = String(url)
-    if (path.endsWith('/api/profiles')) return Response.json(['broken', 'healthy'].map(name => ({ id: name, name, listIds: ['list'], using: false })))
+    if (path.endsWith('/api/profiles')) return Response.json(['broken', 'healthy'].map(name => ({ id: name, name, modelIds: ['list'], inUse: false })))
     if (path.endsWith('/api/routines/ready')) {
       const body = JSON.parse(String(options?.body))
       return Response.json(!body.checkpoint)
@@ -21,7 +21,7 @@ test('a failed profile does not prevent the next eligible profile from starting'
     return Response.json({})
   }) as typeof fetch
   try {
-    await runAutomation({ automationId: 'routine', automation: { _id: 'routine', nodes: [], edges: [], listIds: ['list'], routine: { headless: true, activity: {} } } }, async name => {
+    await runAutomation({ automationId: 'routine', automation: { _id: 'routine', nodes: [], edges: [], modelIds: ['list'], routine: { headless: true, activity: {} } } }, async name => {
       opened.push(name)
       if (name === 'broken') throw new Error('Browser startup failed')
       return { page: {}, close: async () => {} } as unknown as BrowserSession

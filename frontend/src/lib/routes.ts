@@ -4,8 +4,8 @@ const AnalyticsPage = lazy(() =>
     default: module.AnalyticsPage,
   })),
 )
-const ListsPage = lazy(() =>
-  import('@/features/lists/ListsPage').then((module) => ({ default: module.ListsPage })),
+const ModelsPage = lazy(() =>
+  import('@/features/models/ModelsPage').then((module) => ({ default: module.ModelsPage })),
 )
 const ProfilesPage = lazy(() =>
   import('@/features/profiles/ProfilesPage').then((module) => ({ default: module.ProfilesPage })),
@@ -51,7 +51,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   '/automations': { Page: AutomationsPage, breadcrumb: 'Automations', navId: 'automations' },
   '/scraper': { Page: ScraperPage, breadcrumb: 'Scraper', navId: 'scraper' },
   '/ig-accounts': { Page: IgAccountsPage, breadcrumb: 'IG Accounts', navId: 'ig_accounts' },
-  '/lists': { Page: ListsPage, breadcrumb: 'Models', navId: 'lists' },
+  '/models': { Page: ModelsPage, breadcrumb: 'Models', navId: 'models' },
   '/proxies': { Page: ProxiesPage, breadcrumb: 'Proxies', navId: 'proxies' },
   '/vnc': { Page: VncPage, breadcrumb: 'Browser View', navId: 'vnc' },
   '/vnc/session/:automationId/:profileName': {

@@ -75,7 +75,7 @@ impl Profiles {
                 self.sync(
                     text(&body, "name"),
                     text(&body, "status"),
-                    body["using"] == true,
+                    body["inUse"] == true,
                 )
                 .await?;
                 json!({"success":true})
@@ -174,7 +174,7 @@ impl Profiles {
     }
     async fn maintain(&self, profile: &Value) -> Result<()> {
         let mut names = vec![text(profile, "name").to_owned()];
-        if let Some(old) = profile["renameFrom"].as_str() {
+        if let Some(old) = profile["pendingRenameFrom"].as_str() {
             names.push(old.into());
         }
         self.processes.stop_owners(&names).await?;
@@ -189,7 +189,7 @@ impl Profiles {
         if id.is_empty() {
             return Err(Failure::invalid("Profile id is missing"));
         }
-        if !deleting && profile["renameFrom"].is_null() {
+        if !deleting && profile["pendingRenameFrom"].is_null() {
             return Ok(());
         }
         tokio::task::spawn_blocking(move || finish_files(&root, &profile))
@@ -211,7 +211,7 @@ impl Profiles {
     pub async fn retry(&self) -> Result<()> {
         let _starting = self.processes.starting.lock().await;
         for profile in self.list().await?.as_array().into_iter().flatten() {
-            if profile["status"] == "deleting" || profile["renameFrom"].is_string() {
+            if profile["status"] == "deleting" || profile["pendingRenameFrom"].is_string() {
                 if let Err(error) = self.maintain(profile).await {
                     ig_service_common::service_error(
                         "profiles.maintenance_pending",
@@ -234,7 +234,7 @@ impl Profiles {
         let mut cleared = 0;
         let mut errors = Vec::new();
         for row in self.list().await?.as_array().into_iter().flatten() {
-            if row["using"] != true && row["status"] != "running" {
+            if row["inUse"] != true && row["status"] != "running" {
                 continue;
             }
             // Ad-hoc login sessions also hold this lock, even without a supervised process.
@@ -248,7 +248,7 @@ impl Profiles {
         }
         Ok(json!({"cleared":cleared,"errors":errors}))
     }
-    pub async fn sync(&self, name: &str, status: &str, using: bool) -> Result<()> {
+    pub async fn sync(&self, name: &str, status: &str, in_use: bool) -> Result<()> {
         validate_name(name)?;
         if status.is_empty() {
             return Err(Failure::invalid("status is required"));
@@ -257,7 +257,7 @@ impl Profiles {
             .convex(
                 Method::POST,
                 "/api/profiles/sync-status",
-                Some(&json!({"name":name,"status":status,"using":using})),
+                Some(&json!({"name":name,"status":status,"inUse":in_use})),
             )
             .await?;
         Ok(())
@@ -265,7 +265,7 @@ impl Profiles {
 }
 fn strip(value: &mut Value, cookies: bool) {
     if let Some(row) = value.as_object_mut() {
-        for key in ["sessionId", "login", "testIp"] {
+        for key in ["instagramSessionId", "login", "testIp"] {
             row.remove(key);
         }
         if cookies {
@@ -328,7 +328,7 @@ fn lock_names(root: &Path, mut names: Vec<String>) -> Result<Vec<Connection>> {
 fn finish_files(root: &Path, profile: &Value) -> Result<()> {
     let name = text(profile, "name");
     validate_name(name)?;
-    let old = profile["renameFrom"].as_str();
+    let old = profile["pendingRenameFrom"].as_str();
     if let Some(old) = old {
         validate_name(old)?;
     }
@@ -409,7 +409,7 @@ pub async fn lease(State(state): State<Arc<Profiles>>, ws: WebSocketUpgrade) -> 
                 if profile.is_null() {
                     return Err(Failure::missing("Profile not found"));
                 }
-                if profile["status"] == "deleting" || profile["renameFrom"].is_string() {
+                if profile["status"] == "deleting" || profile["pendingRenameFrom"].is_string() {
                     return Err(conflict("Profile maintenance is in progress"));
                 }
                 Ok(locks)
@@ -592,7 +592,7 @@ mod tests {
         assert_eq!(processes.ownership().await["manuals"], json!(["B"]));
         assert_eq!(
             statuses.lock().await.as_slice(),
-            [json!({"name":"B","status":"running","using":true})]
+            [json!({"name":"B","status":"running","inUse":true})]
         );
         processes.shutdown().await.unwrap();
     }
@@ -613,13 +613,13 @@ mod tests {
         let root = canonical_root(dir.path()).unwrap().join("profiles");
         std::fs::create_dir_all(root.join("Old")).unwrap();
         std::fs::write(root.join("Old/cookies"), b"keep").unwrap();
-        let row = json!({"name":"New","renameFrom":"Old"});
+        let row = json!({"name":"New","pendingRenameFrom":"Old"});
         finish_files(&root, &row).unwrap();
         finish_files(&root, &row).unwrap();
         assert_eq!(std::fs::read(root.join("New/cookies")).unwrap(), b"keep");
         std::fs::create_dir_all(root.join("Old")).unwrap();
         assert!(finish_files(&root, &row).is_err());
-        let row = json!({"name":"New","renameFrom":"Old","status":"deleting"});
+        let row = json!({"name":"New","pendingRenameFrom":"Old","status":"deleting"});
         finish_files(&root, &row).unwrap();
         finish_files(&root, &row).unwrap();
         assert!(!root.join("Old").exists() && !root.join("New").exists());

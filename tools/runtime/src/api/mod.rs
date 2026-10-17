@@ -471,7 +471,7 @@ async fn invoke(
             Ok(mut value) => {
                 fn strip(value: &mut Value, cookies: bool) {
                     if let Some(row) = value.as_object_mut() {
-                        for key in ["sessionId", "login", "testIp"] {
+                        for key in ["instagramSessionId", "login", "testIp"] {
                             row.remove(key);
                         }
                         if cookies {

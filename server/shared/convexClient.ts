@@ -22,11 +22,11 @@ if (!convexApiKey) {
 // Convert the URL if needed
 const convexUrl = convexCloudUrl.replace('.convex.cloud', '.convex.site')
 // Database types
-export type DbListRow = {
+export type DbModelRow = {
   id: string
   name: string
-  fullName?: string
-  fullNames?: string[]
+  baseFullName?: string
+  fullNameVariations?: string[]
   usernames?: string[]
 }
 
@@ -249,8 +249,8 @@ export function igAccountRequest<T>(
 
 // ==================== LISTS ====================
 
-export async function listsList(): Promise<DbListRow[]> {
-  return convexFetch<DbListRow[]>('/api/lists')
+export async function modelsList(): Promise<DbModelRow[]> {
+  return convexFetch<DbModelRow[]>('/api/models')
 }
 
 export async function profilesList(): Promise<DbProfileRow[]> {
@@ -304,14 +304,14 @@ export async function profilesUpdateByName(
 export async function profilesSyncStatus(
   name: string,
   status: string,
-  using: boolean = false,
+  inUse: boolean = false,
 ): Promise<true> {
   const cleanedName = String(name || '').trim()
   const cleanedStatus = String(status || '').trim()
   if (!cleanedName || !cleanedStatus) throw new Error('name and status are required')
   await convexFetch<any>('/api/profiles/sync-status', {
     method: 'POST',
-    body: { name: cleanedName, status: cleanedStatus, using },
+    body: { name: cleanedName, status: cleanedStatus, inUse },
   })
   return true
 }
@@ -327,7 +327,7 @@ export function profilesSetIgLoggedIn(profileId: string, igLoggedIn: boolean): P
 // ==================== AUTOMATIONS ====================
 
 export type DbAutomationRow = {
-  listIds?: string[]
+  modelIds?: string[]
   routine?: { activity: Record<string, number | boolean | string>; headless: boolean; interests?: { label: string; description: string }[];
     ai?: import('./aiSettings.js').AiSettings }
   _id: string
@@ -405,7 +405,6 @@ export type DbWarmupState = {
   reservedMinutes: number
   nextRunAt?: number
   lastAutomationId?: string
-  lastRunAt?: number
 }
 
 /** Warm-up state for one profile, or null before its first warm-up run. */
@@ -449,14 +448,14 @@ export type RuntimeProfile = {
   id: string
   name: string
   status?: string
-  using: boolean
-  listIds?: string[]
+  inUse: boolean
+  modelIds?: string[]
   lastOpenedAt?: number
   igLoggedIn?: boolean
   igAccountStatus?: string
   browserLoggedInAt?: number
   outreachReady?: boolean
-  renameFrom?: string
+  pendingRenameFrom?: string
 }
 
 export type RuntimePage = {
@@ -470,13 +469,13 @@ export type RuntimePage = {
 
 export async function automationsRuntimePage(
   automationId: string,
-  listId: string,
+  modelId: string,
   cursor?: string | null,
 ): Promise<RuntimePage> {
   const cleaned = String(automationId || '').trim()
   if (!cleaned) throw new Error('automationId is required')
-  if (!String(listId || '').trim()) throw new Error('listId is required')
-  const params = new URLSearchParams({ automationId: cleaned, listId: String(listId) })
+  if (!String(modelId || '').trim()) throw new Error('modelId is required')
+  const params = new URLSearchParams({ automationId: cleaned, modelId: String(modelId) })
   if (cursor) params.set('cursor', cursor)
   return convexFetch<RuntimePage>(`/api/automations/runtime-page?${params.toString()}`)
 }
@@ -524,7 +523,7 @@ export const routineFinishScreening = (
   category: 'male' | 'female' | 'business'
   confidence: number
   model: string
-  followCheckPassed?: boolean
+  englishTextCheckPassed?: boolean
 },
   failureReason?: 'refused',
 ) =>

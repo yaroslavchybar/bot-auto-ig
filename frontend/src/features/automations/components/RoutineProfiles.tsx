@@ -15,7 +15,7 @@ type ModelWarmup = {
   profileId: string
   modelId: string
   startedAt: number
-  nameDone?: boolean
+  usernameDone?: boolean
   fullNameDone?: boolean
   avatarDone?: boolean
   postSourceIds: string[]
@@ -43,7 +43,7 @@ export function RoutineProfiles({
   modelId,
 }: {
   automationId: Id<'automations'>
-  modelId?: Id<'lists'>
+  modelId?: Id<'models'>
 }) {
   const rows = useQuery(api.routines.accounts, { automationId })
   const setAccount = useMutation(api.routines.setAccount)
@@ -247,7 +247,7 @@ function SetupSteps({
   const postTarget = progress.postTarget ?? 9
   const postsDone = progress.postSourceIds.length
   const steps = [
-    { label: 'Username', done: progress.nameDone === true },
+    { label: 'Username', done: progress.usernameDone === true },
     { label: 'Full name', done: progress.fullNameDone === true },
     { label: 'Avatar', done: progress.avatarDone === true },
     { label: `Posts ${postsDone}/${postTarget}`, done: postsDone >= postTarget },

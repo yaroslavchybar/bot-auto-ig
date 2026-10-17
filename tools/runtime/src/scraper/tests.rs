@@ -21,7 +21,7 @@ fn scraper_fixture(fixture: &Fixture) -> Scraper {
     }
 }
 
-fn task(kind: TaskKind) -> Task {
+fn task(run_kind: TaskKind) -> Task {
     Task {
         id: "source".into(),
         username: "source".into(),
@@ -30,7 +30,7 @@ fn task(kind: TaskKind) -> Task {
         since_date: 100_000,
         post_limit: 5000,
         list_id: "list".into(),
-        kind,
+        run_kind,
         post: Some(json!({"id":"1","code":"one"})),
     }
 }
@@ -52,8 +52,8 @@ async fn browser_ownership_blocks_scraping_without_fallback_and_resumes_when_idl
         .update(json!({"blockedProfileIds":["profile"]}))
         .await
         .unwrap();
-    for kind in [TaskKind::Likers] {
-        let error = scraper.run_task(&task(kind)).await.unwrap_err();
+    for run_kind in [TaskKind::Likers] {
+        let error = scraper.run_task(&task(run_kind)).await.unwrap_err();
         assert!(error.paused);
         assert!(error.message.contains("busy in the browser"));
     }
@@ -106,7 +106,6 @@ async fn post_discovery_uses_only_apify_and_preserves_range_counts_and_batches()
     assert_eq!(rows[1]["posts"].as_array().unwrap().len(), 1);
     assert_eq!(rows[0]["postCount"], 26);
     assert_eq!(rows[0]["averageLikes"], 113.5);
-    assert_eq!(rows[0]["postsFromApify"], true);
 }
 
 #[tokio::test]
@@ -119,7 +118,8 @@ async fn liker_checks_cache_only_acknowledged_prefix_and_scope_dedupe_to_list() 
             let path = request.uri().path().to_string();
 
             if path == "/api/profiles/by-id" {
-                return Json(json!({"id":"profile","sessionId":"browser-cookie"})).into_response();
+                return Json(json!({"id":"profile","instagramSessionId":"browser-cookie"}))
+                    .into_response();
             }
             if path == "/api/scraper/requests/reserve" {
                 return Json(json!({"allowed":true})).into_response();
@@ -245,7 +245,7 @@ async fn likers_use_browser_cookies_and_charge_every_attempt_without_rate_limit_
     let charged = reservations.clone();
     let fixture=Fixture::start(move|request|{let mode=current.load(Ordering::SeqCst);let reads=requested.clone();let reservations=charged.clone();async move {
         match request.uri().path() {
-            "/api/profiles/by-id"=>Json(json!({"id":"profile","sessionId":"browser-cookie","paused":mode==3})).into_response(),
+            "/api/profiles/by-id"=>Json(json!({"id":"profile","instagramSessionId":"browser-cookie","paused":mode==3})).into_response(),
             "/api/scraper/requests/reserve"=>{reservations.fetch_add(1,Ordering::SeqCst);let value=body(request).await;assert_eq!(value["sourceId"],"source");assert_eq!(value["runId"],"run");Json(json!({"allowed":mode!=2,"reason":"Hourly scraper request limit reached"})).into_response()},
             "/api/v1/media/1/likers/"=>{
                 reads.fetch_add(1,Ordering::SeqCst);assert_eq!(request.headers()["cookie"],"sessionid=browser-cookie;");assert!(!request.headers().contains_key("authorization"));

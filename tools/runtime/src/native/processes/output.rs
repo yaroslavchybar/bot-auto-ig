@@ -14,8 +14,8 @@ pub(super) fn diagnostic(text: &str, stderr: bool, secrets: &[String]) -> Value 
         [
             (r"(?i)(https?://|socks5h?://)[^\s/@]+:[^\s/@]+@", "${1}[redacted]@"),
             (r#"(?i)\bBearer\s+[^\s,;"']+"#, "Bearer [redacted]"),
-            (r#"(?i)\b(sessionid|csrftoken|password|passwd|secret|token|api_key|access_token|authenticatorKey)=([^\s&;,"']+)"#, "${1}=[redacted]"),
-            (r#"(?i)(["'](?:password|passwd|secret|token|api_key|access_token|sessionid|csrftoken|authorization|cookie|authenticatorKey)["']\s*:\s*)["'][^"']*["']"#, "${1}\"[redacted]\""),
+            (r#"(?i)\b(sessionid|instagramSessionId|csrftoken|password|passwd|secret|token|api_key|access_token|authenticatorKey)=([^\s&;,"']+)"#, "${1}=[redacted]"),
+            (r#"(?i)(["'](?:password|passwd|secret|token|api_key|access_token|sessionid|instagramSessionId|csrftoken|authorization|cookie|authenticatorKey)["']\s*:\s*)["'][^"']*["']"#, "${1}\"[redacted]\""),
         ].into_iter().map(|(pattern, replacement)| (Regex::new(pattern).unwrap(), replacement)).collect()
     });
     let mut message = text.to_owned();
@@ -58,7 +58,7 @@ mod tests {
     #[test]
     fn diagnostics_preserve_errors_but_redact_credentials_and_bound_unicode() {
         let note = diagnostic(
-            r#"Error: https://user:pass@proxy.test Bearer private sessionid=cookie {"password":"hidden","authenticatorKey":"seed"} fixture-key"#,
+            r#"Error: https://user:pass@proxy.test Bearer private sessionid=cookie {"password":"hidden","instagramSessionId":"hidden","authenticatorKey":"seed"} fixture-key"#,
             true,
             &["fixture-key".into()],
         );

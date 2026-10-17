@@ -42,7 +42,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run lint
-      - run: bun test ./.github/scripts/image-cache.test.ts
+      - run: bun test ./.github/scripts
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.1
@@ -91,7 +91,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # The deploy key scopes this push to production.
-      - run: bunx convex deploy --check-build-environment disable
+      - run: bun .github/scripts/deploy-convex.ts
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
 

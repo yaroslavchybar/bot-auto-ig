@@ -75,13 +75,13 @@ test('long sleeps are capped so a missed update never sleeps forever', () => {
   assert.equal(nextWakeupDelayMs(snapshot, 0, now), MAX_REALTIME_SLEEP_MS)
 })
 
-test('truncated snapshots sweep every list cursor so no profile starves', async () => {
+test('truncated snapshots sweep every model cursor so no profile starves', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (url: RequestInfo | URL) => {
     const u = String(url)
     assert.match(u, /runtime-page/)
     const params = new URL(u).searchParams
-    assert.equal(params.get('listId'), 'list')
+    assert.equal(params.get('modelId'), 'list')
     if (!params.get('cursor')) {
       return Response.json({
         automation: { status: 'running', isActive: true },

@@ -16,7 +16,6 @@ function toApi(row: Doc<'warmupStates'> | null) {
 		reservedMinutes: row.activeRun?.minutes ?? 0,
 		nextRunAt: row.nextRunAt,
 		lastAutomationId: row.lastAutomationId,
-		lastRunAt: row.lastRunAt,
 	};
 }
 

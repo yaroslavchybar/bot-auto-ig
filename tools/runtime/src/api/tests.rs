@@ -237,8 +237,8 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
     .await;
     let convex=Fixture::start(|request|async move{
         assert_eq!(request.headers()["authorization"],"Bearer worker-key");
-        if request.uri().path()=="/api/profiles/by-id"{assert_eq!(request.uri().query(),Some("profileId=profile"));return Json(json!({"id":"profile","cookiesJson":"editable","sessionId":"private-session","login":"private-login","testIp":"private-ip"})).into_response();}
-        Json(json!([{"id":"profile","cookiesJson":"private-cookies","sessionId":"private-session","name":"Profile"}])).into_response()
+        if request.uri().path()=="/api/profiles/by-id"{assert_eq!(request.uri().query(),Some("profileId=profile"));return Json(json!({"id":"profile","cookiesJson":"editable","instagramSessionId":"private-session","login":"private-login","testIp":"private-ip"})).into_response();}
+        Json(json!([{"id":"profile","cookiesJson":"private-cookies","instagramSessionId":"private-session","name":"Profile"}])).into_response()
     }).await;
     let mut state = Api::from_env().unwrap();
     Arc::get_mut(&mut state.auth).unwrap().bypass = true;

@@ -6,7 +6,7 @@ test('fractional stored deadlines yield integer wakeups without shortening rest'
   const now = Date.parse('2026-10-09T12:00:00Z')
   const snapshot = {
     automation: { isActive: true },
-    profiles: [{ id: 'p', igLoggedIn: true, using: false }],
+    profiles: [{ id: 'p', igLoggedIn: true, inUse: false }],
     progress: [{ profileId: 'p', nextRunAt: now + 30_000.25 }],
     warmups: [{ profileId: 'p', nextRunAt: now + 30_000.75 }],
   }
@@ -16,10 +16,10 @@ test('fractional stored deadlines yield integer wakeups without shortening rest'
 test('routine wakeups honor rest, login, daily budgets and paused profiles', () => {
   const now = Date.parse('2026-09-30T23:55:00Z')
   const automation = { isActive: true }
-  const ready = { id: 'ready', igLoggedIn: true, using: false }
+  const ready = { id: 'ready', igLoggedIn: true, inUse: false }
   assert.equal(routineDueAt({ automation, profiles: [ready], progress: [{ profileId: 'ready', nextRunAt: now + 30_000 }] }, now), now + 30_000)
   for (const blocked of [
-    { ...ready, paused: true }, { ...ready, igLoggedIn: false }, { ...ready, using: true }, { ...ready, renameFrom: 'old' },
+    { ...ready, paused: true }, { ...ready, igLoggedIn: false }, { ...ready, inUse: true }, { ...ready, pendingRenameFrom: 'old' },
     { ...ready, igAccountStatus: 'assigned', browserLoggedInAt: now - 1000 },
   ]) assert.equal(routineDueAt({ automation, profiles: [blocked] }, now), now + 15 * 60_000)
   assert.equal(routineDueAt({ automation, profiles: [ready], progress: [{ profileId: 'ready', paused: true }] }, now), now + 15 * 60_000)

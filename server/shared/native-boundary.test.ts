@@ -10,7 +10,7 @@ test('public content, displays, and automation status work without a Bun command
     expect(request.headers.authorization).toBe('Bearer fixture-key')
     const route = new URL(request.url!, 'http://local').pathname
     response.setHeader('Content-Type', 'application/json')
-    if (route === '/api/lists') response.end(JSON.stringify([{ id: 'model-1' }]))
+    if (route === '/api/models') response.end(JSON.stringify([{ id: 'model-1' }]))
     else if (route === '/api/profiles/by-id')
       response.end(JSON.stringify({ id: 'p', name: 'test', igLoggedIn: true }))
     else {

@@ -7,9 +7,9 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-test.each([10, undefined])(
-  'scraper ignores old lead limits and exposes cooldown and lease expiry with old limit %s',
-  async (limit) => {
+test(
+  'scraper exposes cooldown and lease expiry',
+  async () => {
     vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-12T12:00:00Z'))
@@ -28,13 +28,9 @@ test.each([10, undefined])(
         name: 'test',
         proxy: 'proxy.test:8000',
         proxyType: 'http',
-        using: false,
-        mode: 'direct',
+        inUse: false,
         createdAt: 0,
-        sessionId: 'test',
-        scraperDailyLimit: limit,
-        scraperUsageCount: limit ?? 1000,
-        scraperUsageDate: '2026-09-24',
+        instagramSessionId: 'test',
       })
       await syncWorkerProfile(ctx, (await ctx.db.get(profile))!)
       await ctx.db.insert('proxies', {
@@ -52,7 +48,7 @@ test.each([10, undefined])(
         running: false,
         nextCheckAt: 0,
         postCount: 0,
-        discovered: 0,
+        leadsAdded: 0,
         createdAt: 0,
       })
       return { profile, job }
@@ -75,21 +71,19 @@ test('maintenance includes only deleting and renaming profiles', async () => {
   const t = createConvexTest()
   const args = { bridgeToken: 'test-bridge' }
   const [deleting, renaming] = await t.run(async (ctx) => {
-    await ctx.db.insert('profiles', { name: 'idle', using: false, mode: 'direct', createdAt: 0 })
+    await ctx.db.insert('profiles', { name: 'idle', inUse: false, createdAt: 0 })
     return Promise.all([
       ctx.db.insert('profiles', {
         name: 'delete',
-        using: false,
-        mode: 'direct',
+        inUse: false,
         createdAt: 0,
         status: 'deleting',
       }),
       ctx.db.insert('profiles', {
         name: 'rename',
-        using: false,
-        mode: 'direct',
+        inUse: false,
         createdAt: 0,
-        renameFrom: 'old',
+        pendingRenameFrom: 'old',
       }),
     ])
   })
@@ -98,10 +92,10 @@ test('maintenance includes only deleting and renaming profiles', async () => {
   )
   await t.run(async (ctx) => {
     await ctx.db.delete(deleting)
-    await ctx.db.patch(renaming, { renameFrom: undefined })
+    await ctx.db.patch(renaming, { pendingRenameFrom: undefined })
   })
   expect(await t.query(api.profiles.queries.maintenanceWork, args)).toEqual({
     profileIds: [],
-    modelIds: [],
+    contentKeys: [],
   })
 })

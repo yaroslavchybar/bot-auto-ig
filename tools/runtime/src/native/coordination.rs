@@ -113,10 +113,10 @@ impl Coordination {
                     for (id, row) in rows {
                         if watchers.get(&id).is_some_and(|w| w.row["configRevision"] == row["configRevision"]) { continue; }
                         generation += 1;
-                        let subscriptions = self.subscriptions.clone(); let sender = sender.clone(); let worker_id = id.clone(); let lists = row["listIds"].clone(); let revision = generation;
+                        let subscriptions = self.subscriptions.clone(); let sender = sender.clone(); let worker_id = id.clone(); let lists = row["modelIds"].clone(); let revision = generation;
                         let task = tokio::spawn(async move {
                             loop {
-                                if let Ok(mut subscription) = subscriptions.subscribe("automations/queries:runtimeSnapshot", json!({"id": worker_id, "listIds": lists.as_array().cloned().unwrap_or_default()})).await {
+                                if let Ok(mut subscription) = subscriptions.subscribe("automations/queries:runtimeSnapshot", json!({"id": worker_id, "modelIds": lists.as_array().cloned().unwrap_or_default()})).await {
                                     while let Some(update) = subscription.next().await { if sender.send((worker_id.clone(), revision, subscriptions::value(update).ok())).await.is_err() { return; } }
                                 }
                                 if sender.send((worker_id.clone(), revision, None)).await.is_err() { return; }
@@ -166,7 +166,7 @@ impl Coordination {
         let mut profiles = keyed(&snapshot["profiles"], "id");
         let mut warmups = keyed(&snapshot["warmups"], "profileId");
         let mut progress = keyed(&snapshot["progress"], "profileId");
-        for list in row["listIds"]
+        for list in row["modelIds"]
             .as_array()
             .into_iter()
             .flatten()
@@ -176,7 +176,7 @@ impl Coordination {
             for _ in 0..500 {
                 let url = reqwest::Url::parse_with_params(
                     "http://local/",
-                    [("automationId", id), ("listId", list), ("cursor", &cursor)],
+                    [("automationId", id), ("modelId", list), ("cursor", &cursor)],
                 )
                 .unwrap();
                 let page = self
@@ -248,9 +248,9 @@ pub fn due_at(snapshot: &Value, now: u64) -> u64 {
     for profile in snapshot["profiles"].as_array().into_iter().flatten() {
         if profile["paused"] == true
             || profile["igLoggedIn"] != true
-            || profile["using"] == true
+            || profile["inUse"] == true
             || matches!(profile["status"].as_str(), Some("running" | "deleting"))
-            || profile["renameFrom"]
+            || profile["pendingRenameFrom"]
                 .as_str()
                 .is_some_and(|s| !s.is_empty())
         {
@@ -327,7 +327,7 @@ mod readiness_tests {
         for profile in [
             json!({"igLoggedIn": false}),
             json!({"igLoggedIn": true, "paused": true}),
-            json!({"igLoggedIn": true, "using": true}),
+            json!({"igLoggedIn": true, "inUse": true}),
             json!({"igLoggedIn": true, "igAccountStatus": "assigned", "browserLoggedInAt": now - 1000}),
         ] {
             assert_eq!(

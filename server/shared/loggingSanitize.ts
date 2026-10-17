@@ -1,4 +1,4 @@
-const PRIVATE_KEYS = /^(password|passwd|secret|token|accessToken|refreshToken|sessionToken|bridgeToken|apiKey|authorization|cookie|cookies|cookiesJson|sessionId|authenticatorKey|privateKey|headers|body|requestBody|responseBody|attachment|content|messageText)$|(?:password|secret|token|apiKey|privateKey|authenticatorKey)$/i
+const PRIVATE_KEYS = /^(password|passwd|secret|token|accessToken|refreshToken|sessionToken|bridgeToken|apiKey|authorization|cookie|cookies|cookiesJson|sessionid|instagramSessionId|authenticatorKey|privateKey|headers|body|requestBody|responseBody|attachment|content|messageText)$|(?:password|secret|token|apiKey|privateKey|authenticatorKey)$/i
 
 /** Serialize errors explicitly: SDK request/response objects contain credentials. */
 export function sanitizeLogValue(value: unknown, secrets: readonly string[] = [], depth = 0, seen = new Set<object>()): unknown {
@@ -7,8 +7,8 @@ export function sanitizeLogValue(value: unknown, secrets: readonly string[] = []
       .replace(/data:image\/[^;,\s]+;base64,[a-z0-9+/=_-]+/gi, '[redacted image]')
       .replace(/(https?:\/\/|socks5h?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[redacted]@')
       .replace(/\bBearer\s+[^\s,;"']+/gi, 'Bearer [redacted]')
-      .replace(/\b(sessionid|csrftoken|password|token|api_key|access_token)=([^\s&;,"']+)/gi, '$1=[redacted]')
-      .replace(/(["'](?:password|token|api_key|access_token|sessionid|csrftoken|authorization|cookie)["']\s*:\s*)["'][^"']*["']/gi, '$1"[redacted]"')
+      .replace(/\b(sessionid|instagramSessionId|csrftoken|password|token|api_key|access_token)=([^\s&;,"']+)/gi, '$1=[redacted]')
+      .replace(/(["'](?:password|token|api_key|access_token|sessionid|instagramSessionId|csrftoken|authorization|cookie)["']\s*:\s*)["'][^"']*["']/gi, '$1"[redacted]"')
     for (const secret of secrets) if (secret.length >= 4) text = text.split(secret).join('[redacted]')
     return text.slice(0, 4000)
   }

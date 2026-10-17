@@ -1,5 +1,4 @@
 export const HOUR = 3_600_000
-export const DEFAULT_MONITOR_DAYS = 1
 export const DEFAULT_SCRAPE_POST_LIMIT = 10
 /** Fixed randomized spacing, independent of likes, new IDs, or traffic. */
 export const monitorDelay = (jitter = Math.random()) =>

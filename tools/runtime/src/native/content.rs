@@ -103,14 +103,29 @@ impl Content {
     }
     async fn require_model(&self, api: &Api, model: &str) -> Result<()> {
         self.directory(model)?;
-        let models = api.convex(reqwest::Method::GET, "/api/lists", None).await?;
-        if !models
-            .as_array()
-            .is_some_and(|rows| rows.iter().any(|row| row["id"] == model))
-        {
+        let models = api
+            .convex(reqwest::Method::GET, "/api/models", None)
+            .await?;
+        if !models.as_array().is_some_and(|rows| {
+            rows.iter()
+                .any(|row| row["contentKey"].as_str().or(row["id"].as_str()) == Some(model))
+        }) {
             return Err(Failure::missing("Model not found"));
         }
         Ok(())
+    }
+    /// Database IDs can change; uploaded content keeps its stable storage key.
+    pub async fn storage_key(api: &Api, model: &str) -> Result<String> {
+        let models = api
+            .convex(reqwest::Method::GET, "/api/models", None)
+            .await?;
+        let row = models
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|row| row["id"].as_str() == Some(model))
+            .ok_or_else(|| Failure::missing("Model not found"))?;
+        Ok(row["contentKey"].as_str().unwrap_or(model).to_owned())
     }
     async fn add_locked(&self, model: &str, kind: &str, name: &str, bytes: &[u8]) -> Result<Value> {
         Self::kind(kind)?;
@@ -473,6 +488,76 @@ fn thumbnail(file: &Path) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
     #[tokio::test]
+    async fn migrated_model_ids_keep_existing_content_for_gallery_and_worker_allocations() {
+        use crate::{native::Native, test_support::Fixture};
+        use axum::{response::IntoResponse, Json};
+
+        let fixture = Fixture::start(|request| async move {
+            assert_eq!(request.uri().path(), "/api/models");
+            Json(json!([{"id":"model-new","contentKey":"model-old"}])).into_response()
+        })
+        .await;
+        let root = tempfile::tempdir().unwrap();
+        let bank = Content::new(root.path().into());
+        bank.write(
+            "model-old",
+            &[Item {
+                id: "source".into(),
+                kind: "posts".into(),
+                name: "photo.jpg".into(),
+                variants: vec!["copy.jpg".into()],
+                assigned: HashMap::new(),
+                created_at: 1,
+            }],
+        )
+        .await
+        .unwrap();
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.key = "fixture".into();
+        let api = Arc::new(api);
+        let mut native =
+            Native::new(api.clone(), crate::scraper::Scraper::start(api).unwrap()).unwrap();
+        Arc::get_mut(&mut native).unwrap().content = bank.clone();
+
+        let gallery = native
+            .invoke(
+                "ig-accounts.get.models_modelId_content",
+                &HashMap::from([("modelId".into(), "model-new".into())]),
+                axum::http::Request::builder()
+                    .uri("/api/models/model-new/content")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(gallery.status(), axum::http::StatusCode::OK);
+        let rows: Value = serde_json::from_slice(
+            &axum::body::to_bytes(gallery.into_body(), 10_000)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(rows[0]["id"], "source");
+        let Json(rows) = crate::native::run_content_command(
+            native.clone(),
+            "list".into(),
+            json!({"modelId":"model-new"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows[0]["id"], "source");
+        let Json(allocated) = crate::native::run_content_command(
+            native,
+            "allocate".into(),
+            json!({"modelId":"model-new","kind":"posts","profileId":"profile"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(allocated["sourceId"], "source");
+        assert!(allocated["path"].as_str().unwrap().contains("model-old"));
+        assert!(!root.path().join("model-new").exists());
+    }
+    #[tokio::test]
     async fn model_cleanup_is_scoped_idempotent_and_waits_for_generation() {
         let root = tempfile::tempdir().unwrap();
         let bank = Content::new(root.path().into());
@@ -534,7 +619,7 @@ mod tests {
                 let arrival = arrival.clone();
                 let finish = finish.clone();
                 async move {
-                    if request.uri().path() == "/api/lists" {
+                    if request.uri().path() == "/api/models" {
                         arrival.notify_one();
                         finish.notified().await;
                         return Json(json!([{"id": "model-1"}])).into_response();
@@ -751,7 +836,7 @@ mod tests {
         let release = Arc::new(tokio::sync::Notify::new());
         let arrival = entered.clone();
         let finish = release.clone();
-        let fixture=Fixture::start(move |request| { let arrival=arrival.clone(); let finish=finish.clone(); async move { if request.uri().path()=="/api/lists" { return Json(json!([{"id":"model-1"}])).into_response(); } arrival.notify_one(); finish.notified().await;
+        let fixture=Fixture::start(move |request| { let arrival=arrival.clone(); let finish=finish.clone(); async move { if request.uri().path()=="/api/models" { return Json(json!([{"id":"model-1"}])).into_response(); } arrival.notify_one(); finish.notified().await;
             Json(json!({"outputs":(0..50).map(|n|json!({"name":format!("copy_{n}.jpg")})).collect::<Vec<_>>()})).into_response()
         }}).await;
         let mut bank = Content::new(root.path().into());
@@ -816,7 +901,7 @@ mod tests {
             vec![],
         ] {
             let fixture=Fixture::start(move |request| { let names=names.clone(); async move {
-                if request.uri().path()=="/api/lists" { return Json(json!([{"id":"model-1"}])).into_response(); }
+                if request.uri().path()=="/api/models" { return Json(json!([{"id":"model-1"}])).into_response(); }
                 if names.is_empty() { return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response(); }
                 Json(json!({"outputs":names.into_iter().map(|name|json!({"name":name})).collect::<Vec<_>>()})).into_response()
             }}).await;

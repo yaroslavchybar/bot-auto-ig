@@ -100,10 +100,10 @@ export function subscribeToConvexQuery<T>(
 
 export const watchRoutineRuntime = (
   id: string,
-  listIds: string[],
+  modelIds: string[],
   update: (value: RuntimeSnapshot) => void,
   error: (error: Error) => void,
-) => subscribeToConvexQuery('automations/queries:runtimeSnapshot', { id, listIds }, update, error)
+) => subscribeToConvexQuery('automations/queries:runtimeSnapshot', { id, modelIds }, update, error)
 export const watchRoutineAccess = (
   automationId: string,
   profileId: string,

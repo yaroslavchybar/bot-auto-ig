@@ -23,7 +23,7 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
 (`packageManager: bun@1.4.2`, workspaces `frontend` + `server`).
 
 - `frontend/`: React + Vite+ app.
-  Feature-owned UI under `src/features/` (`profiles`, `lists`, `automations`,
+  Feature-owned UI under `src/features/` (`profiles`, `models`, `automations`,
   `vnc`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Axum handles the public API.
@@ -47,10 +47,26 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
 - `server/automation/`: Bun workers and TypeScript Instagram actions
   (feed browsing, story watching). Automation workers
   emit `__EVENT__`-prefixed JSON for WebSocket propagation.
-- `convex/`: schema, queries/mutations (`profiles`, `lists`, `automations`,
-  `messageTemplates`), HTTP actions. Generated code in
+- `convex/`: schema, queries/mutations (`profiles`, `models`, `automations`,
+  `leads`), HTTP actions. Generated code in
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
 - `data/`: git-ignored runtime state (application logs are JSON on stdout).
+
+## Database cleanup deployment
+
+Models use `models`, `modelIds`, and `profileModelAssignments`; scraped lead
+lists retain their separate `leadLists` and `listId` names. Model content uses
+a stable `contentKey`, so copying database rows does not move or lose images.
+Screening results use `screeningStatus`, `screenedAt`, and
+`englishTextCheckPassed`. Daily outreach usage and allowance remain shared by
+public DMs and private follow requests.
+
+The normal GitHub deployment runs `.github/scripts/deploy-convex.ts`. When old
+data needs cleanup, it temporarily blocks application handlers, migrates rows
+in batches, restores the strict schema, and reschedules post expiry jobs.
+Existing quotas, assignments, pending actions, and content are preserved.
+An interrupted cleanup resumes on the next deployment. Temporary migration
+functions are removed after success; no manual database cleanup is required.
 
 ## Application logs
 

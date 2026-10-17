@@ -10,28 +10,28 @@ import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import {
 	statusValidator,
-	normalizeListIds,
-	getAutomationListIds,
+	normalizeModelIds,
+	getAutomationModelIds,
 	prepareAutomationRun,
 	assertValidStatusTransition,
 	type AutomationStatus,
 } from "./helpers";
 
-async function assertModelAvailable(ctx: MutationCtx, modelIds: Id<'lists'>[], exceptId?: Id<'automations'>) {
+async function assertModelAvailable(ctx: MutationCtx, modelIds: Id<'models'>[], exceptId?: Id<'automations'>) {
   if (modelIds.length !== 1) throw new DomainError('VALIDATION', 'Select exactly one model');
   const modelId = modelIds[0];
   if (!modelId || !await ctx.db.get(modelId)) throw new DomainError('VALIDATION', 'Model not found');
   const other = (await ctx.db.query('automations').collect()).find(row =>
-    row._id !== exceptId && row.routine && row.listIds?.includes(modelId));
+    row._id !== exceptId && row.routine && row.modelIds?.includes(modelId));
   if (other) throw new DomainError('CONFLICT', 'This model already has an automation');
 }
 
-async function assertOutreachRoutes(ctx: MutationCtx, policy: RoutinePolicy, modelIds: Id<'lists'>[]) {
+async function assertOutreachRoutes(ctx: MutationCtx, policy: RoutinePolicy, modelIds: Id<'models'>[]) {
   for (const route of outreachRoutes(policy)) {
     if (!await ctx.db.get(route.leadListId)) throw new DomainError('VALIDATION', 'Scraped list not found');
     for (const profileId of route.profileIds) {
       const profile = await ctx.db.get(profileId);
-      if (!profile || profile.status === 'deleting' || !profile.listIds?.some(id => modelIds.includes(id)))
+      if (!profile || profile.status === 'deleting' || !profile.modelIds?.some(id => modelIds.includes(id)))
         throw new DomainError('VALIDATION', 'Assigned profiles must belong to this automation’s model');
     }
   }
@@ -44,7 +44,7 @@ export const create = mutation({
 		description: v.optional(v.string()),
 		nodes: v.any(),
 		edges: v.any(),
-		listIds: v.optional(v.array(v.id("lists"))),
+		modelIds: v.optional(v.array(v.id("models"))),
 	},
 	handler: async (ctx, args) => {
 		const cleaned = String(args.name || "").trim();
@@ -52,23 +52,23 @@ export const create = mutation({
 
 		const now = Date.now();
 		if (args.routine) validateRoutine(args.routine);
-		const listIds = normalizeListIds(args.listIds);
-		if (args.routine) await assertModelAvailable(ctx, listIds);
-		if (args.routine) await assertOutreachRoutes(ctx, args.routine, listIds);
+		const modelIds = normalizeModelIds(args.modelIds);
+		if (args.routine) await assertModelAvailable(ctx, modelIds);
+		if (args.routine) await assertOutreachRoutes(ctx, args.routine, modelIds);
 		const id = await ctx.db.insert("automations", {
 			name: cleaned,
 			routine: args.routine,
 			description: args.description,
 			nodes: args.nodes || [],
 			edges: args.edges || [],
-			listIds,
+			modelIds,
 			// New automations start disabled; enabling is an explicit action.
 			isActive: false,
 			status: "idle",
 			createdAt: now,
 			updatedAt: now,
 		});
-		if (args.routine && listIds[0]) await updateWarmupPostTargets(ctx, listIds[0], args.routine);
+		if (args.routine && modelIds[0]) await updateWarmupPostTargets(ctx, modelIds[0], args.routine);
 		return await ctx.db.get(id);
 	},
 });
@@ -81,8 +81,7 @@ export const update = mutation({
 		description: v.optional(v.string()),
 		nodes: v.optional(v.any()),
 		edges: v.optional(v.any()),
-		listIds: v.optional(v.array(v.id("lists"))),
-		maxRetries: v.optional(v.number()),
+		modelIds: v.optional(v.array(v.id("models"))),
 	},
 	handler: async (ctx, args) => {
 		const { id, ...updates } = args;
@@ -95,8 +94,8 @@ export const update = mutation({
 		}
 		if (updates.routine || existing.routine) {
 			validateRoutine(updates.routine ?? existing.routine!);
-			await assertModelAvailable(ctx, normalizeListIds(updates.listIds ?? existing.listIds), id);
-			await assertOutreachRoutes(ctx, updates.routine ?? existing.routine!, normalizeListIds(updates.listIds ?? existing.listIds));
+			await assertModelAvailable(ctx, normalizeModelIds(updates.modelIds ?? existing.modelIds), id);
+			await assertOutreachRoutes(ctx, updates.routine ?? existing.routine!, normalizeModelIds(updates.modelIds ?? existing.modelIds));
 		}
 
 		const patch: Record<string, any> = { updatedAt: Date.now() };
@@ -109,8 +108,7 @@ export const update = mutation({
 		if (updates.description !== undefined) patch.description = updates.description;
 		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
 		if (updates.edges !== undefined) patch.edges = updates.edges;
-		if (updates.listIds !== undefined) patch.listIds = normalizeListIds(updates.listIds);
-		if (updates.maxRetries !== undefined) patch.maxRetries = updates.maxRetries;
+		if (updates.modelIds !== undefined) patch.modelIds = normalizeModelIds(updates.modelIds);
 
 		await ctx.db.patch(id, patch);
 		if (updates.routine) {
@@ -120,9 +118,9 @@ export const update = mutation({
         if (routine) {
           const previousRange = warmupPostRange(existing.routine);
           const nextRange = warmupPostRange(routine);
-          const modelId = normalizeListIds(updates.listIds ?? existing.listIds)[0];
+          const modelId = normalizeModelIds(updates.modelIds ?? existing.modelIds)[0];
           if (previousRange[0] !== nextRange[0] || previousRange[1] !== nextRange[1] ||
-              modelId !== existing.listIds?.[0]) {
+              modelId !== existing.modelIds?.[0]) {
             if (modelId) await updateWarmupPostTargets(ctx, modelId, routine);
           }
         }
@@ -165,7 +163,7 @@ export const duplicate = mutation({
 			description: existing.description,
 			nodes: existing.nodes,
 			edges: existing.edges,
-			listIds: existing.routine ? [] : getAutomationListIds(existing),
+			modelIds: existing.routine ? [] : getAutomationModelIds(existing),
 			isActive: false,
             routine: existing.routine,
 			status: "idle",
@@ -193,7 +191,7 @@ export const setActive = mutation({
           await assertAssignments(ctx, { ...automation, isActive: true });
           if (automation.routine) {
             validateRoutine(automation.routine);
-            await assertModelAvailable(ctx, normalizeListIds(automation.listIds), args.id);
+            await assertModelAvailable(ctx, normalizeModelIds(automation.modelIds), args.id);
           }
         }
 		await ctx.db.patch(args.id, {
@@ -294,7 +292,6 @@ export const reset = mutation({
 			nodeStates: undefined,
 			startedAt: undefined,
 			completedAt: undefined,
-			retryCount: 0,
 			updatedAt: Date.now(),
 		});
 		return await ctx.db.get(args.id);

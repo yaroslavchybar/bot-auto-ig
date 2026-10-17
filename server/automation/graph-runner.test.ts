@@ -8,7 +8,7 @@ test('pausing a graph profile stops before the next action and preserves its che
   const emitted: string[] = []
   const context: Parameters<typeof executeGraphProfile>[0] = {
     automationId: 'automation',
-    profile: { id: 'profile', name: 'Model', using: false },
+    profile: { id: 'profile', name: 'Model', inUse: false },
     session: {} as Parameters<typeof executeGraphProfile>[0]['session'],
     controls: { close: async () => {} },
     nodes: [

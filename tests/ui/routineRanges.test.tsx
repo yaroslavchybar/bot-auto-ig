@@ -60,7 +60,7 @@ test('the AI tab loads saved settings, edits a prompt, validates it, and saves w
   vi.mocked(useQuery).mockReturnValue([])
   vi.mocked(useMutation).mockReturnValue(Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }))
   const ai = { interestMatch: { model: 'liquid/d1-ultra', prompt: 'Fishing content.' } }
-  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'],
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], modelIds: ['model'],
     routine: { ...defaultRoutine, ai } } as unknown as Doc<'automations'>
   view = mount()
   await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
@@ -100,7 +100,7 @@ test('profile screening prompts and both models are editable and saved', async (
   vi.mocked(useMutation).mockReturnValue(
     Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }),
   )
-  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'],
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], modelIds: ['model'],
     routine: defaultRoutine } as unknown as Doc<'automations'>
   view = mount()
   await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
@@ -161,7 +161,7 @@ test('profile screening Reset restores all defaults and preserves other AI setti
     criteria: { male: 'Custom first choice.', female: 'Custom second choice.', business: 'Custom third choice.' },
     nonEnglishText: 'Custom non-English text check.',
   }
-  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'],
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], modelIds: ['model'],
     routine: { ...defaultRoutine, ai: { profileScreening, interestMatch } } } as unknown as Doc<'automations'>
   view = mount()
   await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
@@ -198,7 +198,7 @@ test('an automation saves its selected lead categories and rejects an empty sele
     name: 'Routine',
     nodes: [],
     edges: [],
-    listIds: ['model'],
+    modelIds: ['model'],
     routine: defaultRoutine,
   } as unknown as Doc<'automations'>
   view = mount()
@@ -239,7 +239,7 @@ test('automation ranges load, reject reversed ranges, and save both min/max pair
     name: 'Routine',
     nodes: [],
     edges: [],
-    listIds: ['model'],
+    modelIds: ['model'],
     routine: { ...defaultRoutine, warmupMinPosts: 3, warmupMaxPosts: 6,
       activity: { stories_max: 99, reels_min: 99, post_view_min_seconds: 99, profile_visit_chance: 42, watch_stories: false } },
     createdAt: 1,
@@ -308,7 +308,7 @@ test('interests add separate AI-rewritten tags, retain combinations, and save al
   vi.mocked(useMutation).mockReturnValue(Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }))
   vi.mocked(apiFetch).mockResolvedValueOnce({ description: 'Content featuring dancing or singing performances.' })
     .mockResolvedValueOnce({ description: 'Fishing techniques and angling trips.' })
-  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'], routine: defaultRoutine } as unknown as Doc<'automations'>
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], modelIds: ['model'], routine: defaultRoutine } as unknown as Doc<'automations'>
   view = mount()
   await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
   await click('Interests')
@@ -339,7 +339,7 @@ test('an interest edit requires a new AI interpretation and failed rewriting kee
   vi.mocked(useMutation).mockReturnValue(Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }))
   vi.mocked(apiFetch).mockRejectedValueOnce(new Error('AI unavailable'))
     .mockResolvedValueOnce({ description: 'Fishing content excluding competitions.' })
-  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], listIds: ['model'],
+  const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], modelIds: ['model'],
     routine: { ...defaultRoutine, interests: [{ label: 'fishing', description: 'Fishing content.' }] } } as unknown as Doc<'automations'>
   view = mount()
   await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)

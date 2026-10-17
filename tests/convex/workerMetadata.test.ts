@@ -12,9 +12,9 @@ test('scraper metadata follows browser cookie availability and proxy changes',as
  const t=createConvexTest();const profile=(await t.mutation(api.profiles.mutations.create,{name:'profile'}))!;
  const profileId=profile._id
  expect(await t.run(ctx=>ctx.db.query('scraperProfiles').unique())).toMatchObject({scraperReady:false})
- await t.run(ctx=>patchProfile(ctx,profileId,{sessionId:'cookie',proxy:'new:8080',proxyType:'http'}))
+ await t.run(ctx=>patchProfile(ctx,profileId,{instagramSessionId:'cookie',proxy:'new:8080',proxyType:'http'}))
  expect(await t.run(ctx=>ctx.db.query('scraperProfiles').unique())).toMatchObject({scraperReady:true,proxy:'new:8080'})
- await t.run(ctx=>patchProfile(ctx,profileId,{sessionId:undefined}))
+ await t.run(ctx=>patchProfile(ctx,profileId,{instagramSessionId:undefined}))
  expect(await t.run(ctx=>ctx.db.query('scraperProfiles').unique())).toMatchObject({scraperReady:false})
  await t.mutation(internal.profiles.mutations.beginDeleteInternal,{name:'profile'})
  await t.mutation(internal.profiles.mutations.removeByIdInternal,{profileId})

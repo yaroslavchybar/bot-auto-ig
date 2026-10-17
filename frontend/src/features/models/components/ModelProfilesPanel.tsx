@@ -8,25 +8,25 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import type { List } from '../types'
+import type { Model } from '../types'
 
 type ProfileOption = FunctionReturnType<typeof api.profiles.queries.modelOptions>[number]
 type MoveAction = 'add' | 'remove'
 
 // Two-column transfer list: connected profiles on the left, unassigned profiles on the right.
 // Each side multi-selects rows and moves them in one bulk mutation.
-export function ModelProfilesPanel({ model, active = true }: { model: List; active?: boolean }) {
+export function ModelProfilesPanel({ model, active = true }: { model: Model; active?: boolean }) {
   const profiles = useQuery(api.profiles.queries.modelOptions, active ? {} : 'skip')
-  const add = useMutation(api.profiles.mutations.bulkAddToList)
-  const remove = useMutation(api.profiles.mutations.bulkRemoveFromList)
+  const add = useMutation(api.profiles.mutations.bulkAddToModel)
+  const remove = useMutation(api.profiles.mutations.bulkRemoveFromModel)
   const [pendingAction, setPendingAction] = useState<MoveAction | null>(null)
   const [error, setError] = useState('')
-  const modelId = model.id as Id<'lists'>
+  const modelId = model.id as Id<'models'>
   const connected = (profiles ?? [])
-    .filter((profile) => profile.listIds?.includes(modelId))
+    .filter((profile) => profile.modelIds?.includes(modelId))
     .sort(byName)
   const available = (profiles ?? [])
-    .filter((profile) => !profile.listIds?.length && profile.status !== 'deleting')
+    .filter((profile) => !profile.modelIds?.length && profile.status !== 'deleting')
     .sort(byName)
   const notLoggedInCount = connected.filter((profile) => !profile.igLoggedIn).length
 
@@ -36,7 +36,7 @@ export function ModelProfilesPanel({ model, active = true }: { model: List; acti
     setPendingAction(action)
     setError('')
     try {
-      const args = { profileIds, listId: modelId }
+      const args = { profileIds, modelId: modelId }
       if (action === 'add') await add(args)
       else await remove(args)
       return true

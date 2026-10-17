@@ -126,18 +126,19 @@ export function mapProfileToApi(
   optionsOrIndex?: { includeCookies?: boolean } | number,
 ) {
   if (!profile) return null;
-  const { _id, _creationTime, cookiesJson, sessionId, ...fields } = profile;
+  const { _id, _creationTime, cookiesJson, instagramSessionId, ...fields } = profile;
   const includeCookies = typeof optionsOrIndex === 'object' && optionsOrIndex.includeCookies;
-  return { ...fields, id: _id, ...(includeCookies ? { cookiesJson, sessionId } : {}) };
+  return { ...fields, id: _id, ...(includeCookies ? { cookiesJson, instagramSessionId } : {}) };
 }
 
-export function mapListToApi(list: any): any {
+export function mapModelToApi(list: any): any {
   if (!list) return list;
   return {
     id: list._id,
+    contentKey: list.contentKey ?? String(list._id),
     name: list.name,
-    fullName: list.fullName,
-    fullNames: list.fullNames,
+    baseFullName: list.baseFullName,
+    fullNameVariations: list.fullNameVariations,
     usernames: list.usernames,
   };
 }

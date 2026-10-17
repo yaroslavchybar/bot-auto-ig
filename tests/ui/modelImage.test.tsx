@@ -1,6 +1,6 @@
 import { act } from 'react'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
-import { ModelImage } from '@/features/lists/components/ModelImage'
+import { ModelImage } from '@/features/models/components/ModelImage'
 import { apiFetchBlob } from '@/lib/api'
 import { mount } from './mount'
 

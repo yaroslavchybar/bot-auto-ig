@@ -29,7 +29,6 @@ const mocks = vi.hoisted(() => ({
     createdAt: number
     scrapeLookbackDays?: number
     scrapeMonitor?: boolean
-    scrapeMonitorDays?: number
     scrapePostLimit?: number
   }>,
   nearViewport: true,
@@ -40,10 +39,10 @@ const mocks = vi.hoisted(() => ({
     running: boolean
     nextCheckAt: number
     postCount: number
-    discovered: number
-    kind?: 'posts' | 'likers'
+    leadsAdded: number
+    runKind?: 'posts' | 'likers'
     currentPostId?: string
-    lastCheckAt?: number
+    lastPostsCheckAt?: number
     lastLikerCheckAt?: number
   }>,
   leads: [],
@@ -105,7 +104,7 @@ beforeEach(() => {
     if (name === 'scrapeSources:summary')
       return {
         sources: mocks.sources.length,
-        leads: mocks.sources.reduce((n, s) => n + s.discovered, 0),
+        leads: mocks.sources.reduce((n, s) => n + s.leadsAdded, 0),
       }
     if (name === 'leads:getList')
       return (
@@ -254,7 +253,7 @@ test('source settings save only explicit changes and posts load only when opened
       running: false,
       nextCheckAt: 0,
       postCount: 2,
-      discovered: 3,
+      leadsAdded: 3,
     },
   ]
   view = mount()
@@ -300,12 +299,12 @@ test('monitor duration is fixed and live source updates identify the active post
       username: 'example',
       enabled: true,
       running: true,
-      kind: 'likers',
+      runKind: 'likers',
       currentPostId: 'post',
       nextCheckAt: Date.now() + 86_400_000,
-      lastCheckAt: Date.now() - 1000,
+      lastPostsCheckAt: Date.now() - 1000,
       postCount: 1,
-      discovered: 3,
+      leadsAdded: 3,
     },
   ]
   vi.mocked(usePaginatedQuery).mockReturnValue({
@@ -340,7 +339,7 @@ test('monitor duration is fixed and live source updates identify the active post
     {
       ...mocks.sources[0],
       running: false,
-      kind: undefined,
+      runKind: undefined,
       currentPostId: undefined,
       lastLikerCheckAt: Date.now(),
     },
@@ -352,7 +351,6 @@ test('monitor duration is fixed and live source updates identify the active post
   expect(view.container.textContent).toContain(
     `Last liker check: ${new Date(mocks.sources[0].lastLikerCheckAt!).toLocaleString()}`,
   )
-  mocks.lists = [{ ...mocks.lists[0], scrapeMonitorDays: 5 }]
   await view.render(<ScrapeSourcesView />)
   expect(days.value).toBe('1')
   expect(button('Save')).toBeUndefined()

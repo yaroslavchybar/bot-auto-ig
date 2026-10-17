@@ -61,12 +61,12 @@ describe('retry behaviour via convexFetch integration', () => {
   }
 
   // Import the wrapper functions dynamically so the module picks up the
-  // stubbed fetch.  We use a simple wrapper: `listsList` calls convexFetch
+  // stubbed fetch.  We use a simple wrapper: `modelsList` calls convexFetch
   // internally.
   async function callConvexFetch() {
-    // We call listsList() which internally invokes convexFetch('/api/lists')
-    const { listsList } = await import('./convexClient.js')
-    return listsList()
+    // We call modelsList() which internally invokes convexFetch('/api/models')
+    const { modelsList } = await import('./convexClient.js')
+    return modelsList()
   }
 
   it('succeeds on first attempt without retry', async () => {

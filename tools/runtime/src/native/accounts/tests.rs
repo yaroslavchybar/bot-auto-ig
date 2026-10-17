@@ -14,7 +14,7 @@ async fn content_recovery_failure_does_not_block_periodic_account_setup() {
         async move {
             assert_eq!(request.headers()["authorization"], "Bearer fixture");
             match request.uri().path() {
-                "/api/lists" => {
+                "/api/models" => {
                     observed.lock().await.push("recovery".into());
                     axum::http::StatusCode::BAD_REQUEST.into_response()
                 }
@@ -86,10 +86,12 @@ async fn content_recovery_queues_only_orphans_and_cleanup_retries_failed_acknowl
         async move {
             assert_eq!(request.headers()["authorization"], "Bearer fixture");
             match request.uri().path() {
-                "/api/lists" => Json(json!([{"id":"model-live"}])).into_response(),
-                "/api/lists/content-cleanup" => {
+                "/api/models" => {
+                    Json(json!([{"id":"model-new","contentKey":"model-live"}])).into_response()
+                }
+                "/api/models/content-cleanup" => {
                     let body = crate::test_support::body(request).await;
-                    assert_eq!(body["modelId"], "model-orphan");
+                    assert_eq!(body["contentKey"], "model-orphan");
                     if body["operation"] == "queue" {
                         observed.lock().await.push("model-orphan".into());
                     } else if count.fetch_add(1, Ordering::SeqCst) == 0 {
@@ -275,7 +277,7 @@ async fn browser_setup_prepares_without_mobile_and_keeps_uncertain_results_pendi
         ));
         if outcome == "restore readiness" {
             let mut state = progress.lock().await;
-            state["nameDone"] = json!(true);
+            state["usernameDone"] = json!(true);
             state["avatarDone"] = json!(true);
             state["outreachReadyMarked"] = json!(true);
             state["postSourceIds"] = json!(["s1", "s2", "s3"]);
@@ -298,9 +300,9 @@ async fn browser_setup_prepares_without_mobile_and_keeps_uncertain_results_pendi
         let observed = progress.clone();
         let fixture=Fixture::start(move |request| {let account=stored.clone();let state=observed.clone();async move {
             match request.uri().path() {
-                "/api/automations/by-id"=>Json(json!({"isActive":true,"routine":{},"listIds":["model"]})).into_response(),
-                "/api/profiles"=>Json(json!([{"id":"p","name":"example","createdAt":1,"igLoggedIn":true,"using":true,"status":"running","proxy":"work.test:80","paused":outcome=="paused","listIds":["model"]}])).into_response(),
-                "/api/lists"=>Json(json!([{"id":"model","usernames":["changed_name"]}])).into_response(),
+                "/api/automations/by-id"=>Json(json!({"isActive":true,"routine":{},"modelIds":["model"]})).into_response(),
+                "/api/profiles"=>Json(json!([{"id":"p","name":"example","createdAt":1,"igLoggedIn":true,"inUse":true,"status":"running","proxy":"work.test:80","paused":outcome=="paused","modelIds":["model"]}])).into_response(),
+                "/api/models"=>Json(json!([{"id":"model","usernames":["changed_name"]}])).into_response(),
                 "/api/routines/ready"=>Json(json!(true)).into_response(),
                 "/api/ig-accounts-store"=>{
                     let body=test_support::body(request).await;
@@ -308,7 +310,7 @@ async fn browser_setup_prepares_without_mobile_and_keeps_uncertain_results_pendi
                         "byProfile"|"byId"=>account.lock().await.clone(),
                         "modelSetupList"=>json!([state.lock().await.clone()]),
                         "modelSetupPatch"=>{
-                            if outcome=="save failure"&&body["patch"]["nameDone"]==true{return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();}
+                            if outcome=="save failure"&&body["patch"]["usernameDone"]==true{return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();}
                             let mut current=state.lock().await;
                             for(key,value)in body["patch"].as_object().unwrap(){current[key]=value.clone();}
                             for key in body["clear"].as_array().unwrap(){current.as_object_mut().unwrap().remove(key.as_str().unwrap());}
@@ -377,7 +379,7 @@ async fn browser_setup_prepares_without_mobile_and_keeps_uncertain_results_pendi
         }
         let state = progress.lock().await.clone();
         if outcome == "applied" {
-            assert_eq!(state["nameDone"], true);
+            assert_eq!(state["usernameDone"], true);
             assert!(state["pending"].is_null());
         } else if ["uncertain", "save failure"].contains(&outcome) {
             assert_eq!(state["pending"]["kind"], "username");
@@ -608,8 +610,8 @@ async fn enrollment_skips_an_unreadable_account_without_blocking_the_next_profil
     let fixture=Fixture::start(move |request| {
         let saved=saved.clone(); async move {
             match request.uri().path() {
-                "/api/automations"=>Json(json!([{"_id":"automation","isActive":true,"routine":{},"listIds":["model"]}])).into_response(),
-                "/api/profiles"=>Json(json!([{"id":"bad","listIds":["model"],"igLoggedIn":true},{"id":"good","listIds":["model"],"igLoggedIn":true}])).into_response(),
+                "/api/automations"=>Json(json!([{"_id":"automation","isActive":true,"routine":{},"modelIds":["model"]}])).into_response(),
+                "/api/profiles"=>Json(json!([{"id":"bad","modelIds":["model"],"igLoggedIn":true},{"id":"good","modelIds":["model"],"igLoggedIn":true}])).into_response(),
                 "/api/ig-accounts-store"=> {
                     let body=crate::test_support::body(request).await;
                     let value=match profiles::text(&body,"operation") {

@@ -32,7 +32,7 @@ export const leadAvailable = (
   lead: Pick<
     Doc<'leads'>,
     | 'classification'
-    | 'enrichmentStatus'
+    | 'screeningStatus'
     | 'senderId'
     | 'dmSent'
     | 'followed'
@@ -47,7 +47,7 @@ export const leadAvailable = (
 ) =>
   !lead.screeningRefused &&
   (lead.screeningFailures ?? 0) < SCREENING_FAILURE_LIMIT &&
-  !(lead.enrichmentStatus === 'ready' && !lead.classification) &&
+  !(lead.screeningStatus === 'ready' && !lead.classification) &&
   !hasOutreachHistory(lead)
 
 /** Keep all of a lead's list indexes in sync with its outreach state. */

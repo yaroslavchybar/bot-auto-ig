@@ -66,17 +66,17 @@ export function startConfig(nodes: AutomationNode[]): Record<string, any> {
 export function profileEligible(
   profile: {
     paused?: boolean
-    using: boolean
+    inUse: boolean
     status?: string | null
-    listIds?: string[] | null
+    modelIds?: string[] | null
     lastOpenedAt?: number | null
   },
   lists: string[],
   cooldownMinutes = 0,
 ): boolean {
-  if (profile.paused || profile.using || profile.status === 'running')
+  if (profile.paused || profile.inUse || profile.status === 'running')
     return false
-  if (lists.length && !profile.listIds?.some((id) => lists.includes(id)))
+  if (lists.length && !profile.modelIds?.some((id) => lists.includes(id)))
     return false
   const lastOpened = profile.lastOpenedAt
     ? profile.lastOpenedAt

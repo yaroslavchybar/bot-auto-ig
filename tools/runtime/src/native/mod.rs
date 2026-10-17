@@ -168,15 +168,14 @@ impl Native {
         let kind = params.get("kind").map(String::as_str).unwrap_or("");
         let id = params.get("contentId").map(String::as_str).unwrap_or("");
         if operation.contains("models_modelId_content") {
-            let lists = self.api.convex(Method::GET, "/api/lists", None).await?;
-            if !lists
+            let lists = self.api.convex(Method::GET, "/api/models", None).await?;
+            let row = lists
                 .as_array()
                 .into_iter()
                 .flatten()
-                .any(|row| row["id"].as_str() == Some(model))
-            {
-                return Err(Failure::invalid("Model not found"));
-            }
+                .find(|row| row["id"].as_str() == Some(model))
+                .ok_or_else(|| Failure::invalid("Model not found"))?;
+            let model = row["contentKey"].as_str().unwrap_or(model);
             if operation.ends_with("_image") {
                 return self
                     .content
@@ -306,6 +305,8 @@ async fn run_content_command(
     body: Value,
 ) -> Result<Json<Value>> {
     let model = body["modelId"].as_str().unwrap_or("");
+    let content_key = content::Content::storage_key(&state.api, model).await?;
+    let model = content_key.as_str();
     let kind = body["kind"].as_str().unwrap_or("");
     let profile = body["profileId"].as_str().unwrap_or("");
     let excludes: Vec<String> =

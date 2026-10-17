@@ -21,7 +21,7 @@ export const work = query({
       .filter((p) => scraperBusy(p) || p.paused || !p.scraperReady)
       .map((p) => p._id)
     const available = profiles.filter(
-      (p) => p.scraperReady && !scraperBusy(p) && p.status !== 'deleting' && !p.renameFrom,
+      (p) => p.scraperReady && !scraperBusy(p) && p.status !== 'deleting' && !p.pendingRenameFrom,
     )
     const states = await Promise.all(available.map((p) => scraperRequestState(ctx, p._id)))
     const times = available.flatMap((p, i) =>
@@ -138,18 +138,18 @@ export const saveBatch = internalMutation({
           existing.username !== p.username ||
           existing.fullName !== fullName ||
           existing.isPrivate !== isPrivate ||
-          !existing.enrichmentStatus
+          !existing.screeningStatus
         ) {
           await ctx.db.patch(existing._id, {
             igId: p.igId,
             username: p.username,
             fullName,
             isPrivate,
-            enrichmentStatus: existing.enrichmentStatus ?? 'pending',
+            screeningStatus: existing.screeningStatus ?? 'pending',
           })
           stats.add(existing, {
             ...existing,
-            enrichmentStatus: existing.enrichmentStatus ?? 'pending',
+            screeningStatus: existing.screeningStatus ?? 'pending',
           })
         }
         await addMembership(
@@ -167,7 +167,7 @@ export const saveBatch = internalMutation({
           username: p.username,
           fullName: p.fullName,
           isPrivate: p.isPrivate,
-          enrichmentStatus: 'pending' as const,
+          screeningStatus: 'pending' as const,
           dmSent: false,
           followed: false,
           createdAt,
@@ -181,7 +181,7 @@ export const saveBatch = internalMutation({
     }
     await stats.flush(ctx)
     await ctx.db.patch(source._id, {
-      ...(added ? { discovered: source.discovered + added } : {}),
+      ...(added ? { leadsAdded: source.leadsAdded + added } : {}),
       leaseUntil: Date.now() + 10 * 60_000,
     })
     return {
@@ -198,11 +198,11 @@ export const retryEnrichment = mutation({
     const rows = await ctx.db
       .query('leads')
       // Missing and false refusal flags are below true in the index; refused leads are never scanned.
-      .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'error').lt('screeningRefused', true))
+      .withIndex('by_screening', (q) => q.eq('screeningStatus', 'error').lt('screeningRefused', true))
       .take(100)
     const stats = new LeadStatsChanges()
     const patch = {
-      enrichmentStatus: 'pending' as const,
+      screeningStatus: 'pending' as const,
       screeningFailures: undefined,
       screeningUntil: undefined,
     }

@@ -9,14 +9,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useModelContent } from '../hooks/useModelContent'
 import { ModelImage } from './ModelImage'
-import type { List } from '../types'
+import type { Model } from '../types'
 
-interface ListsListProps {
-  lists: List[]
+interface ModelsListProps {
+  models: Model[]
   loading: boolean
-  onOpenContent: (list: List) => void
-  onEdit: (list: List) => void
-  onDelete: (list: List) => void
+  onOpenContent: (model: Model) => void
+  onEdit: (model: Model) => void
+  onDelete: (model: Model) => void
 }
 
 function ModelCard({
@@ -25,10 +25,10 @@ function ModelCard({
   onEdit,
   onDelete,
 }: {
-  model: List
-  onOpenContent: (model: List) => void
-  onEdit: (model: List) => void
-  onDelete: (model: List) => void
+  model: Model
+  onOpenContent: (model: Model) => void
+  onEdit: (model: Model) => void
+  onDelete: (model: Model) => void
 }) {
   const { items, error } = useModelContent(model.id)
 
@@ -61,7 +61,7 @@ function ModelCard({
           >
             <h3 className="truncate text-base font-semibold text-ink">{model.name}</h3>
             <p className="mt-0.5 truncate text-sm text-subtle-copy">
-              {model.fullName || 'No full name yet'}
+              {model.baseFullName || 'No full name yet'}
             </p>
           </button>
           <DropdownMenu>
@@ -107,8 +107,8 @@ function ModelCard({
   )
 }
 
-export function ListsList({ lists, loading, onOpenContent, onEdit, onDelete }: ListsListProps) {
-  if (loading && lists.length === 0) {
+export function ModelsList({ models, loading, onOpenContent, onEdit, onDelete }: ModelsListProps) {
+  if (loading && models.length === 0) {
     return (
       <div className="flex items-center justify-center gap-2 p-12 text-sm text-muted-foreground">
         <RefreshCw className="h-4 w-4" /> Loading models...
@@ -116,7 +116,7 @@ export function ListsList({ lists, loading, onOpenContent, onEdit, onDelete }: L
     )
   }
 
-  if (lists.length === 0) {
+  if (models.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
         <UserRound className="mb-4 h-10 w-10 text-subtle-copy" />
@@ -130,7 +130,7 @@ export function ListsList({ lists, loading, onOpenContent, onEdit, onDelete }: L
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-      {lists.map((model) => (
+      {models.map((model) => (
         <ModelCard
           key={model.id}
           model={model}

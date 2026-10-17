@@ -73,15 +73,15 @@ export const finishRenameInternal = internalMutation({
 		const profile = await ctx.db.get(profileId);
 		if (!profile) return;
 		if (profile.status === 'deleting') throw new DomainError('CONFLICT', 'Profile is being deleted');
-		await patchProfile(ctx, profileId, { renameFrom: undefined });
+		await patchProfile(ctx, profileId, { pendingRenameFrom: undefined });
 	},
 });
-import { createProfileRow, insertProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow } from "./helpers";
-import { routineLists } from '../routinePolicy';
+import { createProfileRow, insertProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileModelIdRow, bulkAddProfilesToModelRow, bulkRemoveProfilesFromModelRow } from "./helpers";
+import { routineModels } from '../routinePolicy';
 
 /** Create a batch and reserve permanent proxies in one Convex transaction. */
 export const createForModelInternal = internalMutation({
-  args: { modelId: v.id('lists'), accounts: v.array(v.object({ id: v.id('igAccounts'), username: v.string() })) },
+  args: { modelId: v.id('models'), accounts: v.array(v.object({ id: v.id('igAccounts'), username: v.string() })) },
   handler: async (ctx, { modelId, accounts }) => {
     const usernames = accounts.map(account => account.username);
     if (!await ctx.db.get(modelId)) throw new DomainError('NOT_FOUND', 'Model not found');
@@ -95,14 +95,14 @@ export const createForModelInternal = internalMutation({
     if (new Set(usernames).size !== usernames.length || usernames.some(name => !/^[a-zA-Z0-9._]{1,30}$/.test(name)))
       throw new DomainError('VALIDATION', 'Invalid or duplicate account usernames');
     const profiles = await ctx.db.query('profiles').collect();
-    const names = new Set(profiles.flatMap(profile => [profile.name, profile.renameFrom]
+    const names = new Set(profiles.flatMap(profile => [profile.name, profile.pendingRenameFrom]
       .filter((name): name is string => Boolean(name)).map(name => name.toLowerCase())));
     if (new Set(usernames.map(name => name.toLowerCase())).size !== usernames.length ||
       usernames.some(name => name === '.' || name === '..' || names.has(name.toLowerCase())))
       throw new DomainError('CONFLICT', 'An account username already has a profile');
     const owners = (await ctx.db.query('automations').collect())
       .filter(automation => automation.isActive !== false &&
-        routineLists(automation).some(id => id === modelId));
+        routineModels(automation).some(id => id === modelId));
     if (owners.length > 1)
       throw new DomainError('CONFLICT', 'Model belongs to multiple enabled automations');
     const proxies = await ctx.db.query('proxies').collect();
@@ -128,9 +128,9 @@ export const createForModelInternal = internalMutation({
     for (let i = 0; i < usernames.length; i++) {
       const proxy = selected[i];
       const id = await insertProfileRow(ctx, { name: usernames[i], proxy: proxy.proxy,
-        proxyType: proxy.proxyType, fingerprintOs: 'windows', listIds: [modelId],
+        proxyType: proxy.proxyType, fingerprintOs: 'windows', modelIds: [modelId],
         igAccountId: accounts[i].id });
-      await ctx.db.insert('profileListAssignments', { profileId: id, listId: modelId });
+      await ctx.db.insert('profileModelAssignments', { profileId: id, modelId: modelId });
       await ctx.db.patch(accounts[i].id, { status: 'assigned', profileId: id,
         error: undefined, retryAfter: undefined, browserLoggedInAt: undefined });
       ids.push(id);
@@ -216,43 +216,43 @@ export const cleanupDeletedProfileReferencesInternal = internalMutation({
 })
 
 export const syncStatusInternal = internalMutation({
-	args: { name: v.string(), status: v.string(), using: v.optional(v.boolean()) },
+	args: { name: v.string(), status: v.string(), inUse: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		return await syncProfileStatusRow(ctx, args.name, args.status, args.using);
+		return await syncProfileStatusRow(ctx, args.name, args.status, args.inUse);
 	},
 });
 
-export const bulkSetListIdInternal = internalMutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.optional(v.union(v.null(), v.id("lists"))) },
+export const bulkSetModelIdInternal = internalMutation({
+	args: { profileIds: v.array(v.id("profiles")), modelId: v.optional(v.union(v.null(), v.id("models"))) },
 	handler: async (ctx, args) => {
-		return await bulkSetProfileListIdRow(ctx, args.profileIds, args.listId);
+		return await bulkSetProfileModelIdRow(ctx, args.profileIds, args.modelId);
 	},
 });
 
-export const bulkAddToList = mutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
+export const bulkAddToModel = mutation({
+	args: { profileIds: v.array(v.id("profiles")), modelId: v.id("models") },
 	handler: async (ctx, args) => {
-		return await bulkAddProfilesToListRow(ctx, args.profileIds, args.listId);
+		return await bulkAddProfilesToModelRow(ctx, args.profileIds, args.modelId);
 	},
 });
 
-export const bulkAddToListInternal = internalMutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
+export const bulkAddToModelInternal = internalMutation({
+	args: { profileIds: v.array(v.id("profiles")), modelId: v.id("models") },
 	handler: async (ctx, args) => {
-		return await bulkAddProfilesToListRow(ctx, args.profileIds, args.listId);
+		return await bulkAddProfilesToModelRow(ctx, args.profileIds, args.modelId);
 	},
 });
 
-export const bulkRemoveFromList = mutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
+export const bulkRemoveFromModel = mutation({
+	args: { profileIds: v.array(v.id("profiles")), modelId: v.id("models") },
 	handler: async (ctx, args) => {
-		return await bulkRemoveProfilesFromListRow(ctx, args.profileIds, args.listId);
+		return await bulkRemoveProfilesFromModelRow(ctx, args.profileIds, args.modelId);
 	},
 });
 
-export const bulkRemoveFromListInternal = internalMutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
+export const bulkRemoveFromModelInternal = internalMutation({
+	args: { profileIds: v.array(v.id("profiles")), modelId: v.id("models") },
 	handler: async (ctx, args) => {
-		return await bulkRemoveProfilesFromListRow(ctx, args.profileIds, args.listId);
+		return await bulkRemoveProfilesFromModelRow(ctx, args.profileIds, args.modelId);
 	},
 });

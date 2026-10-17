@@ -71,16 +71,16 @@ function getOsLabel(fingerprintOs?: string) {
 }
 
 function getStatusMeta(profile: Profile) {
-  if (profile.status === 'deleting' || profile.renameFrom) {
+  if (profile.status === 'deleting' || profile.pendingRenameFrom) {
     return {
       label: profile.status === 'deleting' ? 'DELETING' : 'RENAMING',
       className: 'text-muted-copy',
     }
   }
-  const label = profile.using ? 'ACTIVE' : String(profile.status ?? 'IDLE').toUpperCase()
+  const label = profile.inUse ? 'ACTIVE' : String(profile.status ?? 'IDLE').toUpperCase()
   if (profile.paused) return { label: 'PAUSED', className: 'text-muted-copy' }
 
-  if (profile.using) {
+  if (profile.inUse) {
     return { label, className: 'text-status-success font-bold' }
   }
   if (label === 'ERROR' || label === 'FAILED') {
@@ -114,10 +114,10 @@ function ProfileActionsMenu({
         <DropdownMenuLabel className="text-muted-copy">Actions</DropdownMenuLabel>
         <DropdownMenuItem
           onClick={() => onToggleStatus(profile)}
-          disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
+          disabled={profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
           className="cursor-pointer hover:bg-panel-hover focus:bg-panel-hover"
         >
-          {profile.using ? (
+          {profile.inUse ? (
             <>
               <Square className="mr-2 h-4 w-4" /> Stop Browser
             </>
@@ -128,7 +128,7 @@ function ProfileActionsMenu({
           )}
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled={pausing || profile.status === 'deleting' || Boolean(profile.renameFrom)}
+          disabled={pausing || profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
           onClick={async () => {
             setPausing(true)
             try {
@@ -146,7 +146,7 @@ function ProfileActionsMenu({
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => onEdit(profile)}
-          disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
+          disabled={profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
           className="cursor-pointer hover:bg-panel-hover focus:bg-panel-hover"
         >
           <Pencil className="mr-2 h-4 w-4" /> Edit Configuration
@@ -259,19 +259,19 @@ function MobileCardFooter({
         <Button
           className={cn(
             'font-semibold tracking-[0.14em]',
-            profile.using
+            profile.inUse
               ? 'border-status-danger-border bg-status-danger-soft text-status-danger hover:bg-status-danger hover:text-inverse border'
               : 'border-status-success-border bg-status-success-soft text-status-success hover:bg-status-success hover:text-inverse border',
           )}
           onClick={() => onToggleStatus(profile)}
-          disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
+          disabled={profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
         >
-          {profile.using ? (
+          {profile.inUse ? (
             <Square className="h-4 w-4 fill-current" />
           ) : (
             <Play className="h-4 w-4 fill-current" />
           )}
-          {profile.using ? 'STOP' : 'START'}
+          {profile.inUse ? 'STOP' : 'START'}
         </Button>
       </div>
     </div>
@@ -317,10 +317,10 @@ function ProfileDesktopRow({
                 e.stopPropagation()
                 onToggleStatus(profile)
               }}
-              disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
-              title={profile.using ? 'Stop Browser' : 'Start Browser'}
+              disabled={profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
+              title={profile.inUse ? 'Stop Browser' : 'Start Browser'}
             >
-              {profile.using ? (
+              {profile.inUse ? (
                 <Square className="h-4 w-4 fill-current" />
               ) : (
                 <Play className="h-4 w-4 fill-current" />
@@ -361,7 +361,7 @@ function DesktopStatusBadge({ profile }: { profile: Profile }) {
       <div
         className={cn(
           'flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium',
-          profile.using && !profile.paused
+          profile.inUse && !profile.paused
             ? 'status-glow-success bg-status-success-soft text-status-success border-status-success-border'
             : 'bg-panel-muted text-copy border-line',
         )}
@@ -369,16 +369,16 @@ function DesktopStatusBadge({ profile }: { profile: Profile }) {
         <span
           className={cn(
             'flex h-1.5 w-1.5 rounded-full',
-            profile.using && !profile.paused ? 'status-dot-success-tight' : 'bg-subtle-copy',
+            profile.inUse && !profile.paused ? 'status-dot-success-tight' : 'bg-subtle-copy',
           )}
         />
         {profile.status === 'deleting'
           ? 'Deleting'
-          : profile.renameFrom
+          : profile.pendingRenameFrom
             ? 'Renaming'
             : profile.paused
               ? 'Paused'
-              : profile.using
+              : profile.inUse
                 ? 'Active'
                 : 'Idle'}
       </div>

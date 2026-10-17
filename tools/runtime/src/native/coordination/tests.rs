@@ -47,7 +47,7 @@ async fn yielded_routines_reload_all_runtime_pages_without_subscription_changes(
                     let id = &modification["queryId"];
                     if modification["type"] == "Add" {
                         let value = if modification["udfPath"].as_str().unwrap().ends_with(":listRoutinesForScheduler") {
-                            json!([{"_id":"a","hasRoutine":true,"isActive":true,"configRevision":1,"listIds":["model"]}])
+                            json!([{"_id":"a","hasRoutine":true,"isActive":true,"configRevision":1,"modelIds":["model"]}])
                         } else {
                             json!({"automation":{"isActive":true},"profiles":blocked,"warmups":[],"progress":[],"truncated":true})
                         };
@@ -116,7 +116,7 @@ async fn subscriptions_and_deadlines_start_routines_retry_capacity_and_stop_disa
     let workers = root.path().join("server/automation");
     tokio::fs::create_dir_all(&workers).await.unwrap();
     tokio::fs::write(workers.join("worker.ts"), "process.stdin.on('data', data => { if(data.toString().includes('stop')) process.exit(0) });").await.unwrap();
-    let rows: Vec<_> = (0..4).map(|id| json!({"_id":format!("a{id}"),"hasRoutine":true,"isActive":true,"configRevision":1,"listIds":[]})).collect();
+    let rows: Vec<_> = (0..4).map(|id| json!({"_id":format!("a{id}"),"hasRoutine":true,"isActive":true,"configRevision":1,"modelIds":[]})).collect();
     let (routine_rows, initial_rows) = watch::channel(rows);
     let starts = Arc::new(Mutex::new(Vec::<String>::new()));
     let calls = starts.clone();

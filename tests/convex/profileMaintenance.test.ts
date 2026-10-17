@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
-import { createConvexTest, seedList, seedProfile } from './helpers'
+import { createConvexTest, seedModel, seedProfile } from './helpers'
 
 test('create and rename reject Windows device names, including extensions', async () => {
   const t = createConvexTest()
@@ -15,15 +15,15 @@ test('create and rename reject Windows device names, including extensions', asyn
 test('deletion remains pending through runtime updates and blocks edits and scheduling', async () => {
   const t = createConvexTest()
   const profile = (await seedProfile(t, { name: 'Delete me' }))!
-  const list = (await seedList(t, 'List'))!
-  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: list._id })
+  const list = (await seedModel(t, 'List'))!
+  await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: list._id })
   await expect(t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })).rejects.toThrow(/Begin profile deletion/)
   await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: profile.name })
-  await t.mutation(internal.profiles.mutations.syncStatusInternal, { name: profile.name, status: 'idle', using: false })
+  await t.mutation(internal.profiles.mutations.syncStatusInternal, { name: profile.name, status: 'idle', inUse: false })
   expect(await t.query(api.profiles.queries.getById, { profileId: profile._id })).toMatchObject({ status: 'deleting' })
   await expect(t.mutation(api.profiles.mutations.updateById, { profileId: profile._id, name: 'Renamed' })).rejects.toThrow(/maintenance/)
   await expect(t.mutation(api.profiles.mutations.create, { name: 'delete ME' })).rejects.toThrow(/already in use/)
-  expect(await t.query(internal.profiles.queries.getAvailableForListsInternal, { listIds: [list._id], cooldownMinutes: 0 })).toEqual([])
+  expect(await t.query(internal.profiles.queries.getAvailableForModelsInternal, { modelIds: [list._id], cooldownMinutes: 0 })).toEqual([])
   await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
   await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
   expect(await t.query(api.profiles.queries.getById, { profileId: profile._id })).toBeNull()
@@ -33,10 +33,10 @@ test('rename reserves both names until filesystem work is acknowledged', async (
   const t = createConvexTest()
   const profile = (await seedProfile(t, { name: 'Old' }))!
   await t.mutation(internal.profiles.mutations.updateByNameInternal, { oldName: 'Old', name: 'New' })
-  expect(await t.query(api.profiles.queries.getById, { profileId: profile._id })).toMatchObject({ name: 'New', renameFrom: 'Old' })
+  expect(await t.query(api.profiles.queries.getById, { profileId: profile._id })).toMatchObject({ name: 'New', pendingRenameFrom: 'Old' })
   await expect(t.mutation(api.profiles.mutations.create, { name: 'Old' })).rejects.toThrow(/already in use/)
   await expect(t.mutation(api.profiles.mutations.updateById, { profileId: profile._id, name: 'Next' })).rejects.toThrow(/maintenance/)
   await t.mutation(internal.profiles.mutations.finishRenameInternal, { profileId: profile._id })
-  expect((await t.query(api.profiles.queries.getById, { profileId: profile._id }))?.renameFrom).toBeUndefined()
+  expect((await t.query(api.profiles.queries.getById, { profileId: profile._id }))?.pendingRenameFrom).toBeUndefined()
   await t.mutation(api.profiles.mutations.create, { name: 'Old' })
 })

@@ -22,8 +22,8 @@ export function assertValidStatusTransition(currentStatus: AutomationStatus | un
 	}
 }
 
-export function normalizeListIds(listIds: any[] | undefined): any[] {
-	const raw = Array.isArray(listIds) ? listIds : [];
+export function normalizeModelIds(modelIds: any[] | undefined): any[] {
+	const raw = Array.isArray(modelIds) ? modelIds : [];
 	const seen = new Set<string>();
 	const deduped: any[] = [];
 	for (const id of raw) {
@@ -35,9 +35,9 @@ export function normalizeListIds(listIds: any[] | undefined): any[] {
 	return deduped;
 }
 
-export function getAutomationListIds(automation: any): any[] {
-	const raw = Array.isArray(automation?.listIds) ? automation.listIds : [];
-	return normalizeListIds(raw);
+export function getAutomationModelIds(automation: any): any[] {
+	const raw = Array.isArray(automation?.modelIds) ? automation.modelIds : [];
+	return normalizeModelIds(raw);
 }
 
 export const statusValidator = v.union(

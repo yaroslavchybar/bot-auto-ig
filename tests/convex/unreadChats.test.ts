@@ -6,7 +6,7 @@ const modules = import.meta.glob('../../convex/**/*.ts')
 
 test('browser unread counts replace old values, including zero, while stale observations are ignored', async () => {
   const t = convexTest(schema, modules)
-  const profileId = await t.run(ctx => ctx.db.insert('profiles', { name: 'Profile', createdAt: 0, using: false }))
+  const profileId = await t.run(ctx => ctx.db.insert('profiles', { name: 'Profile', createdAt: 0, inUse: false }))
   const save = (count: number, checkedAt: number) => t.mutation(internal.profiles.mutations.saveUnreadChatsInternal, { profileId, count, checkedAt })
   await save(8, 100)
   expect((await t.query(api.profiles.queries.listPage, { search: '', cursor: null, pageSize: 50 })).page[0])

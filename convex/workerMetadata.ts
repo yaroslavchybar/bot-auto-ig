@@ -14,10 +14,10 @@ export async function syncWorkerProfile(ctx: MutationCtx, profile: Doc<'profiles
     paused: profile.paused === true,
     proxy: profile.proxy,
     proxyType: profile.proxyType,
-    using: profile.using,
+    inUse: profile.inUse,
     status: profile.status,
-    renameFrom: profile.renameFrom,
-    scraperReady: !profile.paused && !!profile.sessionId,
+    pendingRenameFrom: profile.pendingRenameFrom,
+    scraperReady: !profile.paused && !!profile.instagramSessionId,
     scraperCooldownUntil: profile.scraperCooldownUntil,
   }
   if (!scraper) await ctx.db.insert('scraperProfiles', fields)
@@ -30,10 +30,10 @@ export async function syncWorkerProfile(ctx: MutationCtx, profile: Doc<'profiles
 const workerFields = new Set([
   'paused',
   'name',
-  'using',
+  'inUse',
   'status',
-  'renameFrom',
-  'sessionId',
+  'pendingRenameFrom',
+  'instagramSessionId',
   'igLoggedIn',
   'proxy',
   'proxyType',

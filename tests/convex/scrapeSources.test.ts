@@ -19,25 +19,18 @@ afterEach(() => {
 
 async function setup(
   options: {
-    limit?: number | null
-    used?: number
     noCookie?: boolean
-    monitorDays?: number
   } = {},
 ) {
   const t = createConvexTest()
   const { profileId, listId } = await t.run(async (ctx) => {
     const profileId = await ctx.db.insert('profiles', {
       name: 'scraper',
-      using: false,
-      mode: 'direct',
+      inUse: false,
       proxy: 'proxy.test:8000',
       proxyType: 'http',
       createdAt: 0,
-      sessionId: options.noCookie ? undefined : 'browser-cookie',
-      scraperDailyLimit: options.limit,
-      scraperUsageCount: options.used ?? 0,
-      scraperUsageDate: new Date().toISOString().slice(0, 10),
+      instagramSessionId: options.noCookie ? undefined : 'browser-cookie',
     })
     const country = ['gb', 'us', 'jp', 'nz'].find(
       (country) =>
@@ -54,7 +47,6 @@ async function setup(
     const listId = await ctx.db.insert('leadLists', {
       name: 'leads',
       createdAt: 0,
-      scrapeMonitorDays: options.monitorDays,
     })
     await ctx.db.insert('leadListCounts', { listId, count: 0 })
     return { profileId, listId }
@@ -65,8 +57,8 @@ async function setup(
 }
 type Setup = Awaited<ReturnType<typeof setup>>
 
-test('saving leads never consumes request slots or truncates at an old daily lead limit', async () => {
-  const s = await setup({ limit: 1, used: 1 })
+test('saving leads never consumes request slots', async () => {
+  const s = await setup()
   await discover(s)
   const run = await claimLikers(s)
   const likers = Array.from({ length: 25 }, (_, i) => ({
@@ -107,7 +99,7 @@ test('the first successful scrape starts a hard 24-hour cutoff even with an acti
   await s.t.run(async (ctx) => {
     await ctx.db.patch(s.sourceId, {
       running: true,
-      kind: 'likers',
+      runKind: 'likers',
       currentPostId: post._id,
       runId: 'expires',
       leaseUntil: start + DAY + HOUR,
@@ -172,7 +164,7 @@ test('overview counts are compact and unaffected by worker progress', async () =
     }),
   )
   expect(await s.t.query(api.scrapeSources.summary, { listId: s.listId })).toEqual(before)
-  await s.t.run((ctx) => ctx.db.patch(s.sourceId, { discovered: 3 }))
+  await s.t.run((ctx) => ctx.db.patch(s.sourceId, { leadsAdded: 3 }))
   expect(await s.t.query(api.scrapeSources.summary, { listId: s.listId })).toEqual({
     sources: 1,
     leads: 0,
@@ -190,16 +182,6 @@ test('post pages omit obsolete check history', async () => {
   const s = await setup()
   await discover(s, { average: 200 })
   const post = (await s.t.run((ctx) => ctx.db.query('scrapePosts').collect()))[0]
-  await s.t.run((ctx) =>
-    ctx.db.patch(post._id, {
-      checks: Array.from({ length: 10 }, (_, i) => ({
-        at: i * HOUR,
-        elapsedMs: HOUR,
-        newIds: 4,
-        likesGained: 2,
-      })),
-    }),
-  )
   const result = await s.t.query(api.scrapeSources.posts, {
     sourceId: s.sourceId,
     paginationOpts: { numItems: 50, cursor: null },
@@ -217,7 +199,7 @@ async function discover(
   options: { average?: number; age?: number; count?: number } = {},
 ) {
   const claim = (await s.t.mutation(internal.scrapeSources.claim, {}))!
-  expect(claim.kind).toBe('posts')
+  expect(claim.runKind).toBe('posts')
   const run = { sourceId: s.sourceId, runId: claim.runId }
   const posts = Array.from({ length: options.count ?? 1 }, (_, i) => ({
     id: String(i + 1),
@@ -230,7 +212,6 @@ async function discover(
     posts,
     averageLikes: options.average,
     postCount: posts.length,
-    postsFromApify: false,
   })
   await s.t.mutation(internal.scrapeSources.finish, {
     ...run,
@@ -243,7 +224,7 @@ async function discover(
 
 async function claimLikers(s: Setup) {
   const claim = (await s.t.mutation(internal.scrapeSources.claim, {}))!
-  expect(claim?.kind).toBe('likers')
+  expect(claim?.runKind).toBe('likers')
   return { sourceId: s.sourceId, runId: claim.runId }
 }
 
@@ -258,7 +239,6 @@ test('latest-post limit defaults to ten and updates future discovery claims', as
     postLimit: 4,
   })
   expect((await s.t.mutation(internal.scrapeSources.claim, {}))?.postLimit).toBe(4)
-  expect((await s.t.run((ctx) => ctx.db.get(s.listId)))?.scrapeMonitorDays).toBe(1)
   for (const postLimit of [0, 1.5, 5001])
     await expect(
       s.t.mutation(api.scrapeSources.settings, {
@@ -280,7 +260,7 @@ test('deployment cleanup trims newest posts in batches and stops expired monitor
       dmSent: false,
       followed: false,
     })
-    await ctx.db.patch(s.sourceId, { discovered: 42, postCount: 115 })
+    await ctx.db.patch(s.sourceId, { leadsAdded: 42, postCount: 115 })
     const ids = []
     for (let i = 0; i < 115; i++)
       ids.push(
@@ -292,7 +272,6 @@ test('deployment cleanup trims newest posts in batches and stops expired monitor
           likeCount: 200,
           scheduled: true,
           monitoring: true,
-          monitorEligible: true,
           firstScrapedAt: Date.now() - (i < 8 ? HOUR : 2 * DAY),
           lastScrapedAt: Date.now() - HOUR,
           nextCheckAt: Date.now() + HOUR,
@@ -300,7 +279,7 @@ test('deployment cleanup trims newest posts in batches and stops expired monitor
       )
     await ctx.db.patch(s.sourceId, {
       running: true,
-      kind: 'likers',
+      runKind: 'likers',
       runId: 'removed',
       currentPostId: ids[110],
       leaseUntil: Date.now() + HOUR,
@@ -317,7 +296,7 @@ test('deployment cleanup trims newest posts in batches and stops expired monitor
   expect(await s.t.run((ctx) => ctx.db.get(s.sourceId))).toMatchObject({
     postCount: 10,
     averageLikes: 200,
-    discovered: 42,
+    leadsAdded: 42,
     running: false,
   })
   expect(await s.t.run((ctx) => ctx.db.query('leads').collect())).toHaveLength(1)
@@ -349,7 +328,6 @@ test('stale trimming continuations cannot delete posts after the limit is increa
         likeCount: 200,
         scheduled: true,
         monitoring: true,
-        monitorEligible: true,
         nextCheckAt: Date.now() + HOUR,
       })
   })
@@ -366,8 +344,8 @@ test('stale trimming continuations cannot delete posts after the limit is increa
 })
 
 test.each([
-  { using: true, status: 'idle' },
-  { using: false, status: 'running' },
+  { inUse: true, status: 'idle' },
+  { inUse: false, status: 'running' },
 ])('busy browser profiles suspend scraper work and resume when idle (%j)', async (busy) => {
   vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
   const s = await setup()
@@ -378,7 +356,7 @@ test.each([
     blockedProfileIds: [s.profileId],
   })
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
-  await s.t.run((ctx) => patchProfile(ctx, s.profileId, { using: false, status: 'idle' }))
+  await s.t.run((ctx) => patchProfile(ctx, s.profileId, { inUse: false, status: 'idle' }))
   expect(
     (await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).blockedProfileIds,
   ).toEqual([])
@@ -398,7 +376,7 @@ test('source detail distinguishes live discovery and liker checks with updated t
   const run = await claimLikers(s)
   expect((await s.t.query(api.scrapeSources.sources, { listId: s.listId }))[0]).toMatchObject({
     running: true,
-    kind: 'likers',
+    runKind: 'likers',
   })
   await s.t.mutation(internal.scrapeSources.finish, {
     ...run,
@@ -409,7 +387,7 @@ test('source detail distinguishes live discovery and liker checks with updated t
   const after = (await s.t.query(api.scrapeSources.sources, { listId: s.listId }))[0]
   expect(after).toMatchObject({
     running: false,
-    lastCheckAt: before.lastCheckAt,
+    lastPostsCheckAt: before.lastPostsCheckAt,
     nextCheckAt: before.nextCheckAt,
     lastLikerCheckAt: Date.now(),
   })
@@ -490,7 +468,7 @@ test('scraping requires a browser cookie and resumes when it is refreshed', asyn
   expect((await s.t.query(api.scraper.accounts, {}))[0].ready).toBe(false)
   await discover(s)
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
-  await s.t.run((ctx) => patchProfile(ctx, s.profileId, { sessionId: 'browser-cookie' }))
+  await s.t.run((ctx) => patchProfile(ctx, s.profileId, { instagramSessionId: 'browser-cookie' }))
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toMatchObject({
     profileId: s.profileId,
   })
@@ -508,7 +486,6 @@ test('daily discovery uses a rolling range and durable due times without sending
     runId: claim.runId,
     posts: [],
     postCount: 0,
-    postsFromApify: false,
   })
   await s.t.mutation(internal.scrapeSources.finish, {
     sourceId: s.sourceId,
@@ -518,7 +495,7 @@ test('daily discovery uses a rolling range and durable due times without sending
     likeCount: 200,
   })
   const source = (await s.t.query(api.scrapeSources.sources, { listId: s.listId }))[0]
-  expect(source.nextCheckAt - source.lastCheckAt!).toBe(DAY)
+  expect(source.nextCheckAt - source.lastPostsCheckAt!).toBe(DAY)
   expect(source).not.toHaveProperty('runId')
   expect(source).not.toHaveProperty('posts')
   expect((await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).taskAt).toBe(
@@ -549,7 +526,6 @@ test('HTTP bridge accepts Rust null metadata and fences subsequent writes after 
     posts: [{ id: '1', code: 'one', takenAt: Date.now() - HOUR, likeCount: null }],
     averageLikes: null,
     postCount: 1,
-    postsFromApify: false,
   }
   expect((await post('posts', registration)).status).toBe(200)
   expect(
@@ -559,7 +535,7 @@ test('HTTP bridge accepts Rust null metadata and fences subsequent writes after 
     (await post('finish', { ...run, status: 'completed', newIds: 0, likeCount: 200 })).status,
   ).toBe(200)
   const next = await (await post('claim', {})).json()
-  expect(next.kind).toBe('likers')
+  expect(next.runKind).toBe('likers')
   expect(
     (
       await post('finish', {
@@ -571,9 +547,6 @@ test('HTTP bridge accepts Rust null metadata and fences subsequent writes after 
       })
     ).status,
   ).toBe(200)
-  expect(
-    (await s.t.run((ctx) => ctx.db.query('scrapePosts').collect()))[0].observedLikeCount,
-  ).toBeUndefined()
   await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: false })
   expect((await post('posts', registration)).status).toBeGreaterThanOrEqual(400)
 })
@@ -585,9 +558,6 @@ test.each([100, 101, undefined])(
     await discover(s, { average })
     const post = (await s.t.run((ctx) => ctx.db.query('scrapePosts').collect()))[0]
     expect(post.monitoring).toBe(false)
-    if (average === 101) {
-      expect(post.monitorEligible).toBe(true)
-    }
     const run = await claimLikers(s)
     await s.t.mutation(internal.scrapeSources.finish, {
       ...run,
@@ -605,7 +575,7 @@ test.each([100, 101, undefined])(
 )
 
 test('old posts stay monitored past the discovery range for a full day from first scrape', async () => {
-  const s = await setup({ monitorDays: 7 })
+  const s = await setup()
   await discover(s, { average: 500, age: 4 * DAY })
   const post = (await s.t.run((ctx) => ctx.db.query('scrapePosts').collect()))[0]
   let run = await claimLikers(s)
@@ -649,7 +619,7 @@ test('due monitoring takes priority over discovery and initial scraping backlogs
   await s.t.mutation(api.scrapeSources.add, { listId: s.listId, links: ['another'] })
   const next = (await s.t.mutation(internal.scrapeSources.claim, {}))!
   expect(next._id).toBe(s.sourceId)
-  expect(next.kind).toBe('likers')
+  expect(next.runKind).toBe('likers')
   expect(next.post?.id).toBe(post.mediaId)
 })
 
@@ -683,14 +653,12 @@ test('repeated accounts and lost-response retries do not duplicate memberships o
     processed: 1,
     limitExhausted: false,
   })
-  expect((await s.t.run((ctx) => ctx.db.get(s.profileId)))?.scraperUsageCount).toBe(0)
   expect(await s.t.run((ctx) => ctx.db.query('leadMemberships').collect())).toHaveLength(1)
-  expect((await s.t.run((ctx) => ctx.db.get(s.sourceId)))?.discovered).toBe(1)
+  expect((await s.t.run((ctx) => ctx.db.get(s.sourceId)))?.leadsAdded).toBe(1)
 })
 
-test('private leads are saved even when an older list disabled their inclusion', async () => {
+test('private leads are saved', async () => {
   const s = await setup()
-  await s.t.run((ctx) => ctx.db.patch(s.listId, { scrapeIncludePrivate: false }))
   await discover(s, { average: 200 })
   const run = await claimLikers(s)
   expect(
@@ -716,12 +684,12 @@ test('range changes and pause fence workers; resume discovers posts again', asyn
   await s.t.mutation(internal.scrapeSources.cleanup, { sourceId: s.sourceId, remove: false })
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
   await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: true })
-  expect((await s.t.mutation(internal.scrapeSources.claim, {}))?.kind).toBe('posts')
+  expect((await s.t.mutation(internal.scrapeSources.claim, {}))?.runKind).toBe('posts')
 })
 
 test('resuming restores older monitored posts independently of discovery without extending their expiry', async () => {
   vi.useFakeTimers()
-  const s = await setup({ monitorDays: 7 })
+  const s = await setup()
   await discover(s, { average: 500, age: 4 * DAY })
   await s.t.mutation(internal.scrapeSources.finish, {
     ...(await claimLikers(s)),
@@ -757,7 +725,7 @@ test('resuming restores older monitored posts independently of discovery without
 
 test('turning list monitoring back on restores older hot posts without extending their expiry', async () => {
   vi.useFakeTimers()
-  const s = await setup({ monitorDays: 7 })
+  const s = await setup()
   await discover(s, { average: 500, age: 4 * DAY })
   await s.t.mutation(internal.scrapeSources.finish, {
     ...(await claimLikers(s)),
@@ -801,7 +769,6 @@ test('monitor restoration survives discovery while disabled and posts aging outs
   expect(await s.t.run((ctx) => ctx.db.get(post._id))).toMatchObject({
     monitoring: false,
     scheduled: false,
-    monitorEligible: true,
   })
   vi.setSystemTime(Date.now() + 8 * HOUR)
   await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 1, monitor: true })
@@ -868,7 +835,6 @@ test('turning list monitoring back on leaves paused sources and stopped posts in
         lastScrapedAt: Date.now() - HOUR,
         scheduled: false,
         monitoring: true,
-        monitorEligible: true,
         firstScrapedAt: sourceId === s.sourceId ? Date.now() - 2 * DAY : Date.now() - HOUR,
       })
   })
@@ -883,7 +849,7 @@ test('turning list monitoring back on leaves paused sources and stopped posts in
 
 test('resume restores monitoring in bounded batches without restarting stopped posts', async () => {
   vi.useFakeTimers()
-  const s = await setup({ monitorDays: 90 })
+  const s = await setup()
   await s.t.run(async (ctx) => {
     for (let i = 0; i < 105; i++)
       await ctx.db.insert('scrapePosts', {
@@ -894,7 +860,6 @@ test('resume restores monitoring in bounded batches without restarting stopped p
         nextCheckAt: Date.now() - 1,
         scheduled: true,
         monitoring: true,
-        monitorEligible: true,
         lastScrapedAt: Date.now() - HOUR,
         firstScrapedAt: i === 0 ? Date.now() - 2 * DAY : Date.now() - HOUR,
       })

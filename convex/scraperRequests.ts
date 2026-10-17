@@ -47,16 +47,16 @@ export async function scraperRequestState(
       ).find((row) => proxyKey(row.proxy, row.proxyType) === key) ?? null
   const country = proxy?.country?.toLowerCase()
   const timezone = country ? proxyCountryZones[country] : undefined
-  const times = usage?.requests.map((request) => request.at) ?? []
+  const times = usage?.requests.map((request) => request.reservedAt) ?? []
   const window = timezone ? sessionWindow(String(profileId), timezone, now) : null
   return {
     usage,
     paused: profile.paused === true,
     blocked:
-      profile.using ||
+      profile.inUse ||
       profile.status === 'running' ||
       profile.status === 'deleting' ||
-      !!profile.renameFrom,
+      !!profile.pendingRenameFrom,
     country,
     timezone,
     requestTimes: times,
@@ -113,7 +113,7 @@ export const reserve = internalMutation({
     }
     if (
       state.usage?.requests.some(
-        (request) => request.id === requestId && request.at > now - 3_600_000,
+        (request) => request.id === requestId && request.reservedAt > now - 3_600_000,
       )
     )
       return { allowed: true, retryAt: now }
@@ -133,8 +133,8 @@ export const reserve = internalMutation({
           : 'Hourly scraper request limit reached',
       }
     }
-    const requests = (state.usage?.requests ?? []).filter((request) => request.at > now - 3_600_000)
-    requests.push({ id: requestId, at: now })
+    const requests = (state.usage?.requests ?? []).filter((request) => request.reservedAt > now - 3_600_000)
+    requests.push({ id: requestId, reservedAt: now })
     if (state.usage) await ctx.db.patch(state.usage._id, { requests })
     else await ctx.db.insert('scraperRequestUsage', { profileId, requests })
     await recordActivity(ctx, new Date(now).toISOString().slice(0, 10), { scraperRequests: 1 })

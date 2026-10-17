@@ -9,7 +9,7 @@ export async function setProfilePaused(
   paused: boolean,
 ) {
   const profile = await ctx.db.get(profileId)
-  if (!profile || profile.status === 'deleting' || profile.renameFrom)
+  if (!profile || profile.status === 'deleting' || profile.pendingRenameFrom)
     throw new Error('Profile unavailable')
   if (profile.paused !== paused) await patchProfile(ctx, profileId, { paused })
   const progress = await ctx.db
@@ -29,7 +29,7 @@ export async function setProfilePaused(
           running: false,
           runId: undefined,
           leaseUntil: undefined,
-          kind: undefined,
+          runKind: undefined,
           currentPostId: undefined,
         })
   }

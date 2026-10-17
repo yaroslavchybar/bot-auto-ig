@@ -5,7 +5,6 @@ import { mount } from './mount'
 
 const mocks = vi.hoisted(() => ({
   count: 2 as number | null,
-  includePrivate: false,
   ensure: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/lib/router', () => ({
@@ -21,7 +20,6 @@ vi.mock('convex/react', () => ({
           _id: 'list',
           name: 'Saved',
           createdAt: 0,
-          scrapeIncludePrivate: mocks.includePrivate,
         }
       case 'scrapeSources:sources':
         return []
@@ -41,7 +39,6 @@ afterEach(async () => {
   view = undefined
   mocks.ensure.mockClear()
   mocks.count = 2
-  mocks.includePrivate = false
 })
 
 test('detail counts retained leads after the last source is removed', async () => {
@@ -51,10 +48,9 @@ test('detail counts retained leads after the last source is removed', async () =
   expect(mocks.ensure).not.toHaveBeenCalled()
 })
 
-test.each([false, true])(
-  'private-profile option is removed even with an old saved preference of %s',
-  async (value) => {
-    mocks.includePrivate = value
+test(
+  'private-profile option is removed',
+  async () => {
     view = mount()
     await view.render(<ScrapeSourcesView />)
     expect(view.container.querySelector('#source-private-profiles')).toBeNull()

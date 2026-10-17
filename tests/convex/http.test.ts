@@ -4,7 +4,7 @@ import { api } from '../../convex/_generated/api'
 import {
   createConvexTest,
   createUnauthenticatedConvexTest,
-  seedList,
+  seedModel,
   seedProfile,
   seedAutomation,
 } from './helpers'
@@ -16,27 +16,27 @@ function stubEnv(env: Record<string, string>) {
 test('content cleanup bridge queues only deleted models and acknowledges cleanup', async () => {
   const t = createConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
-  const model = (await seedList(t, 'Cleanup'))!
-  const request = (operation: string, token = 'secret-token') => t.fetch('/api/lists/content-cleanup', {
+  const model = (await seedModel(t, 'Cleanup'))!
+  const request = (operation: string, token = 'secret-token') => t.fetch('/api/models/content-cleanup', {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ operation, modelId: model._id }),
+    body: JSON.stringify({ operation, contentKey: model.contentKey ?? model._id }),
   })
   expect((await request('queue', 'wrong')).status).toBe(401)
   expect((await request('queue')).status).toBe(200)
   const work = () => t.query(api.profiles.queries.maintenanceWork, { bridgeToken: 'secret-token' })
-  expect((await work()).modelIds).toEqual([])
-  await t.mutation(api.lists.remove, { id: model._id })
+  expect((await work()).contentKeys).toEqual([])
+  await t.mutation(api.models.remove, { id: model._id })
   expect((await request('queue')).status).toBe(200)
-  expect((await work()).modelIds).toEqual([model._id])
+  expect((await work()).contentKeys).toEqual([model._id])
   expect((await request('finish')).status).toBe(200)
-  expect((await work()).modelIds).toEqual([])
+  expect((await work()).contentKeys).toEqual([])
 })
 
 test('rejects unauthorized requests when INTERNAL_API_KEY is configured', async () => {
   const t = createConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
-  const response = await t.fetch('/api/lists', { method: 'GET' })
+  const response = await t.fetch('/api/models', { method: 'GET' })
 
   expect(response.status).toBe(401)
   await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' })
@@ -46,7 +46,7 @@ test('fails closed when INTERNAL_API_KEY is missing', async () => {
   const t = createConvexTest()
   stubEnv({})
 
-  const response = await t.fetch('/api/lists', { method: 'GET' })
+  const response = await t.fetch('/api/models', { method: 'GET' })
 
   expect(response.status).toBe(500)
   await expect(response.json()).resolves.toEqual({
@@ -56,17 +56,17 @@ test('fails closed when INTERNAL_API_KEY is missing', async () => {
 
 test('maps list responses for authorized requests', async () => {
   const t = createConvexTest()
-  const list = await seedList(t, 'Leads')
+  const list = await seedModel(t, 'Leads')
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
-  const response = await t.fetch('/api/lists', {
+  const response = await t.fetch('/api/models', {
     method: 'GET',
     headers: { authorization: 'Bearer secret-token' },
   })
   const body = await response.json()
 
   expect(response.status).toBe(200)
-  expect(body).toEqual([{ id: list!._id, name: 'Leads', fullNames: [], usernames: [] }])
+  expect(body).toEqual([{ id: list!._id, contentKey: list!._id, name: 'Leads', fullNameVariations: [], usernames: [] }])
 })
 
 test('uses camelCase profile fields across the HTTP boundary', async () => {
@@ -105,9 +105,8 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
       createdAt: Date.now(),
       name: 'Profile Start',
       status: 'idle',
-      mode: 'direct',
-      using: false,
-      listIds: [],
+      inUse: false,
+      modelIds: [],
     }),
   )
 
@@ -132,7 +131,7 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
     body: JSON.stringify({
       name: 'Profile Start',
       status: 'running',
-      using: true,
+      inUse: true,
     }),
   })
   const updated = await t.run(async (ctx) => await ctx.db.get(created))
@@ -148,7 +147,7 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
     name: 'Profile Start',
     fingerprintOs: 'windows',
     status: 'running',
-    using: true,
+    inUse: true,
   })
   expect(typeof updated?.lastOpenedAt).toBe('number')
 })
@@ -226,11 +225,9 @@ test('serves automation routes over INTERNAL_API_KEY without a Clerk identity', 
       description: 'automation auth bridge',
       nodes: [],
       edges: [],
-      listIds: [],
+      modelIds: [],
       status: 'idle',
       isActive: true,
-      retryCount: 0,
-      maxRetries: 2,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }),

@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vite-plus/test'
 
 import { api, internal } from '../../convex/_generated/api'
-import { createConvexTest, insertDoc, seedList, seedAutomation } from './helpers'
+import { createConvexTest, insertDoc, seedModel, seedAutomation } from './helpers'
 import {
   getActivityById,
   getDefaultConfig,
@@ -16,8 +16,8 @@ import { defaultRoutine } from '../../convex/routinePolicy'
 
 test('sleeping routines keep checkpoints on wake and become editable when disabled', async () => {
   const t = createConvexTest()
-  const model = await seedList(t)
-  const automation = await seedAutomation(t, { listIds: [model!._id], status: 'running', routine: defaultRoutine, nodeStates: { saved: true } })
+  const model = await seedModel(t)
+  const automation = await seedAutomation(t, { modelIds: [model!._id], status: 'running', routine: defaultRoutine, nodeStates: { saved: true } })
   const pending = await t.mutation(internal.automations.mutations.updateStatusInternal, { id: automation!._id, status: 'pending' })
   expect(pending?.status).toBe('pending')
   const resumed = await t.mutation(internal.automations.mutations.startInternal, { id: automation!._id })
@@ -29,7 +29,7 @@ test('sleeping routines keep checkpoints on wake and become editable when disabl
 
 test('editor saves preserve source list selections for reopening and execution', async () => {
   const t = createConvexTest()
-  const list = await seedList(t)
+  const list = await seedModel(t)
   const automation = await seedAutomation(t)
   const nodes = [{
     id: 'start_node',
@@ -82,14 +82,14 @@ test('fresh runs clear completed profile state while pending runs keep checkpoin
 
 test('creates automations, deduplicates list ids, and transitions status', async () => {
   const t = createConvexTest()
-  const list = await seedList(t, 'List A')
+  const list = await seedModel(t, 'List A')
 
   const created = await t.mutation(api.automations.mutations.create, {
     name: '  Automation A  ',
     description: 'automation',
     nodes: [],
     edges: [],
-    listIds: [list!._id, list!._id],
+    modelIds: [list!._id, list!._id],
   })
   expect(created?.isActive).toBe(false)
   await t.mutation(api.automations.mutations.setActive, { id: created!._id, isActive: true })
@@ -107,7 +107,7 @@ test('creates automations, deduplicates list ids, and transitions status', async
 
   expect(created).toMatchObject({
     name: 'Automation A',
-    listIds: [list!._id],
+    modelIds: [list!._id],
   })
   expect(started?.status).toBe('pending')
   expect(running).toMatchObject({
@@ -151,7 +151,7 @@ test('lists automations without schedule-era counters', async () => {
     description: 'plain run',
     nodes: [],
     edges: [],
-    listIds: [],
+    modelIds: [],
     status: 'idle',
     isActive: true,
     createdAt: Date.now(),
