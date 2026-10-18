@@ -4,6 +4,7 @@ import { requestOpenRouterDecision } from './openrouter-decision.js'
 import { TOPIC_CONFIDENCE, TOPIC_MODEL, TOPIC_DECISION_TIMEOUT } from './topic-intent.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import type { ActionLogger } from './shared.js'
+import { captureViewportScreenshot } from './screenshot.js'
 
 type Box = { x: number; y: number; width: number; height: number }
 export type GridTile = { href: string; box: Box }
@@ -175,15 +176,12 @@ export async function matchExploreGrid(
     if (!sameTiles(tiles, await readExploreTiles(page)))
       throw new Error('Explore grid moved before capture')
     const crop = exploreCrop(tiles, viewport)
-    const raw = await page.screenshot({
-      type: 'png',
-      scale: 'css',
-      fullPage: false,
-      clip: crop,
-      timeout: bounded.timeout(5000),
-    })
+    const viewportImage = await captureViewportScreenshot(page, bounded)
     if (!sameTiles(tiles, await readExploreTiles(page)))
       throw new Error('Explore grid moved during capture')
+    const raw = await sharp(viewportImage)
+      .extract({ left: crop.x, top: crop.y, width: crop.width, height: crop.height })
+      .png().toBuffer()
     const screenshot = await numberExploreScreenshot(raw, tiles, crop)
     bounded.check()
     const numbers = await request(screenshot, tiles.length, topics, bounded.timeout(TOPIC_DECISION_TIMEOUT))

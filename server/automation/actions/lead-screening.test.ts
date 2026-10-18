@@ -10,6 +10,7 @@ import { DecisionRefusedError } from './openrouter-decision.js'
 import { DEFAULT_SCREENING_SETTINGS } from '../../shared/aiSettings.js'
 import { currentLogScope } from '../../shared/logger.js'
 import { BrowseSession } from './session.js'
+import sharp from 'sharp'
 
 const response = (category: string, confidence = 0.97) =>
   Response.json({
@@ -281,6 +282,7 @@ test('a changed recipient or stopped session cannot capture or classify the wron
 })
 
 test('screening waits for the target header, captures once, and rejects navigation during classification', async () => {
+  const viewportImage = await sharp(Buffer.from('<svg width="2400" height="900"><rect width="1568" height="900" fill="red"/><rect x="1568" width="832" height="900" fill="blue"/></svg>')).png().toBuffer()
   let url = 'https://www.instagram.com/target/',
     captures = 0,
     headerReady = false
@@ -308,20 +310,26 @@ test('screening waits for the target header, captures once, and rejects navigati
     screenshot: async (options: {
       type: string
       fullPage: boolean
+      caret?: string
       clip?: { x: number; y: number; width: number; height: number }
     }) => {
       assert.equal(headerReady, true)
-      assert.equal(options.type, 'jpeg')
+      assert.equal(options.type, 'png')
       assert.equal(options.fullPage, false)
-      // Jev cannot read wider images, so the capture never exceeds its limit.
-      assert.equal(options.clip?.width, 1568)
+      assert.equal(options.clip, undefined, 'browser clipping can make the profile flicker')
+      assert.equal(options.caret, 'initial')
       captures++
-      return Buffer.from('loaded profile screenshot')
+      return viewportImage
     },
   } as unknown as Page
   await assert.rejects(
     screenLead(page, 'target', new BrowseSession(), async (screenshot) => {
-      assert.equal(screenshot.toString(), 'loaded profile screenshot')
+      const metadata = await sharp(screenshot).metadata()
+      assert.equal(metadata.format, 'jpeg')
+      assert.equal(metadata.width, 1568, 'preserve the screening model image-width limit')
+      assert.equal(metadata.height, 900)
+      const pixel = await sharp(screenshot).extract({ left: 1560, top: 450, width: 1, height: 1 }).raw().toBuffer()
+      assert.ok(pixel[0] > 250 && pixel[2] < 5, 'crop the right side in memory rather than resizing the profile')
       url = 'https://www.instagram.com/different/'
       return { category: 'business', confidence: 1, model: LEAD_SCREENING_MODEL }
     }),

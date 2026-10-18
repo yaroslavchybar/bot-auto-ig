@@ -5,6 +5,8 @@ import { BrowseSession, SessionEnded } from './session.js'
 import type { ActionLogger } from './shared.js'
 import { requestOpenRouterDecision } from './openrouter-decision.js'
 import { beginSessionDecision } from './session-decision.js'
+import sharp from 'sharp'
+import { captureViewportScreenshot } from './screenshot.js'
 
 export const TOPIC_MODEL = DEFAULT_DECISION_MODEL
 export const TOPIC_CONFIDENCE = 0.7
@@ -69,19 +71,15 @@ export async function captureTopicScreenshot(target: Locator, session: BrowseSes
     const viewport = page.viewportSize()
     const box = await element.boundingBox()
     if (!viewport || !box) throw new Error('Topic content is not visible')
-    const x = Math.max(0, box.x), y = Math.max(0, box.y)
-    const width = Math.min(viewport.width, box.x + box.width) - x
-    const height = Math.min(viewport.height, box.y + box.height) - y
+    const x = Math.max(0, Math.floor(box.x)), y = Math.max(0, Math.floor(box.y))
+    const width = Math.min(viewport.width, Math.ceil(box.x + box.width)) - x
+    const height = Math.min(viewport.height, Math.ceil(box.y + box.height)) - y
     if (width <= 0 || height <= 0) throw new Error('Topic content is outside the viewport')
-    const screenshot = await page.screenshot({
-      type: 'jpeg', quality: 70, scale: 'css', fullPage: false,
-      // Keep comment-field styles untouched; Playwright otherwise hides and restores every caret.
-      caret: 'initial',
-      clip: { x, y, width, height }, timeout: session.timeout(5000),
-    })
-    session.check()
+    const screenshot = await captureViewportScreenshot(page, session)
     if (!await element.evaluate(node => node.isConnected)) throw new Error('Topic content detached during capture')
-    return screenshot
+    const cropped = await sharp(screenshot).extract({ left: x, top: y, width, height }).jpeg({ quality: 70 }).toBuffer()
+    session.check()
+    return cropped
   } finally { await element.dispose().catch(() => {}) }
 }
 

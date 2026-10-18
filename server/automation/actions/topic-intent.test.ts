@@ -2,18 +2,22 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
 import { EventEmitter } from 'node:events'
+import sharp from 'sharp'
 import { attachSessionDecisions } from './session-decision.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { captureTopicScreenshot, createTopicMatcher, decideTopic, TOPIC_MODEL, type TopicContext } from './topic-intent.js'
 
 const image = Buffer.from('test-jpeg')
+const viewportImage = sharp({ create: { width: 800, height: 600, channels: 3, background: '#fff' } })
+  .composite([{ input: Buffer.from('<svg width="800" height="600"><rect x="0" y="500" width="480" height="100" fill="red"/></svg>'), left: 0, top: 0 }])
+  .png().toBuffer()
 const input = { topics: ['fitness'], screenshot: image }
 const context = (): TopicContext => ({ text: 'Barbell squats', relationship: 'not-followed' })
 const element = { boundingBox: async () => ({ x: 100, y: 100, width: 500, height: 400 }),
   evaluate: async () => true, dispose: async () => {},
 }
 const target = { elementHandle: async () => element, page: () => ({
-  viewportSize: () => ({ width: 800, height: 600 }), screenshot: async () => image,
+  viewportSize: () => ({ width: 800, height: 600 }), screenshot: async () => viewportImage,
 }) } as unknown as Locator
 const response = (noul: unknown, type = 'noul') =>
   Response.json({ answers: { matches_topic: { type, noul } } })
@@ -196,7 +200,7 @@ test('capture and classification share one deadline, and local expiry does not s
   } finally { Date.now = originalNow }
 })
 
-test('capture is clipped to the visible target, pins identity, and never scrolls or saves a file', async () => {
+test('capture crops the viewport in memory without browser clipping, scrolling, or saving a file', async () => {
   let disposed = false, connected = true, shots = 0
   let box = { x: -20, y: 500, width: 500, height: 900 }
   const source = { elementHandle: async () => ({ boundingBox: async () => box,
@@ -204,21 +208,29 @@ test('capture is clipped to the visible target, pins identity, and never scrolls
   }), page: () => ({ viewportSize: () => ({ width: 800, height: 600 }),
     screenshot: async (options: Record<string, unknown>) => {
       shots++
-      assert.deepEqual(options.clip, { x: 0, y: 500, width: 480, height: 100 })
-      assert.equal(options.type, 'jpeg'); assert.equal(options.quality, 70)
+      assert.equal(options.clip, undefined, 'a clipped browser capture makes the post viewer jump')
+      assert.equal(options.type, 'png')
       assert.equal(options.scale, 'css'); assert.equal(options.fullPage, false)
       assert.equal(options.caret, 'initial', 'capture must not modify the popup comment field')
       assert.equal(options.path, undefined)
-      return image
+      return viewportImage
     },
   }) } as unknown as Locator
-  assert.equal(await captureTopicScreenshot(source, new BrowseSession()), image)
+  const screenshot = await captureTopicScreenshot(source, new BrowseSession())
+  const metadata = await sharp(screenshot).metadata()
+  assert.equal(metadata.format, 'jpeg')
+  assert.equal(metadata.width, 480)
+  assert.equal(metadata.height, 100)
+  const pixel = await sharp(screenshot).extract({ left: 10, top: 10, width: 1, height: 1 }).raw().toBuffer()
+  assert.ok(pixel[0] > 250 && pixel[1] < 5 && pixel[2] < 5, 'only the visible red target area is sent')
   assert.equal(disposed, true)
+  box = { x: 1.2, y: 500.4, width: 499.5, height: 900 }
+  assert.equal((await sharp(await captureTopicScreenshot(source, new BrowseSession())).metadata()).width, 500)
   connected = false
   await assert.rejects(captureTopicScreenshot(source, new BrowseSession()), /detached/)
   box = { ...box, y: 700 }
   await assert.rejects(captureTopicScreenshot(source, new BrowseSession()), /outside the viewport/)
-  assert.equal(shots, 2)
+  assert.equal(shots, 3)
 })
 
 test('capture failures do not call the provider or fall back to caption keywords', async () => {

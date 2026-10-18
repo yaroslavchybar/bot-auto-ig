@@ -5,6 +5,8 @@ import { BrowseSession } from './session.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { requestOpenRouterDecision } from './openrouter-decision.js'
 import { addLogContext } from '../../shared/logger.js'
+import sharp from 'sharp'
+import { captureViewportScreenshot } from './screenshot.js'
 
 /** Defaults for an automation that saved no screening settings; the UI shows and edits these. */
 export const LEAD_SCREENING_MODEL = DEFAULT_SCREENING_SETTINGS.model
@@ -12,7 +14,7 @@ export const LEAD_SCREENING_MODEL = DEFAULT_SCREENING_SETTINGS.model
 export const LEAD_NON_ENGLISH_MIN_PROBABILITY = 0.7
 /** Whole screening budget: one category request plus the male follow check. */
 const SCREENING_TIMEOUT = 30_000
-/** Jev rejects images wider than this, so a wider viewport is captured cropped. */
+/** Jev rejects images wider than this, so crop wider captures in memory. */
 const MAX_IMAGE_WIDTH = 1568
 export type LeadCategory = 'male' | 'female' | 'business'
 /** `englishTextCheckPassed` is set only for male accounts; other categories never get the check. */
@@ -162,21 +164,11 @@ export async function screenLead(
   addLogContext({ screeningStage: 'screenshot' })
   const captureStarted = Date.now()
   const viewport = page.viewportSize()
-  const screenshot = await page.screenshot({
-    type: 'jpeg',
-    quality: 70,
-    scale: 'css',
-    fullPage: false,
-    ...(viewport && {
-      clip: {
-        x: 0,
-        y: 0,
-        width: Math.min(viewport.width, MAX_IMAGE_WIDTH),
-        height: viewport.height,
-      },
-    }),
-    timeout: session.timeout(5000),
-  })
+  const image = sharp(await captureViewportScreenshot(page, session))
+  if (viewport && viewport.width > MAX_IMAGE_WIDTH)
+    image.extract({ left: 0, top: 0, width: MAX_IMAGE_WIDTH, height: viewport.height })
+  const screenshot = await image.jpeg({ quality: 70 }).toBuffer()
+  session.check()
   addLogContext({ screenshotCaptureMs: Date.now() - captureStarted, screenshotBytes: screenshot.length, screeningStage: 'provider' })
   if (!correctProfile()) throw new Error('Lead profile navigation changed')
   const result = await request(screenshot, session.timeout(SCREENING_TIMEOUT))

@@ -112,24 +112,29 @@ test('grid matching asks independent questions and can select several posts, not
 
 test('tile numbers resolve to original hrefs and a changing grid is skipped before sending an image', async () => {
   const crop = exploreCrop(row, { width: 1440, height: 680 })
-  const image = await sharp({
-    create: { width: crop.width, height: crop.height, channels: 3, background: '#223344' },
-  })
-    .png()
-    .toBuffer()
+  const image = await sharp(Buffer.from(`<svg width="1440" height="680"><rect width="1440" height="680" fill="white"/><rect x="${crop.x}" y="${crop.y}" width="${crop.width}" height="${crop.height}" fill="#223344"/></svg>`)).png().toBuffer()
   let current = row,
     requests = 0
   const page = {
     viewportSize: () => ({ width: 1440, height: 680 }),
     locator: () => ({ evaluateAll: async () => current }),
-    screenshot: async (options: { clip: unknown }) => {
-      assert.deepEqual(options.clip, crop)
+    screenshot: async (options: { clip?: unknown; type: string; caret?: string }) => {
+      assert.equal(options.clip, undefined, 'browser clipping can make Explore flicker')
+      assert.equal(options.type, 'png')
+      assert.equal(options.caret, 'initial')
       return image
     },
   } as unknown as Page
-  const request = async (_image: Buffer, count: number) => {
+  const request = async (image: Buffer, count: number) => {
     requests++
     assert.equal(count, 4)
+    const metadata = await sharp(image).metadata()
+    assert.equal(metadata.format, 'jpeg')
+    assert.equal(metadata.width, crop.width)
+    assert.equal(metadata.height, crop.height)
+    const pixel = await sharp(image).extract({ left: 100, top: 100, width: 1, height: 1 }).raw().toBuffer()
+    assert.ok(Math.abs(pixel[0] - 34) < 3 && Math.abs(pixel[1] - 51) < 3 && Math.abs(pixel[2] - 68) < 3,
+      'the numbered image excludes the surrounding white viewport')
     return [2, 4]
   }
   assert.deepEqual(
