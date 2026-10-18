@@ -441,16 +441,6 @@ export function RoutinePopup({
                       max: 35,
                     })}
                   </SettingsGroup>
-                  <p className="text-sm text-muted-copy">
-                    Follow screened public and private accounts first. Starting the next day, check
-                    notifications for follow-backs, likes, and comments. A like notification from a
-                    followed lead we have not messaged triggers a post-liker check (up to 100 likers per
-                    post, using this account). The first snapshot is a baseline.
-                    Only leads we followed can qualify. A new like or
-                    comment qualifies for a DM without a follow-back. Otherwise, verify the follow-back
-                    before messaging. Accounts without qualifying activity wait until scheduled unfollow.
-                    All outreach uses the existing session time.
-                  </p>
                   <SettingsGroup title="Unfollow">
                     {routineRange(
                       'unfollow-days',

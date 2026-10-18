@@ -298,8 +298,6 @@ test('Outreach settings expose gradual daily follow limits instead of DM limits'
   expect(document.body.textContent).toContain('Daily outreach')
   expect(document.body.textContent).toContain('Initial follows per day')
   expect(document.body.textContent).toContain('Max follows per day')
-  expect(document.body.textContent).toContain('Follow screened public and private accounts first')
-  expect(document.body.textContent).toContain('comment qualifies for a DM without a follow-back')
   expect(document.body.textContent).not.toContain('Initial DMs per day')
 })
 
