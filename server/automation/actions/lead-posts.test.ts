@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { Window } from 'happy-dom'
-import { browseLeadPosts, leadPostMediaIndex, visibleLeadPosts } from './lead-posts.js'
+import { browseLeadPosts, leadPostMediaIndex } from './lead-posts.js'
+import { leadGridTiles } from './lead-post-decision.js'
+import { gridRow } from './post-grid.js'
 import { BrowseSession, SessionEnded } from './session.js'
 
 const box = (width = 400, height = 400, top = 100) => ({ x: 200, y: top, left: 200, right: 200 + width,
@@ -13,10 +15,13 @@ test('lead grid sampling excludes suggestions, offscreen tiles and other account
   const window = new Window({ width: 1280, height: 800 })
   try {
     window.document.body.innerHTML = ['/alice/p/a/', '/alice/reel/b/', '/bob/p/c/', '/alice/', '/alice/p/offscreen/']
-      .map(href => `<a href="${href}"></a>`).join('')
+      .map(href => `<a href="${href}"><img></a>`).join('')
     const nodes = [...window.document.querySelectorAll('a')]
-    for (const node of nodes) node.getBoundingClientRect = () => box(300, 300, node.getAttribute('href')!.includes('offscreen') ? 1000 : 100)
-    assert.deepEqual(visibleLeadPosts(nodes as unknown as Element[], 'ALICE'), ['/alice/p/a/', '/alice/reel/b/'])
+    for (const node of nodes) {
+      node.getBoundingClientRect = () => box(300, 300, node.getAttribute('href')!.includes('offscreen') ? 1000 : 100)
+      Object.defineProperties(node.querySelector('img')!, { complete: { value: true }, naturalWidth: { value: 1000 } })
+    }
+    assert.deepEqual(gridRow(leadGridTiles(nodes as unknown as Element[], 'ALICE'), { width: 1280, height: 800 }).map(tile => tile.href), ['/alice/p/a/', '/alice/reel/b/'])
   } finally { await window.happyDOM.close() }
 })
 
@@ -68,14 +73,13 @@ function fixture(mode: 'public' | 'private' | 'empty' = 'public') {
     random: (min, max) => min === 1 && max === 4 ? 3 : min,
     wait: async session => { session.check() },
     check: async () => {}, reveal: async () => true,
-    scroll: async () => { calls.push('scroll') },
     video: async () => { calls.push('watch-video'); return true },
-    capture: async target => {
-      assert.equal(await target.evaluate(node => node.tagName), 'ARTICLE', 'capture the opened post container, as Reels does')
-      assert.equal(await target.locator('#media').count(), 1)
-      calls.push('capture'); return Buffer.from('jpeg')
+    grid: async (_page, username) => {
+      assert.equal(username, 'alice')
+      assert.equal(document.querySelector('[role="dialog"]'), null, 'classify the grid before opening any viewer')
+      calls.push('grid')
+      return ['/alice/p/one/', '/alice/p/two/', '/alice/reel/three/']
     },
-    decide: async () => { calls.push('classify'); return { person: true, confidence: 0.9 } },
     like: async (_page, target, budget, session, _log, chance, checkTarget) => {
       session.check(); await checkTarget?.()
       assert.equal(budget, undefined, 'lead Likes have no daily cap')
@@ -113,26 +117,27 @@ for (const mode of ['private', 'empty'] as const) test(`lead browsing skips ${mo
   try { await s.run(); assert.deepEqual(s.calls, []) } finally { await s.close() }
 })
 
-for (const person of [false, true]) test(`lead posts use their own person decision, close via X and have no Like cap (${person})`, async () => {
+for (const person of [false, true]) test(`only grid-approved human posts are opened, closed via X and liked (${person})`, async () => {
   const s = fixture()
-  s.deps.decide = async () => { s.calls.push('classify'); return { person, confidence: person ? 0.9 : 0.1 } }
+  const grid = s.deps.grid
+  s.deps.grid = async (...args) => person ? grid(...args) : []
   try {
     await s.run()
-    assert.equal(s.calls.filter(c => c === 'open').length, 3)
-    assert.equal(s.calls.filter(c => c === 'close').length, 3)
+    assert.equal(s.calls.filter(c => c === 'open').length, person ? 3 : 0)
+    assert.equal(s.calls.filter(c => c === 'close').length, person ? 3 : 0)
     assert.equal(s.calls.filter(c => c === 'like').length, person ? 3 : 0)
-    assert.equal(s.calls.filter(c => c === 'unmute').length, 1)
-    assert.equal(s.calls.filter(c => c === 'watch-video').length, 1)
+    assert.equal(s.calls.filter(c => c === 'unmute').length, person ? 1 : 0)
+    assert.equal(s.calls.filter(c => c === 'watch-video').length, person ? 1 : 0)
     assert.equal(s.url(), 'https://www.instagram.com/alice/')
   } finally { await s.close() }
 })
 
-test('provider failures skip Likes and keep closing each post', async () => {
+test('an unavailable grid never falls back to opening random posts', async () => {
   const s = fixture()
-  s.deps.decide = async () => { throw new Error('Provider unavailable') }
+  s.deps.grid = async () => []
   try {
     await s.run(); assert.equal(s.calls.includes('like'), false)
-    assert.equal(s.calls.filter(c => c === 'close').length, 3)
+    assert.equal(s.calls.filter(c => c === 'open').length, 0)
   } finally { await s.close() }
 })
 
@@ -143,16 +148,32 @@ test('an optional Like timeout does not stop the next lead post', async () => {
   finally { await s.close() }
 })
 
-test('a post changed during Luna is never liked', async () => {
+test('a post changed before Like input is never liked', async () => {
   const s = fixture()
-  s.deps.decide = async () => { s.document.querySelector('#media')!.setAttribute('src', 'different.jpg'); return { person: true, confidence: 1 } }
+  const like = s.deps.like
+  s.deps.like = async (...args) => { s.document.querySelector('#media')!.setAttribute('src', 'different.jpg'); await like(...args) }
   try { await s.run(); assert.equal(s.calls.includes('like'), false) } finally { await s.close() }
 })
 
-test('cancellation during Luna prevents Like input', async () => {
+test('cancellation during grid classification prevents opening and Like input', async () => {
   const s = fixture()
-  s.deps.decide = async () => { s.stop(); return { person: true, confidence: 1 } }
-  try { await assert.rejects(s.run(), SessionEnded); assert.equal(s.calls.includes('like'), false) } finally { await s.close() }
+  s.deps.grid = async () => { s.stop(); return ['/alice/p/one/'] }
+  try {
+    await assert.rejects(s.run(), SessionEnded)
+    assert.equal(s.calls.includes('like'), false)
+    assert.equal(s.calls.includes('open'), false)
+  } finally { await s.close() }
+})
+
+for (const count of [1, 2, 3]) test(`lead following opens only ${count} approved human posts`, async () => {
+  const s = fixture()
+  s.deps.grid = async () => ['/alice/p/two/', '/alice/reel/three/']
+  s.deps.random = (min, max) => min === 1 && max === 4 ? count : min
+  try {
+    await s.run()
+    assert.equal(s.calls.filter(call => call === 'open').length, Math.min(count, 2))
+    assert.equal(s.calls.filter(call => call === 'like').length, Math.min(count, 2))
+  } finally { await s.close() }
 })
 
 test('an expired visit still closes its viewer with the parent session', async () => {

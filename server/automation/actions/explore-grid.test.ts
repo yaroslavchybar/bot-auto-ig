@@ -2,15 +2,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import sharp from 'sharp'
 import type { Page } from 'playwright-core'
-import {
-  decideExploreGrid,
-  exploreCrop,
-  exploreRow,
-  matchExploreGrid,
-  numberExploreScreenshot,
-  type GridTile,
-} from './explore-grid.js'
+import { decideExploreGrid, matchExploreGrid } from './explore-grid.js'
 import { BrowseSession, SessionEnded } from './session.js'
+import { gridCrop, gridRow, numberGridScreenshot, type GridTile } from './post-grid.js'
 
 const tile = (number: number, x: number, y: number, width = 280, height = 374): GridTile => ({
   href: `/p/post_${number}/`,
@@ -20,15 +14,15 @@ const row = [tile(1, 198, 88), tile(2, 479, 88), tile(3, 761, 88), tile(4, 1042,
 
 test('Explore captures only one row of up to four tiles, ignoring the cut-off next row', () => {
   const all = [...row, tile(5, 198, 463), tile(6, 479, 463)]
-  assert.deepEqual(exploreRow(all, { width: 1440, height: 680 }), row)
-  assert.deepEqual(exploreCrop(row, { width: 1440, height: 680 }), {
+  assert.deepEqual(gridRow(all, { width: 1440, height: 680 }), row)
+  assert.deepEqual(gridCrop(row, { width: 1440, height: 680 }), {
     x: 198,
     y: 88,
     width: 1124,
     height: 374,
   })
   assert.deepEqual(
-    exploreRow(
+    gridRow(
       [
         tile(1, 10, 20, 120, 160),
         tile(2, 131, 20, 120, 160),
@@ -40,7 +34,7 @@ test('Explore captures only one row of up to four tiles, ignoring the cut-off ne
     ['/p/post_1/', '/p/post_2/', '/p/post_3/'],
   )
   assert.equal(
-    exploreRow(
+    gridRow(
       Array.from({ length: 6 }, (_, i) => tile(i, i * 101, 10, 100, 150)),
       { width: 1000, height: 600 },
     ).length,
@@ -49,13 +43,13 @@ test('Explore captures only one row of up to four tiles, ignoring the cut-off ne
 })
 
 test('numbered row screenshots are JPEGs under 150 KB and labels stay inside each tile', async () => {
-  const crop = exploreCrop(row, { width: 1440, height: 680 })
+  const crop = gridCrop(row, { width: 1440, height: 680 })
   const source = await sharp({
     create: { width: crop.width, height: crop.height, channels: 3, background: '#223344' },
   })
     .png()
     .toBuffer()
-  const numbered = await numberExploreScreenshot(source, row, crop)
+  const numbered = await numberGridScreenshot(source, row, crop)
   const metadata = await sharp(numbered).metadata()
   assert.equal(metadata.format, 'jpeg')
   assert.equal(metadata.width, crop.width)
@@ -111,7 +105,7 @@ test('grid matching asks independent questions and can select several posts, not
 })
 
 test('tile numbers resolve to original hrefs and a changing grid is skipped before sending an image', async () => {
-  const crop = exploreCrop(row, { width: 1440, height: 680 })
+  const crop = gridCrop(row, { width: 1440, height: 680 })
   const image = await sharp(Buffer.from(`<svg width="1440" height="680"><rect width="1440" height="680" fill="white"/><rect x="${crop.x}" y="${crop.y}" width="${crop.width}" height="${crop.height}" fill="#223344"/></svg>`)).png().toBuffer()
   let current = row,
     requests = 0

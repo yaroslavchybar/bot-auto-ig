@@ -14,7 +14,8 @@ import { engagePost } from './engagement.js'
 import { openTopicResults } from './explore.js'
 import { quickScroll, smoothScroll } from './scroll.js'
 import { topicSearchTerms } from './topic-search.js'
-import { EXPLORE_TILE_SELECTOR, exploreRow, matchExploreGrid, readExploreTiles } from './explore-grid.js'
+import { gridRow } from './post-grid.js'
+import { EXPLORE_TILE_SELECTOR, matchExploreGrid, readExploreTiles } from './explore-grid.js'
 
 export const EXPLORE_WARMUP_LAST_DAY = 4
 
@@ -36,7 +37,7 @@ export async function watchTopicPosts(page: Page, topic: string, count: number, 
     session.check()
     const viewport = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
     const visible = (await readExploreTiles(page)).filter(tile => !seen.has(tile.href))
-    const row = exploreRow(visible, viewport)
+    const row = gridRow(visible, viewport)
     const unknown = row.filter(tile => !inspected.has(tile.href))
     if (unknown.length) {
       const selected = await (deps.grid ?? matchExploreGrid)(page, unknown, topics, session, log)
@@ -57,7 +58,7 @@ export async function watchTopicPosts(page: Page, topic: string, count: number, 
     const tile = page.locator(`main a[href=${JSON.stringify(href)}]`).first()
     // The model's tile number resolves to its original exact href after asynchronous classification.
     const box = await tile.boundingBox({ timeout: session.timeout(1000) })
-    if (!box || !exploreRow([{ href, box }], viewport).length) continue
+    if (!box || !gridRow([{ href, box }], viewport).length) continue
     await (await actionLocator(tile, session.timeout(20_000))).click({ timeout: session.timeout(20_000) })
     try {
       const dialog = page.getByRole('dialog').filter({ visible: true }).first()

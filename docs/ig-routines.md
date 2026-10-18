@@ -71,6 +71,8 @@ After screening, the worker follows both public and private recipients. Public p
 
 Returning from the inbox chooses 50/50 between the recipient link in the chat header and View profile. If one is unavailable, the worker uses the other.
 
+Before following a public lead, bring its first post row into view and classify up to four loaded thumbnails together. The row uses Explore's in-memory crop, numbering, and 150,000-byte image limit, with the automation's Person detection model and prompt. Each tile is judged independently for a visible real human. Open a random 1–3 matching posts, or fewer when fewer match, then view and Like their main media before closing each viewer with X. There is no second person request inside an opened post. Private, empty, no-human, unavailable, and changed grids skip post interaction and continue to the normal follow step. This grid selection runs only for new lead following; DM tasks and ordinary feed/Reel profile visits do not use it. Screenshots stay in memory and never modify the page layout or add DOM labels.
+
 `accountProgress.outreachIncrease` and `outreachQuotaDate` track the daily follow ramp and quota day. Notification- and snapshot-triggered DMs do not consume another follow slot. Per-route outreach messages stay in the automation settings.
 
 Each recipient has its own `automation.recipient_session` event with navigation, screening, and follow timings, so later browsing cannot overwrite the lead's diagnostic notes. Recipient following has no separate post-like path.
