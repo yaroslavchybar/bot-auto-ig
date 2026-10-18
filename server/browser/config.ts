@@ -5,7 +5,6 @@
 // off-screen, where Chrome then remembers the bad position forever.
 export const BROWSER_WINDOW_WIDTH = 1366
 export const BROWSER_WINDOW_HEIGHT = 768
-export const BROWSER_DESKTOP_HEIGHT = 960
 
 export { parseProxy } from '../shared/proxy.js'
 

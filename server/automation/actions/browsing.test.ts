@@ -5,8 +5,8 @@ import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { Window } from 'happy-dom'
 import { BrowseSession, SessionEnded } from './session.js'
-import { quickScroll, revealForClick, settleOnPost, smoothScroll } from './scroll.js'
-import { likeVisible, clickVisible } from './mouse.js'
+import { quickScroll, revealForClick, smoothScroll } from './scroll.js'
+import { clickVisible } from './mouse.js'
 import { viewContent, viewVideo } from './viewing.js'
 import { openDMs } from './inbox.js'
 import { openReels } from './reels.js'
@@ -97,25 +97,6 @@ for (const { height, startY, needsScroll } of [
   } finally { await window.happyDOM.close() }
 })
 
-test('settling checks posts beyond six and ignores fully offscreen posts', async () => {
-  const checked: number[] = []
-  let wheelCalls = 0
-  const posts = [-1800, -1500, -1200, -900, -600, -300, 100].map((y, i) => ({
-    boundingBox: async () => { checked.push(i); return { x: 0, y, width: 400, height: 250 } },
-  }))
-  const page = {
-    viewportSize: () => ({ width: 1280, height: 800 }),
-    locator: () => ({ count: async () => posts.length, nth: (i: number) => posts[i] }),
-    mouse: { wheel: async () => { wheelCalls++ } },
-  } as unknown as Page
-  await settleOnPost(page)
-  assert.equal(wheelCalls, 0)
-  assert.ok(checked.includes(6))
-  posts.pop()
-  await settleOnPost(page)
-  assert.equal(wheelCalls, 0)
-})
-
 test('one deadline caps waits and prevents actions after expiry', async () => {
   const session = new BrowseSession(Date.now() + 20)
   assert.ok(session.timeout(10_000) <= 20)
@@ -176,18 +157,6 @@ function likeTarget(alreadyLiked: boolean, confirms: boolean, y = 100) {
   const target = { locator: (s: string) => s.includes('Unlike') ? unlike : ({ count: async () => 1, nth: () => button }) } as unknown as Locator
   return { target, clicks: () => clicks }
 }
-
-test('likes are confirmed, and already-liked posts are untouched', async () => {
-  const existing = likeTarget(true, true)
-  assert.equal(await likeVisible(existing.target), false)
-  assert.equal(existing.clicks(), 0)
-  const success = likeTarget(false, true)
-  assert.equal(await likeVisible(success.target), true)
-  assert.equal(success.clicks(), 1)
-  const failed = likeTarget(false, false)
-  assert.equal(await likeVisible(failed.target), false)
-  assert.equal(failed.clicks(), 1)
-})
 
 test('visible-in-DOM but offscreen controls are not clicked', async () => {
   const offscreen = likeTarget(false, true, 900)

@@ -538,21 +538,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(rows[0]["id"], "source");
-        let Json(rows) = crate::native::run_content_command(
-            native.clone(),
-            "list".into(),
-            json!({"modelId":"model-new"}),
-        )
-        .await
-        .unwrap();
+        let content_key = Content::storage_key(&native.api, "model-new")
+            .await
+            .unwrap();
+        let rows = bank.list(&content_key).await.unwrap();
         assert_eq!(rows[0]["id"], "source");
-        let Json(allocated) = crate::native::run_content_command(
-            native,
-            "allocate".into(),
-            json!({"modelId":"model-new","kind":"posts","profileId":"profile"}),
-        )
-        .await
-        .unwrap();
+        let allocated = bank
+            .allocate(&content_key, "posts", "profile", &[], false)
+            .await
+            .unwrap();
         assert_eq!(allocated["sourceId"], "source");
         assert!(allocated["path"].as_str().unwrap().contains("model-old"));
         assert!(!root.path().join("model-new").exists());

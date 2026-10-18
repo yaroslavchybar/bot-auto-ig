@@ -2,20 +2,6 @@ import { createHmac } from 'node:crypto';
 
 export type IgCredentials = { username: string; password: string; authenticatorKey: string };
 
-/** One pasted line: username:password:base32 authenticator key. */
-export function parseIgCredentials(line: unknown): IgCredentials | null {
-  if (typeof line !== 'string' || line.length > 1200) return null;
-  const first = line.indexOf(':');
-  const last = line.lastIndexOf(':');
-  if (first < 1 || last <= first) return null;
-  const username = line.slice(0, first).trim();
-  const password = line.slice(first + 1, last);
-  const authenticatorKey = line.slice(last + 1).replace(/[\s-]/g, '').toUpperCase();
-  if (!/^[a-zA-Z0-9._]{1,30}$/.test(username) || !password || password.length > 1024 ||
-      !/^[A-Z2-7]{16,128}$/.test(authenticatorKey)) return null;
-  return { username, password, authenticatorKey };
-}
-
 function decodeBase32(value: string): Buffer {
   const bytes: number[] = [];
   let bits = 0;

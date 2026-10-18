@@ -142,15 +142,7 @@ export const maintenanceWork = query({
   },
 })
 
-import {
-  listProfileRows,
-  getProfileByNameRow,
-  getAvailableProfilesForModels,
-  getProfilesByModelIds,
-  listAssignedProfilesRow,
-  listUnassignedProfilesRow,
-  normalizeProfileRow,
-} from './helpers'
+import { listProfileRows, getProfileByNameRow } from './helpers'
 
 export const listInternal = internalQuery({
   args: {},
@@ -162,7 +154,7 @@ export const listInternal = internalQuery({
 export const getByIdInternal = internalQuery({
   args: { profileId: v.id('profiles') },
   handler: async (ctx, args) => {
-    return normalizeProfileRow((await ctx.db.get(args.profileId)) ?? null)
+    return (await ctx.db.get(args.profileId)) ?? null
   },
 })
 
@@ -185,43 +177,10 @@ export const getByNameInternal = internalQuery({
 export const getById = query({
   args: { profileId: v.id('profiles') },
   handler: async (ctx, args) => {
-    const row = normalizeProfileRow((await ctx.db.get(args.profileId)) ?? null)
+    const row = (await ctx.db.get(args.profileId)) ?? null
     if (!row) return null
     const { instagramSessionId: _sessionId, ...publicRow } = row
     return publicRow
-  },
-})
-
-export const getAvailableForModelsInternal = internalQuery({
-  args: {
-    modelIds: v.array(v.string()),
-    cooldownMinutes: v.number(),
-  },
-  handler: async (ctx, args) => {
-    return await getAvailableProfilesForModels(ctx, args.modelIds, args.cooldownMinutes)
-  },
-})
-
-export const getByModelIdsInternal = internalQuery({
-  args: {
-    modelIds: v.array(v.string()),
-  },
-  handler: async (ctx, args) => {
-    return await getProfilesByModelIds(ctx, args.modelIds)
-  },
-})
-
-export const listAssignedInternal = internalQuery({
-  args: { modelId: v.id('models') },
-  handler: async (ctx, args) => {
-    return await listAssignedProfilesRow(ctx, args.modelId)
-  },
-})
-
-export const listUnassignedInternal = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    return await listUnassignedProfilesRow(ctx)
   },
 })
 

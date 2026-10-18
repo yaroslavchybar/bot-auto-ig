@@ -23,7 +23,7 @@ test('an expired Back action never attaches CDP or sends input', async () => {
   await assert.rejects(mouseBackFor({} as Page)(0), /deadline ended/)
 })
 
-for (const action of ['wheel', 'doubleClick', 'back']) for (const reply of ['ack', 'timeout']) {
+for (const action of ['wheel', 'back']) for (const reply of ['ack', 'timeout']) {
   test(`sent native ${action} waits for its socket result after the input deadline (${reply})`, () => {
     execFileSync('bun', ['--eval', `
       import { mock } from 'bun:test'
@@ -48,7 +48,6 @@ for (const action of ['wheel', 'doubleClick', 'back']) for (const reply of ['ack
         socket.send(JSON.stringify({ ready: true }))
         socket.on('message', data => {
           const input = JSON.parse(data.toString())
-          assert.equal(input.doubleClick, action === 'doubleClick' ? true : undefined)
           assert.equal(input.wheel, action === 'wheel' ? 'down' : undefined)
           assert.equal(input.back, action === 'back' ? true : undefined)
           events.push(input.x)
@@ -60,10 +59,9 @@ for (const action of ['wheel', 'doubleClick', 'back']) for (const reply of ['ack
       context.pages = () => [page]
       context.newCDPSession = async () => ({ send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }) })
       mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchContext: () => {} }))
-      const { installDesktopPointer, nativeWheelFor, nativeDoubleClickFor, nativeBackFor } = await import('./server/browser/desktopPointer.ts')
+      const { installDesktopPointer, nativeWheelFor, nativeBackFor } = await import('./server/browser/desktopPointer.ts')
       const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
       const input = (x, timeout) => action === 'wheel' ? nativeWheelFor(page)(x, 200, 'down', timeout)
-        : action === 'doubleClick' ? nativeDoubleClickFor(page)(x, 200, timeout)
           : (page.viewportSize = () => ({ width: x * 2, height: 400 }), nativeBackFor(page)(timeout))
       try {
         let outcome = 'pending'
@@ -125,11 +123,11 @@ for (const stalledStage of ['attach', 'metrics']) {
       } })
       context.newCDPSession = async page => page === blocked && stalledStage === 'attach' ? stalled : sessionFor(page)
       mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchContext: () => {} }))
-      const { installDesktopPointer, nativeWheelFor, nativeDoubleClickFor } = await import('./server/browser/desktopPointer.ts')
+      const { installDesktopPointer, nativeWheelFor } = await import('./server/browser/desktopPointer.ts')
       const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
       let guard
       try {
-        const first = assert.rejects(nativeDoubleClickFor(blocked)(100, 200, 60), /deadline ended/)
+        const first = assert.rejects(nativeWheelFor(blocked)(100, 200, 'down', 60), /deadline ended/)
         const queued = assert.rejects(nativeWheelFor(healthy)(200, 200, 'down', 20), /deadline ended/)
         const next = nativeWheelFor(healthy)(300, 200, 'up', 500)
         await Promise.race([
@@ -183,7 +181,7 @@ for (const ending of ['close', 'timeout']) {
         const position = JSON.parse(data.toString())
         assert.equal(position.width, 800)
         assert.equal(position.height, 600)
-        events.push(position.doubleClick ? 'double-click' : position.wheel ? 'wheel:' + position.wheel : 'native:' + position.x)
+        events.push(position.wheel ? 'wheel:' + position.wheel : 'native:' + position.x)
         if (timeoutMove) {
           originalSetTimeout(() => socket.send(JSON.stringify({ ready: true }), () => {}), 150)
           return
@@ -205,7 +203,7 @@ for (const ending of ['close', 'timeout']) {
         context.on('page', page => captured.set(page, page.mouse.move.bind(page.mouse)))
       },
     }))
-    const { installDesktopPointer, nativeWheelFor, nativeDoubleClickFor, desktopCursorFor } = await import('./server/browser/desktopPointer.ts')
+    const { installDesktopPointer, nativeWheelFor, desktopCursorFor } = await import('./server/browser/desktopPointer.ts')
     const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
     try {
       await captured.get(restored)(100, 200)
@@ -218,8 +216,6 @@ for (const ending of ['close', 'timeout']) {
       await nativeWheelFor(restored)(100, 200, 'down', 5000)
       await nativeWheelFor(fresh)(300, 400, 'up', 5000)
       assert.deepEqual(events.slice(-2), ['wheel:down', 'wheel:up'], 'one request per discrete notch')
-      await nativeDoubleClickFor(fresh)(300, 400, 5000)
-      assert.equal(events.at(-1), 'double-click', 'two native clicks share one atomic transport request')
       const beforeExpiry = events.length
       await assert.rejects(nativeWheelFor(fresh)(300, 400, 'down', 0), /deadline ended/)
       assert.equal(events.length, beforeExpiry, 'expired notches do not send input')
@@ -247,8 +243,6 @@ for (const ending of ['close', 'timeout']) {
       close()
       assert.equal(nativeWheelFor(restored), undefined)
       assert.equal(nativeWheelFor(fresh), undefined)
-      assert.equal(nativeDoubleClickFor(restored), undefined)
-      assert.equal(nativeDoubleClickFor(fresh), undefined)
       assert.equal(desktopCursorFor(restored), undefined)
       assert.equal(desktopCursorFor(fresh), undefined)
       assert.equal(context.listenerCount('page'), 1, 'native page listener is removed')

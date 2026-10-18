@@ -57,30 +57,6 @@ export async function smoothScroll(page: Page, total: number, session = new Brow
   }
 }
 
-// Align whichever post is most visible to fully in view. No-op when one
-// already fills the viewport.
-export async function settleOnPost(page: Page, session = new BrowseSession()): Promise<void> {
-  session.check()
-  const vp = page.viewportSize() ?? { width: 1280, height: 800 }
-  const articles = page.locator('article')
-  const n = await articles.count().catch(() => 0)
-  let best = -1
-  let bestFrac = 0
-  for (let i = 0; i < n; i++) {
-    const box = await articles.nth(i).boundingBox().catch(() => null)
-    if (!box || box.height < 1 || box.y >= vp.height || box.y + box.height <= 0) continue
-    const frac =
-      (Math.min(box.y + box.height, vp.height) - Math.max(box.y, 0)) /
-      box.height
-    if (frac > bestFrac) {
-      bestFrac = frac
-      best = i
-    }
-  }
-  if (best < 0 || bestFrac >= 0.9) return
-  await alignPostOnScreen(page, articles.nth(best), session)
-}
-
 // Settle the post to 90-100% on screen with wheel input only.
 // Posts taller than the viewport align to the top edge instead.
 export async function alignPostOnScreen(page: Page, target: Locator, session = new BrowseSession()): Promise<void> {

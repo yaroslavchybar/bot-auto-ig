@@ -219,30 +219,13 @@
   color: transparent;
 }
 
-@utility brand-surface {
-  background-color: var(--panel-muted);
-  border-color: var(--line);
 
-  @media (hover: hover) {
-    &:hover {
-      background-color: var(--panel-hover);
-    }
-  }
-}
 
 @utility brand-text {
   color: var(--copy);
 }
 
-@utility brand-text-soft {
-  color: var(--muted-copy);
 
-  @media (hover: hover) {
-    &:hover {
-      color: var(--copy);
-    }
-  }
-}
 
 @utility brand-focus {
   &:focus,
@@ -377,22 +360,4 @@
 @utility status-dot-danger {
   background-color: var(--status-danger);
   box-shadow: var(--shadow-status-danger-tight);
-}
-
-@utility automation-node {
-  box-shadow: var(--shadow-node);
-}
-
-@utility automation-node-selected {
-  box-shadow: var(--shadow-node-selected);
-}
-
-@utility automation-handle {
-  background-color: var(--automation-edge) !important;
-
-  @media (hover: hover) {
-    &:hover {
-      background-color: var(--ink) !important;
-    }
-  }
 }

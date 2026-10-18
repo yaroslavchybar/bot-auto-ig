@@ -21,14 +21,6 @@ if (!convexApiKey) {
 // HTTP Actions are served at .convex.site, not .convex.cloud
 // Convert the URL if needed
 const convexUrl = convexCloudUrl.replace('.convex.cloud', '.convex.site')
-// Database types
-export type DbModelRow = {
-  id: string
-  name: string
-  baseFullName?: string
-  fullNameVariations?: string[]
-  usernames?: string[]
-}
 
 export type DbProfileRow = ProfileRecord
 
@@ -194,75 +186,8 @@ async function convexFetch<T>(
   throw lastError
 }
 
-export function leadListRequest(
-  operation: 'rename' | 'delete',
-  body: Record<string, unknown>,
-): Promise<{ ok: true }> {
-  return convexFetch(`/api/lead-lists/${operation}`, { method: 'POST', body })
-}
-
-export function igAccountRequest<T>(
-  operation:
-    | 'list'
-    | 'page'
-    | 'availableCount'
-    | 'byId'
-    | 'byUsernameHash'
-    | 'byProfile'
-    | 'available'
-    | 'connectedNames'
-    | 'loginProxies'
-    | 'claimLoginProxy'
-    | 'releaseLoginProxy'
-    | 'import'
-    | 'assign'
-    | 'recordBrowserLogin'
-    | 'setState'
-    | 'setUsername'
-    | 'modelSetupList'
-    | 'modelSetupEnroll'
-    | 'modelSetupPatch'
-    | 'modelSetupReconcile'
-    | 'modelSetupGroupName'
-    | 'modelSetupSaveGroupName',
-  body: Record<string, unknown> = {},
-): Promise<T> {
-  const mutation = [
-    'import',
-    'assign',
-    'claimLoginProxy',
-    'releaseLoginProxy',
-    'recordBrowserLogin',
-    'setState',
-    'setUsername',
-    'modelSetupEnroll',
-    'modelSetupPatch',
-    'modelSetupReconcile',
-    'modelSetupSaveGroupName',
-  ].includes(operation)
-  return convexFetch('/api/ig-accounts-store', {
-    method: 'POST',
-    body: { operation, ...body },
-    maxRetries: mutation ? 0 : undefined,
-  })
-}
-
-// ==================== LISTS ====================
-
-export async function modelsList(): Promise<DbModelRow[]> {
-  return convexFetch<DbModelRow[]>('/api/models')
-}
-
 export async function profilesList(): Promise<DbProfileRow[]> {
   return convexFetch<DbProfileRow[]>('/api/profiles')
-}
-
-export async function profilesGetById(profileId: string): Promise<DbProfileRow | null> {
-  const cleaned = String(profileId || '').trim()
-  if (!cleaned) throw new Error('id is required')
-  return convexFetch<DbProfileRow | null>(
-    `/api/profiles/by-id?profileId=${encodeURIComponent(cleaned)}`,
-  )
 }
 
 export async function profilesSaveUnreadChats(profileId: string, count: number, checkedAt: number): Promise<void> {
@@ -316,14 +241,6 @@ export async function profilesSyncStatus(
   return true
 }
 
-export function profilesSetIgLoggedIn(profileId: string, igLoggedIn: boolean): Promise<void> {
-  return convexFetch('/api/profiles/ig-state', {
-    method: 'POST',
-    body: { profileId, igLoggedIn },
-    maxRetries: 0,
-  })
-}
-
 // ==================== AUTOMATIONS ====================
 
 export type DbAutomationRow = {
@@ -346,36 +263,6 @@ export async function automationsGetById(automationId: string): Promise<DbAutoma
   return convexFetch<DbAutomationRow | null>(
     `/api/automations/by-id?automationId=${encodeURIComponent(cleaned)}`,
   )
-}
-
-export async function automationsStart(automationId: string): Promise<DbAutomationRow | null> {
-  const cleaned = String(automationId || '').trim()
-  if (!cleaned) throw new Error('automationId is required')
-  return convexFetch<DbAutomationRow | null>('/api/automations/start', {
-    method: 'POST',
-    body: { id: cleaned },
-  })
-}
-
-export async function automationsUpdateStatus(input: {
-  automationId: string
-  status: string
-  currentNodeId?: string
-  nodeStates?: any
-  error?: string
-}): Promise<DbAutomationRow | null> {
-  const cleaned = String(input?.automationId || '').trim()
-  if (!cleaned) throw new Error('automationId is required')
-  return convexFetch<DbAutomationRow | null>('/api/automations/update-status', {
-    method: 'POST',
-    body: {
-      id: cleaned,
-      status: input.status,
-      currentNodeId: input.currentNodeId,
-      nodeStates: input.nodeStates,
-      error: input.error,
-    },
-  })
 }
 
 export async function automationsReconcileInterrupted(): Promise<{ reconciled: number }> {
@@ -479,8 +366,6 @@ export async function automationsRuntimePage(
   if (cursor) params.set('cursor', cursor)
   return convexFetch<RuntimePage>(`/api/automations/runtime-page?${params.toString()}`)
 }
-
-export const automationsList = () => convexFetch<DbAutomationRow[]>('/api/automations')
 export const routineReady = (automationId: string, profileId: string, checkpoint = false) =>
   convexFetch<boolean>('/api/routines/ready', {
     method: 'POST',
@@ -589,8 +474,4 @@ export async function warmupFinishRun(input: {
   activity?: import('./warmupPlan.js').WarmupActivityCounts
 }): Promise<void> {
   await convexFetch('/api/warmup/finish', { method: 'POST', body: input })
-}
-
-export async function warmupList(): Promise<DbWarmupState[]> {
-  return convexFetch<DbWarmupState[]>('/api/warmup/states')
 }

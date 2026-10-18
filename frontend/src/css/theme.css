@@ -31,7 +31,6 @@
   --brand-500: rgb(94 95 110);
   --brand-600: rgb(47 48 55);
   --brand-ring-soft: rgb(116 118 134 / 0.18);
-  --brand-ring-strong: rgb(116 118 134 / 0.28);
 
   --shell: rgb(238 238 240);
   --panel: rgb(255 255 255);
@@ -80,8 +79,6 @@
 
   --title-gradient-start: var(--ink);
   --title-gradient-end: var(--muted-copy);
-  --automation-edge: rgb(94 95 110);
-  --automation-grid: rgb(217 217 222);
   --button-positive-bg: rgb(102 222 166 / 0.8);
   --button-positive-bg-hover: rgb(102 222 166);
   --button-positive-border: rgb(9 124 79);
@@ -140,14 +137,6 @@
   --button-brand-border-hover: var(--button-positive-border-hover);
   --button-brand-shadow: none;
   --button-brand-shadow-hover: none;
-  --button-brand-shadow-pressed: inset 0 1px 0 rgb(0 0 0 / 0.08);
-  --shadow-brand: 0 10px 30px rgb(17 17 19 / 0.12);
-  --shadow-brand-strong: 0 14px 36px rgb(17 17 19 / 0.18);
-  --shadow-node: 0 12px 30px rgb(17 17 19 / 0.1);
-  --shadow-node-selected: 0 0 0 1px rgb(94 95 110 / 0.18),
-    0 14px 34px rgb(17 17 19 / 0.12);
-  --shadow-status-info: 0 0 10px hsl(217.2 91.2% 59.8% / 0.22);
-  --shadow-status-warning: 0 0 10px hsl(27 96% 61% / 0.24);
   --shadow-status-danger: 0 0 10px hsl(0 84.2% 60.2% / 0.28);
   --shadow-status-success: 0 0 10px hsl(142 71% 45% / 0.22);
   --shadow-status-success-tight: 0 0 4px hsl(142 71% 45% / 0.5);
@@ -195,7 +184,6 @@
   --brand-500: rgb(116 118 134);
   --brand-600: rgb(66 67 77);
   --brand-ring-soft: rgb(147 148 161 / 0.14);
-  --brand-ring-strong: rgb(147 148 161 / 0.24);
 
   --shell: rgb(17 17 19);
   --panel: rgb(27 27 31);
@@ -244,8 +232,6 @@
 
   --title-gradient-start: var(--ink);
   --title-gradient-end: var(--muted-copy);
-  --automation-edge: rgb(147 148 161);
-  --automation-grid: rgb(51 51 56);
   --button-positive-bg: rgb(27 108 72 / 0.733);
   --button-positive-bg-hover: rgb(27 108 72 / 0.9);
   --button-positive-border: rgb(62 207 142);
@@ -304,14 +290,6 @@
   --button-brand-border-hover: var(--button-positive-border-hover);
   --button-brand-shadow: none;
   --button-brand-shadow-hover: none;
-  --button-brand-shadow-pressed: inset 0 1px 0 rgb(0 0 0 / 0.18);
-  --shadow-brand: 0 14px 36px rgb(0 0 0 / 0.28);
-  --shadow-brand-strong: 0 18px 42px rgb(0 0 0 / 0.36);
-  --shadow-node: 0 16px 36px rgb(0 0 0 / 0.42);
-  --shadow-node-selected: 0 0 0 1px rgb(147 148 161 / 0.18),
-    0 16px 42px rgb(0 0 0 / 0.46);
-  --shadow-status-info: 0 0 10px hsl(217.2 91.2% 59.8% / 0.22);
-  --shadow-status-warning: 0 0 10px hsl(27 96% 61% / 0.24);
   --shadow-status-danger: 0 0 10px hsl(0 84.2% 60.2% / 0.28);
   --shadow-status-success: 0 0 10px hsl(142 71% 45% / 0.22);
   --shadow-status-success-tight: 0 0 4px hsl(142 71% 45% / 0.8);

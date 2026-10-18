@@ -1,5 +1,5 @@
 import { errors, type Page } from 'playwright-core'
-import { DEFAULT_SCREENING_SETTINGS, SCREENING_CHOICES, type ProfileScreeningSettings } from '../../shared/aiSettings.js'
+import { SCREENING_CHOICES, type ProfileScreeningSettings } from '../../shared/aiSettings.js'
 import { currentScreeningSettings } from '../ai-settings.js'
 import { BrowseSession } from './session.js'
 import { assertInstagramReady } from './instagram-state.js'
@@ -7,9 +7,6 @@ import { requestOpenRouterDecision } from './openrouter-decision.js'
 import { addLogContext } from '../../shared/logger.js'
 import sharp from 'sharp'
 import { captureViewportScreenshot } from './screenshot.js'
-
-/** Defaults for an automation that saved no screening settings; the UI shows and edits these. */
-export const LEAD_SCREENING_MODEL = DEFAULT_SCREENING_SETTINGS.model
 /** Skip when visible non-English text reaches this probability. */
 export const LEAD_NON_ENGLISH_MIN_PROBABILITY = 0.7
 /** Whole screening budget: one category request plus the male follow check. */

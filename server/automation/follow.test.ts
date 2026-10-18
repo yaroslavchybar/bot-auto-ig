@@ -4,8 +4,6 @@ import test from 'node:test';
 import { Window } from 'happy-dom';
 import { type Page } from 'playwright-core';
 
-import { messageComposer } from './follow.js';
-
 test('private request cleanup prefers visible dialog confirmations without blocking the fallback', async () => {
   const { unfollow } = await import('./follow.js');
   for (const layout of ['immediate', 'dialog', 'no-dialog', 'unrelated-dialog', 'hidden-dialog', 'hidden-dialog-button']) {
@@ -60,41 +58,6 @@ test('private request cleanup prefers visible dialog confirmations without block
       assert.equal(await unfollow(page, async () => true), true);
       assert.equal(clicked, layout === 'immediate' ? '' : layout === 'dialog' ? 'dialog-confirm' : 'page-confirm');
     } finally { await window.happyDOM.close(); }
-  }
-});
-test('message composer prefers visible named fields and isolates overlay fallback', async () => {
-  for (const hasNamed of [true, false]) {
-    const window = new Window();
-    try {
-      window.document.body.innerHTML = `
-        <div role="textbox" contenteditable="true" id="unrelated"></div>
-        <div role="dialog"><div role="textbox" contenteditable="true" id="other-dialog"></div></div>
-        <div data-pagelet="IGDChatTabsRootContentOffMsys">
-          <div role="textbox" contenteditable="true" hidden id="hidden-overlay"></div>
-          <div role="textbox" contenteditable="true" id="overlay"></div>
-        </div>
-        <textarea placeholder="Message..." hidden id="hidden-named"></textarea>
-        ${hasNamed ? '<div role="textbox" aria-label="Message" contenteditable="true" id="named"></div>' : ''}`;
-      const visible = (element: Element) => !element.hasAttribute('hidden');
-      class Fields {
-        constructor(readonly fields: Element[]) {}
-        or(other: Fields) { return new Fields([...this.fields, ...other.fields]); }
-        filter() { return new Fields(this.fields.filter(visible)); }
-        first() { return { waitFor: async () => { assert.ok(this.fields.length, 'no visible composer'); } }; }
-        async count() { return this.fields.length; }
-        nth(index: number) {
-          const element = this.fields[index]!;
-          return { id: element.id, isVisible: async () => visible(element) };
-        }
-      }
-      const page = { locator: (selector: string) => new Fields(Array.from(window.document.querySelectorAll(selector)) as unknown as Element[]) } as unknown as Page;
-      assert.equal((await messageComposer(page) as unknown as { id: string }).id, hasNamed ? 'named' : 'overlay');
-      window.document.querySelector('[data-pagelet]')!.remove();
-      window.document.querySelector('#named')?.remove();
-      await assert.rejects(messageComposer(page), /no visible composer/);
-    } finally {
-      await window.happyDOM.close();
-    }
   }
 });
 

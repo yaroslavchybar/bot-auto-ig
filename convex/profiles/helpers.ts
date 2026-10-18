@@ -72,10 +72,6 @@ export function buildModelPatch(modelIds: any[]): { modelIds: any[] } {
 	};
 }
 
-export function normalizeProfileRow(profile: any) {
-	return profile ?? null;
-}
-
 /** The browser cookie jar is authoritative; a missing session clears stale auth. */
 function sessionIdFromCookies(raw: string): string | undefined {
 	try {
@@ -141,37 +137,6 @@ export async function getProfileByNameRow(ctx: any, name: string) {
 		.withIndex("by_name", (q: any) => q.eq("name", cleaned))
 		.first();
 	return row ?? null;
-}
-
-export async function getAvailableProfilesForModels(ctx: any, modelIdsRaw: string[], cooldownMinutesRaw: number) {
-	const cleanIds = (modelIdsRaw || []).map((v) => String(v || "").trim()).filter(Boolean);
-	if (cleanIds.length === 0) return [];
-	const cooldownMs = Math.max(0, (Number.isFinite(cooldownMinutesRaw) ? cooldownMinutesRaw : 0) * 60 * 1000);
-	const cutoffMs = Date.now() - cooldownMs;
-	const allowed = new Set(cleanIds);
-	const rows = await ctx.db.query("profiles").collect();
-	const filtered = rows.filter((p: any) => {
-		if (p.paused || p.status === 'deleting' || p.pendingRenameFrom) return false;
-		const modelIds = getProfileModelIds(p);
-		if (!modelIds.some((modelId) => allowed.has(String(modelId)))) return false;
-		if (typeof p.lastOpenedAt !== "number") return true;
-		return p.lastOpenedAt < cutoffMs;
-	});
-	filtered.sort((a: any, b: any) => a.createdAt - b.createdAt);
-	return filtered;
-}
-
-export async function getProfilesByModelIds(ctx: any, modelIdsRaw: string[]) {
-	const cleanIds = (modelIdsRaw || []).map((v) => String(v || "").trim()).filter(Boolean);
-	if (cleanIds.length === 0) return [];
-	const allowed = new Set(cleanIds);
-	const rows = await ctx.db.query("profiles").collect();
-	const filtered = rows.filter((p: any) => {
-		const modelIds = getProfileModelIds(p);
-		return modelIds.some((modelId) => allowed.has(String(modelId)));
-	});
-	filtered.sort((a: any, b: any) => a.createdAt - b.createdAt);
-	return filtered;
 }
 
 export async function createProfileRow(ctx: any, args: any) {
@@ -349,37 +314,6 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 		next.lastOpenedAt = Date.now();
 	}
 	await patchProfile(ctx, existing._id, next as any);
-	return true;
-}
-
-export async function listAssignedProfilesRow(ctx: any, modelId: any) {
-	const assignments = await ctx.db.query("profileModelAssignments").withIndex("by_model", (q: any) => q.eq("modelId", modelId)).collect();
-	const rows = (await Promise.all(assignments.map((assignment: any) => ctx.db.get(assignment.profileId)))).filter(Boolean);
-	const result = rows
-		.map((r: any) => ({ _id: r._id, name: r.name, createdAt: r.createdAt }))
-		.sort((a: any, b: any) => a.createdAt - b.createdAt)
-		.map((r: any) => ({ profileId: r._id, name: r.name }));
-	return result;
-}
-
-export async function listUnassignedProfilesRow(ctx: any) {
-	const rows = await ctx.db.query("profiles").collect();
-	const result = rows
-		.filter((r: any) => getProfileModelIds(r).length === 0)
-		.map((r: any) => ({ _id: r._id, name: r.name, createdAt: r.createdAt }))
-		.sort((a: any, b: any) => a.createdAt - b.createdAt)
-		.map((r: any) => ({ profileId: r._id, name: r.name }));
-	return result;
-}
-
-export async function bulkSetProfileModelIdRow(ctx: any, profileIds: any[], modelId: any) {
-	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
-	const nextListIds = modelId === null || typeof modelId === "undefined" ? [] : [modelId];
-	if (modelId && !await ctx.db.get(modelId)) throw new DomainError('NOT_FOUND', 'Model not found');
-	for (const id of profileIds) await assertProfileModelChange(ctx, await ctx.db.get(id), nextListIds);
-	await Promise.all(profileIds.map((id) => ctx.db.patch(id, buildModelPatch(nextListIds))));
-	await Promise.all(profileIds.map((id) => syncProfileModelAssignments(ctx, id, nextListIds)));
-    await assertAssignments(ctx);
 	return true;
 }
 

@@ -14,7 +14,7 @@ test('login changes preserve automatic outreach readiness and reject manual over
   } as never)).rejects.toThrow()
 })
 
-test('creates profiles and selects available profiles by list with cooldown logic', async () => {
+test('creates profiles and exposes model membership without leaking cookies', async () => {
   const t = createConvexTest()
   const list = await seedModel(t, 'List A')
   const profile = await seedProfile(t, {
@@ -28,10 +28,7 @@ test('creates profiles and selects available profiles by list with cooldown logi
     modelId: list!._id,
   })
 
-  const available = await t.query(internal.profiles.queries.getAvailableForModelsInternal, {
-    modelIds: [String(list!._id)],
-    cooldownMinutes: 10,
-  })
+  const available = (await t.query(api.profiles.queries.modelOptions, {})).filter(row => row.modelIds?.includes(list!._id))
 
   expect(profile).toMatchObject({
     cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
@@ -125,7 +122,7 @@ test('model batch creation assigns distinct proxy slots and is atomic when capac
   expect(rows).toHaveLength(3)
   expect(rows.every(row => row.modelIds?.includes(model!._id))).toBe(true)
   expect(rows.map(row => row.igAccountId)).toEqual(accounts.slice(0, 3).map(account => account._id))
-  expect(await t.query(internal.profiles.queries.listAssignedInternal, { modelId: model!._id }))
+  expect((await t.query(api.profiles.queries.modelOptions, {})).filter(row => row.modelIds?.includes(model!._id)))
     .toHaveLength(3)
   expect((await t.query(internal.igAccounts.availableInternal, { count: 4 })).page).toHaveLength(1)
   await expect(t.mutation(internal.profiles.mutations.createForModelInternal,

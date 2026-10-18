@@ -210,8 +210,6 @@ test.each(['post', 'avatar', 'username'] as const)('pending %s prevents model ch
     .rejects.toThrow('pending model setup action')
   await expect(t.mutation(api.profiles.mutations.bulkRemoveFromModel, { profileIds: [profile._id], modelId: first._id }))
     .rejects.toThrow('pending model setup action')
-  await expect(t.mutation(internal.profiles.mutations.bulkSetModelIdInternal, { profileIds: [profile._id], modelId: second._id }))
-    .rejects.toThrow('pending model setup action')
   await expect(t.mutation(api.models.remove, { id: first._id })).rejects.toThrow('pending model setup actions')
   await t.run(ctx => ctx.db.patch(profile._id, { modelIds: [second._id] }))
   await expect(t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: second._id, startedAt: 1 }))

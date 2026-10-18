@@ -8,8 +8,6 @@ const Dialog = DialogPrimitive.Root
 
 const DialogPortal = DialogPrimitive.Portal
 
-const DialogClose = DialogPrimitive.Close
-
 const DialogOverlay = ({
   ref,
   className,
@@ -93,14 +91,4 @@ const DialogDescription = ({
 )
 DialogDescription.displayName = DialogPrimitive.Description.displayName
 
-export {
-  Dialog,
-  DialogPortal,
-  DialogOverlay,
-  DialogClose,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-}
+export { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription }

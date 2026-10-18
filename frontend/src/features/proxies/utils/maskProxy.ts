@@ -1,4 +1,4 @@
-import { normalizeProxy, parseProxy } from '../../../../../server/shared/proxy'
+import { parseProxy } from '../../../../../server/shared/proxy'
 
 export function stripScheme(value: string): string {
   const raw = String(value ?? '').trim()
@@ -15,8 +15,4 @@ export function maskProxyForDisplay(value: string): string {
   } catch {
     return 'Invalid proxy (•••)'
   }
-}
-
-export function normalizeProxyValue(value: string, proxyType: string): string {
-  return normalizeProxy(value, proxyType).proxy
 }

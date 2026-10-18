@@ -20,20 +20,8 @@ export class AppError extends Error {
   }
 }
 
-export class NotFoundError extends AppError {
-  constructor(message = 'Resource not found') {
-    super(message, 404, 'NOT_FOUND')
-  }
-}
-
 export class ValidationError extends AppError {
   constructor(message = 'Invalid input') {
     super(message, 400, 'VALIDATION_ERROR')
-  }
-}
-
-export class ExternalServiceError extends AppError {
-  constructor(message = 'External service unavailable') {
-    super(message, 503, 'EXTERNAL_SERVICE_ERROR')
   }
 }

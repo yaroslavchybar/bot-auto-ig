@@ -259,12 +259,9 @@ impl Native {
 }
 pub fn router(state: Arc<Native>) -> Router {
     Router::new()
-        .route("/content/{action}", post(content_command))
         .route("/processes/{action}", post(process_command))
         .route("/coordination/start", post(start_coordination))
         .route("/profiles/{action}", post(profile_command))
-        .route("/accounts/{action}", post(account_command))
-        .route("/displays/{port}", get(resolve_display))
         .with_state(state.clone())
         .merge(
             Router::new()
@@ -290,86 +287,28 @@ pub fn router(state: Arc<Native>) -> Router {
                 .with_state(state.displays.clone()),
         )
 }
-async fn content_command(
-    State(state): State<Arc<Native>>,
-    Path(action): Path<String>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>> {
-    tokio::spawn(async move { run_content_command(state, action, body).await })
-        .await
-        .map_err(|_| Failure::unavailable("Content operation failed"))?
-}
-async fn run_content_command(
-    state: Arc<Native>,
-    action: String,
-    body: Value,
-) -> Result<Json<Value>> {
-    let model = body["modelId"].as_str().unwrap_or("");
-    let content_key = content::Content::storage_key(&state.api, model).await?;
-    let model = content_key.as_str();
-    let kind = body["kind"].as_str().unwrap_or("");
-    let profile = body["profileId"].as_str().unwrap_or("");
-    let excludes: Vec<String> =
-        serde_json::from_value(body["excludeIds"].clone()).unwrap_or_default();
-    let value = match action.as_str() {
-        "allocate" | "available" => {
-            state
-                .content
-                .allocate(model, kind, profile, &excludes, action == "available")
-                .await?
-        }
-        "list" => state.content.list(model).await?,
-        _ => return Err(Failure::missing("Unknown content operation")),
-    };
-    Ok(Json(value))
-}
+
 async fn process_command(
     State(state): State<Arc<Native>>,
     Path(action): Path<String>,
-    Json(body): Json<Value>,
 ) -> Result<Json<Value>> {
-    tokio::spawn(async move { run_process_command(state, action, body).await })
+    tokio::spawn(async move { run_process_command(state, action).await })
         .await
         .map_err(|_| Failure::unavailable("Process operation failed"))?
 }
-async fn run_process_command(
-    state: Arc<Native>,
-    action: String,
-    body: Value,
-) -> Result<Json<Value>> {
+async fn run_process_command(state: Arc<Native>, action: String) -> Result<Json<Value>> {
     let value = match action.as_str() {
-        "ownership" => state.processes.ownership().await,
-        "stop-owners" => {
-            state
-                .processes
-                .stop_owners(&serde_json::from_value::<Vec<String>>(
-                    body["names"].clone(),
-                )?)
-                .await?;
-            json!({"ok": true})
-        }
         "shutdown" => {
             state.accounts.shutdown().await;
             state.coordination.shutdown().await;
             state.processes.shutdown().await?;
             json!({"ok": true})
         }
-        "stop-automations" => json!(
-            state
-                .processes
-                .stop_automations(body["automationId"].as_str())
-                .await?
-        ),
         _ => return Err(Failure::missing("Unknown process operation")),
     };
     Ok(Json(value))
 }
-async fn resolve_display(
-    State(state): State<Arc<Native>>,
-    Path(port): Path<u16>,
-) -> Result<Json<Value>> {
-    Ok(Json(state.displays.resolve(port).await?))
-}
+
 async fn start_coordination(State(state): State<Arc<Native>>) -> Json<Value> {
     state.coordination.start().await;
     state.accounts.start().await;
@@ -378,7 +317,6 @@ async fn start_coordination(State(state): State<Arc<Native>>) -> Json<Value> {
 async fn profile_command(
     State(state): State<Arc<Native>>,
     Path(action): Path<String>,
-    Json(body): Json<Value>,
 ) -> Result<Json<Value>> {
     tokio::spawn(async move {
         let value = match action.as_str() {
@@ -387,50 +325,13 @@ async fn profile_command(
                 json!({"ok":true})
             }
             "reconcile" => state.profiles.reconcile().await?,
-            "update" => {
-                state
-                    .profiles
-                    .update(profiles::text(&body, "oldName"), body["profile"].clone())
-                    .await?;
-                json!({"ok":true})
-            }
+
             _ => return Err(Failure::missing("Unknown profile operation")),
         };
         Ok(Json(value))
     })
     .await
     .map_err(|_| Failure::unavailable("Profile operation failed"))?
-}
-async fn account_command(
-    State(state): State<Arc<Native>>,
-    Path(action): Path<String>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>> {
-    tokio::spawn(async move {
-        let value = match action.as_str() {
-            "advance" => {
-                state
-                    .accounts
-                    .advance_setup(
-                        profiles::text(&body, "profileId"),
-                        profiles::text(&body, "automationId"),
-                    )
-                    .await?;
-                json!({"ok":true})
-            }
-            "proxy-exit" => {
-                state
-                    .accounts
-                    .proxies
-                    .exit(profiles::text(&body, "proxy"), body["cached"] == true)
-                    .await?
-            }
-            _ => return Err(Failure::missing("Unknown account operation")),
-        };
-        Ok(Json(value))
-    })
-    .await
-    .map_err(|_| Failure::unavailable("Account operation failed"))?
 }
 
 pub type Result<T> = std::result::Result<T, Failure>;

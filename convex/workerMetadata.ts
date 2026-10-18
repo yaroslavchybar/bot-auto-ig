@@ -52,16 +52,6 @@ export async function patchProfile(
   }
 }
 
-export async function clearWorkerProfile(ctx: MutationCtx, profileId: Id<'profiles'>) {
-  for (const table of ['scraperProfiles', 'scraperRequestUsage'] as const) {
-    const row = await ctx.db
-      .query(table)
-      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-      .unique()
-    if (row) await ctx.db.delete(row._id)
-  }
-}
-
 /** Source totals change only when profiles are added or removed, never on heartbeats. */
 export async function syncSourceCount(ctx: MutationCtx, listId: Id<'leadLists'>) {
   if (!(await ctx.db.get(listId))) return

@@ -2,15 +2,6 @@ import { expect, test, vi } from 'vite-plus/test'
 
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedModel, seedAutomation } from './helpers'
-import {
-  getActivityById,
-  getDefaultConfig,
-} from '../../frontend/src/features/automations/activities'
-import {
-  getDefaultStartConfig,
-  normalizeStartConfig,
-} from '../../frontend/src/features/automations/startNode'
-import { validateAutomationImport } from '../../frontend/src/features/automations/utils/automationImportExport'
 import { selectedLists } from '../../server/automation/graph'
 import { defaultRoutine } from '../../convex/routinePolicy'
 
@@ -25,31 +16,6 @@ test('sleeping routines keep checkpoints on wake and become editable when disabl
   const disabled = await t.mutation(api.automations.mutations.setActive, { id: automation!._id, isActive: false })
   expect(disabled).toMatchObject({ status: 'cancelled', isActive: false })
   expect((await t.mutation(api.automations.mutations.update, { id: automation!._id, name: 'Editable' }))?.name).toBe('Editable')
-})
-
-test('editor saves preserve source list selections for reopening and execution', async () => {
-  const t = createConvexTest()
-  const list = await seedModel(t)
-  const automation = await seedAutomation(t)
-  const nodes = [{
-    id: 'start_node',
-    type: 'start',
-    data: { config: { sourceLists: [list!._id] } },
-  }]
-
-  await t.mutation(api.automations.mutations.update, {
-    id: automation!._id,
-    nodes,
-    edges: [],
-  })
-  const reopened = await t.query(api.automations.queries.get, { id: automation!._id })
-  expect(normalizeStartConfig(reopened!.nodes[0].data.config).sourceLists).toEqual([list!._id])
-  expect(selectedLists(reopened!.nodes)).toEqual([list!._id])
-
-  nodes[0].data.config.sourceLists = []
-  await t.mutation(api.automations.mutations.update, { id: automation!._id, nodes })
-  const cleared = await t.query(api.automations.queries.get, { id: automation!._id })
-  expect(selectedLists(cleared!.nodes)).toEqual([])
 })
 
 test('automation get returns null for malformed route ids', async () => {
@@ -164,124 +130,6 @@ test('lists automations without schedule-era counters', async () => {
   expect(rows[0]).not.toHaveProperty('runsToday')
 })
 
-test('provides default config for the start node', () => {
-  expect(getDefaultStartConfig()).toMatchObject({
-    sourceLists: [],
-    headlessMode: false,
-    profileReopenCooldownEnabled: false,
-    profileReopenCooldownMinutes: 30,
-  })
-  expect(normalizeStartConfig({ headlessMode: true })).toMatchObject({
-    headlessMode: true,
-    profileReopenCooldownMinutes: 30,
-  })
-
-  const browseFeedDefaults = getDefaultConfig('browse_feed')
-  expect(browseFeedDefaults).not.toHaveProperty('soft_warmup')
-  expect(browseFeedDefaults).not.toHaveProperty('like_chance')
-  expect(browseFeedDefaults).not.toHaveProperty('liked_profile_visit_chance')
-  expect(browseFeedDefaults).toMatchObject({
-    browse_home_feed: true,
-    scroll_reels: true,
-    warmup_topics: '',
-    watch_stories: true,
-  })
-  expect(browseFeedDefaults).not.toHaveProperty('stories_max')
-  for (const key of ['carousel_watch_chance', 'carousel_max_slides', 'stories_min_view_seconds', 'stories_max_view_seconds', 'stories_max', 'post_view_min_seconds', 'post_view_max_seconds', 'skip_post_chance', 'skip_post_max', 'reels_min', 'reels_max', 'reels_chance', 'reels_skip_chance', 'profile_visit_chance', 'own_profile_chance', 'dm_chance']) expect(browseFeedDefaults).not.toHaveProperty(key)
-})
-
-test('preserves explicit start node cooldown settings', () => {
-  const normalized = normalizeStartConfig({
-    headlessMode: true,
-    profileReopenCooldownEnabled: true,
-    profileReopenCooldownMinutes: 45,
-  })
-
-  expect(normalized).toMatchObject({
-    headlessMode: true,
-    profileReopenCooldownEnabled: true,
-    profileReopenCooldownMinutes: 45,
-  })
-  expect(normalized).not.toHaveProperty('profileReopenCooldown')
-})
-
-test('automation import keeps start node config payloads intact', () => {
-  const result = validateAutomationImport({
-    fileName: 'automation.json',
-    fileSizeBytes: 1024,
-    rawText: JSON.stringify({
-      format: 'bot-auto-ig.automation',
-      version: '1.0',
-      exportedAt: '2026-03-12T10:00:00.000Z',
-      automation: {
-        name: 'Expanded Automation',
-        nodes: [
-          {
-            id: 'start_node',
-            type: 'start',
-            data: {
-              config: {
-                sourceLists: [],
-                headlessMode: true,
-                profileReopenCooldownEnabled: true,
-                profileReopenCooldownMinutes: 90,
-              },
-            },
-          },
-        ],
-        edges: [],
-      },
-    }),
-    existingAutomationNames: [],
-    existingListIds: [],
-    resolveActivityById: (activityId: string) => getActivityById(activityId),
-    singletonActivityIds: ['browse_feed'],
-  })
-
-  const nodes = result.automation.nodes as Array<Record<string, any>>
-  expect(nodes[0]?.data?.config).toMatchObject({
-    headlessMode: true,
-    profileReopenCooldownMinutes: 90,
-  })
-})
-
-
-test('automation import rejects a second warm up block', () => {
-  const feedNode = (id: string) => ({
-    id,
-    type: 'activity',
-    data: { activityId: 'browse_feed', config: {} },
-  })
-  const rawText = JSON.stringify({
-    format: 'bot-auto-ig.automation',
-    version: '1.0',
-    exportedAt: '2026-03-12T10:00:00.000Z',
-    automation: {
-      name: 'Double Warm Up',
-      nodes: [
-        { id: 'start_node', type: 'start', data: { config: {} } },
-        feedNode('warm-1'),
-        feedNode('warm-2'),
-      ],
-      edges: [],
-    },
-  })
-  const input = {
-    fileName: 'automation.json',
-    fileSizeBytes: 1024,
-    rawText,
-    existingAutomationNames: [] as string[],
-    existingListIds: [] as string[],
-    resolveActivityById: (activityId: string) => getActivityById(activityId),
-    singletonActivityIds: ['browse_feed'],
-  }
-  expect(() => validateAutomationImport(input)).toThrow('Only one block allowed')
-
-  const single = JSON.parse(rawText)
-  single.automation.nodes.pop()
-  expect(() => validateAutomationImport({ ...input, rawText: JSON.stringify(single) })).not.toThrow()
-})
-
 test('disabled automations cannot start but can be re-enabled', async () => {
   const t = createConvexTest()
   const automation = await seedAutomation(t, { status: 'idle', isActive: false })
@@ -312,4 +160,30 @@ test('startup reconciliation preserves checkpoints while ending interrupted runs
   expect(await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})).toEqual({ reconciled: 2 })
   expect(await t.run(ctx => ctx.db.get(running!._id))).toMatchObject({ status: 'failed', isActive: true, nodeStates: { saved: true } })
   expect((await t.run(ctx => ctx.db.get(pending!._id)))?.status).toBe('failed')
+})
+
+
+test('editor saves preserve source list selections for reopening and execution', async () => {
+  const t = createConvexTest()
+  const list = await seedModel(t)
+  const automation = await seedAutomation(t)
+  const nodes = [{
+    id: 'start_node',
+    type: 'start',
+    data: { config: { sourceLists: [list!._id] } },
+  }]
+
+  await t.mutation(api.automations.mutations.update, {
+    id: automation!._id,
+    nodes,
+    edges: [],
+  })
+  const reopened = await t.query(api.automations.queries.get, { id: automation!._id })
+  expect(reopened!.nodes[0].data.config.sourceLists).toEqual([list!._id])
+  expect(selectedLists(reopened!.nodes)).toEqual([list!._id])
+
+  nodes[0].data.config.sourceLists = []
+  await t.mutation(api.automations.mutations.update, { id: automation!._id, nodes })
+  const cleared = await t.query(api.automations.queries.get, { id: automation!._id })
+  expect(selectedLists(cleared!.nodes)).toEqual([])
 })

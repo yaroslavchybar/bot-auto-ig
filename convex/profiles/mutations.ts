@@ -76,7 +76,7 @@ export const finishRenameInternal = internalMutation({
 		await patchProfile(ctx, profileId, { pendingRenameFrom: undefined });
 	},
 });
-import { createProfileRow, insertProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileModelIdRow, bulkAddProfilesToModelRow, bulkRemoveProfilesFromModelRow } from "./helpers";
+import { createProfileRow, insertProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkAddProfilesToModelRow, bulkRemoveProfilesFromModelRow } from "./helpers";
 import { routineModels } from '../routinePolicy';
 
 /** Create a batch and reserve permanent proxies in one Convex transaction. */
@@ -186,13 +186,6 @@ export const updateById = mutation({
 	},
 });
 
-export const updateByIdInternal = internalMutation({
-	args: updateByIdArgsShape,
-	handler: async (ctx, args) => {
-		return await updateProfileByIdRow(ctx, args);
-	},
-});
-
 export const removeByNameInternal = internalMutation({
 	args: { name: v.string() },
 	handler: async (ctx, args) => {
@@ -222,13 +215,6 @@ export const syncStatusInternal = internalMutation({
 	},
 });
 
-export const bulkSetModelIdInternal = internalMutation({
-	args: { profileIds: v.array(v.id("profiles")), modelId: v.optional(v.union(v.null(), v.id("models"))) },
-	handler: async (ctx, args) => {
-		return await bulkSetProfileModelIdRow(ctx, args.profileIds, args.modelId);
-	},
-});
-
 export const bulkAddToModel = mutation({
 	args: { profileIds: v.array(v.id("profiles")), modelId: v.id("models") },
 	handler: async (ctx, args) => {
@@ -236,21 +222,7 @@ export const bulkAddToModel = mutation({
 	},
 });
 
-export const bulkAddToModelInternal = internalMutation({
-	args: { profileIds: v.array(v.id("profiles")), modelId: v.id("models") },
-	handler: async (ctx, args) => {
-		return await bulkAddProfilesToModelRow(ctx, args.profileIds, args.modelId);
-	},
-});
-
 export const bulkRemoveFromModel = mutation({
-	args: { profileIds: v.array(v.id("profiles")), modelId: v.id("models") },
-	handler: async (ctx, args) => {
-		return await bulkRemoveProfilesFromModelRow(ctx, args.profileIds, args.modelId);
-	},
-});
-
-export const bulkRemoveFromModelInternal = internalMutation({
 	args: { profileIds: v.array(v.id("profiles")), modelId: v.id("models") },
 	handler: async (ctx, args) => {
 		return await bulkRemoveProfilesFromModelRow(ctx, args.profileIds, args.modelId);

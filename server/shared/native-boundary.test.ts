@@ -26,7 +26,7 @@ test('public content, displays, and automation status work without a Bun command
   try {
     expect(
       (
-        await fetch(native.url + '/content/list', {
+        await fetch(native.url + '/processes/shutdown', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: '{}',
@@ -66,18 +66,6 @@ test('public content, displays, and automation status work without a Bun command
     const copy = await sharp(original).jpeg().toBuffer()
     await fs.writeFile(path.join(variants, 'one.jpg'), copy)
     await fs.writeFile(path.join(variants, 'two.jpg'), copy)
-    const allocate = async (profileId: string) =>
-      (
-        await fetch(native.url + '/content/allocate', {
-          method: 'POST',
-          headers: native.headers,
-          body: JSON.stringify({ modelId: 'model-1', kind: 'posts', profileId, excludeIds: [] }),
-        })
-      ).json() as Promise<{ sourceId: string; path: string }>
-    const [a, b] = await Promise.all([allocate('one'), allocate('two')])
-    expect(a.sourceId).toBe(item.id)
-    expect(a.path).not.toBe(b.path)
-    expect(await allocate('one')).toEqual(a)
     const streamed = await get(bank + '/posts/' + item.id + '/copies/one.jpg/image')
     expect(Buffer.from(await streamed.arrayBuffer())).toEqual(copy)
     expect(await (await get('/api/displays')).json()).toEqual([])

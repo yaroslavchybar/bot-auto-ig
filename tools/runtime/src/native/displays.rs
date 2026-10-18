@@ -227,18 +227,7 @@ impl Displays {
         });
         rows
     }
-    pub async fn resolve(&self, port: u16) -> Result<Value> {
-        let session = self
-            .sessions
-            .lock()
-            .await
-            .get(&port)
-            .cloned()
-            .ok_or_else(|| Failure::missing("Display session not found"))?;
-        let mut value = serde_json::to_value(&session.info)?;
-        value["agentActive"] = json!(self.processes.is_running(&session.info.automation_id).await);
-        Ok(value)
-    }
+
     pub async fn preview(&self, port: u16) -> Result<Response> {
         let session = self
             .sessions

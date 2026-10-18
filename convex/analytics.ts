@@ -109,9 +109,6 @@ export const overview = query({
             : (counts.scraperRequests ?? 0),
         limit: accounts.length * SCRAPER_REQUEST_LIMIT,
         totalRequests: counts.scraperRequests ?? 0,
-        limitedAccounts: accounts.length,
-        unlimitedAccounts: 0,
-        unlimitedUsed: 0,
       },
     }
   },

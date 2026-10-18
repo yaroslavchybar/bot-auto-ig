@@ -12,7 +12,7 @@ test('create and rename reject Windows device names, including extensions', asyn
   expect((await t.query(api.profiles.queries.getById, { profileId: profile._id }))?.name).toBe('Valid')
 })
 
-test('deletion remains pending through runtime updates and blocks edits and scheduling', async () => {
+test('deletion remains pending through runtime updates and blocks edits', async () => {
   const t = createConvexTest()
   const profile = (await seedProfile(t, { name: 'Delete me' }))!
   const list = (await seedModel(t, 'List'))!
@@ -23,7 +23,6 @@ test('deletion remains pending through runtime updates and blocks edits and sche
   expect(await t.query(api.profiles.queries.getById, { profileId: profile._id })).toMatchObject({ status: 'deleting' })
   await expect(t.mutation(api.profiles.mutations.updateById, { profileId: profile._id, name: 'Renamed' })).rejects.toThrow(/maintenance/)
   await expect(t.mutation(api.profiles.mutations.create, { name: 'delete ME' })).rejects.toThrow(/already in use/)
-  expect(await t.query(internal.profiles.queries.getAvailableForModelsInternal, { modelIds: [list._id], cooldownMinutes: 0 })).toEqual([])
   await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
   await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
   expect(await t.query(api.profiles.queries.getById, { profileId: profile._id })).toBeNull()

@@ -1,11 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { errors, type Page } from 'playwright-core'
-import {
-  decideLead,
-  screenLead,
-  LEAD_SCREENING_MODEL,
-} from './lead-screening.js'
+import { decideLead, screenLead } from './lead-screening.js'
 import { DecisionRefusedError } from './openrouter-decision.js'
 import { DEFAULT_SCREENING_SETTINGS } from '../../shared/aiSettings.js'
 import { currentLogScope } from '../../shared/logger.js'
@@ -63,7 +59,7 @@ test('screening sends the screenshot to the chosen model and scores all three ca
   const screenshot = Buffer.from('screenshot bytes')
   const fetcher = (async (_url: unknown, init: RequestInit) => {
     const body = JSON.parse(init.body as string)
-    assert.equal(body.model, LEAD_SCREENING_MODEL)
+    assert.equal(body.model, DEFAULT_SCREENING_SETTINGS.model)
     assert.deepEqual(body.state[1], {
       type: 'image_url',
       image_url: { url: `data:image/jpeg;base64,${screenshot.toString('base64')}` },
@@ -77,7 +73,7 @@ test('screening sends the screenshot to the chosen model and scores all three ca
   assert.deepEqual(await decideLead(screenshot, 5000, { key: 'fixture', fetcher }), {
     category: 'business',
     confidence: 0.97,
-    model: LEAD_SCREENING_MODEL,
+    model: DEFAULT_SCREENING_SETTINGS.model,
   })
 })
 
@@ -87,7 +83,7 @@ test('a refused screening skips the lead, and no other model is tried', async ()
     decideLead(Buffer.from('jpeg'), 40_000, { key: 'fixture', fetcher: failing.fetcher }),
     DecisionRefusedError,
   )
-  assert.deepEqual(failing.asked, [LEAD_SCREENING_MODEL])
+  assert.deepEqual(failing.asked, [DEFAULT_SCREENING_SETTINGS.model])
 })
 
 test('a transient failure stays retryable rather than skipping the lead', async () => {
@@ -192,7 +188,7 @@ test('all-zero scores and ties for the highest score never approve a lead', asyn
 for (const category of ['male', 'female', 'business'] as const)
   test(`the highest ${category} score wins without a category confidence cutoff`, async () => {
     assert.deepEqual(await decideLead(Buffer.from('jpeg'), 100, options(response(category, 0.4))), {
-      category, confidence: 0.4, model: LEAD_SCREENING_MODEL,
+      category, confidence: 0.4, model: DEFAULT_SCREENING_SETTINGS.model,
       ...(category === 'male' ? { englishTextCheckPassed: true } : {}),
     })
   })
@@ -207,9 +203,9 @@ test('only a male lead is checked again by the strongest model, on the same scre
     return body.questions.non_english_text ? followCheck(0.05) : response('male')
   }) as typeof fetch
   assert.deepEqual(await decideLead(Buffer.from('male jpeg'), 100, { key: 'fixture', fetcher }), {
-    category: 'male', confidence: 0.97, model: LEAD_SCREENING_MODEL, englishTextCheckPassed: true,
+    category: 'male', confidence: 0.97, model: DEFAULT_SCREENING_SETTINGS.model, englishTextCheckPassed: true,
   })
-  assert.deepEqual(asked, [LEAD_SCREENING_MODEL, DEFAULT_SCREENING_SETTINGS.followModel])
+  assert.deepEqual(asked, [DEFAULT_SCREENING_SETTINGS.model, DEFAULT_SCREENING_SETTINGS.followModel])
   assert.deepEqual(new Set(screenshots).size, 1)
 
   const female = []
@@ -222,7 +218,7 @@ test('only a male lead is checked again by the strongest model, on the same scre
       .englishTextCheckPassed,
     undefined,
   )
-  assert.deepEqual(female, [LEAD_SCREENING_MODEL])
+  assert.deepEqual(female, [DEFAULT_SCREENING_SETTINGS.model])
 })
 
 test('a male lead is skipped only when non-English text reaches 70% probability', async () => {
@@ -270,7 +266,7 @@ test('a lead is classified from screenshot evidence alone, never from a text evi
   assert.deepEqual(await decideLead(screenshot, 100, { key: 'fixture', fetcher }), {
     category: 'male',
     confidence: 0.9,
-    model: LEAD_SCREENING_MODEL,
+    model: DEFAULT_SCREENING_SETTINGS.model,
     englishTextCheckPassed: true,
   })
 })
@@ -327,7 +323,7 @@ test('screening waits for the target header, captures once, and rejects navigati
       const pixel = await sharp(screenshot).extract({ left: 1560, top: 450, width: 1, height: 1 }).raw().toBuffer()
       assert.ok(pixel[0] > 250 && pixel[2] < 5, 'crop the right side in memory rather than resizing the profile')
       url = 'https://www.instagram.com/different/'
-      return { category: 'business', confidence: 1, model: LEAD_SCREENING_MODEL }
+      return { category: 'business', confidence: 1, model: DEFAULT_SCREENING_SETTINGS.model }
     }),
     /navigation changed/,
   )

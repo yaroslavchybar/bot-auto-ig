@@ -214,38 +214,6 @@ export function RangeField({
   )
 }
 
-// Chance from 0 to 100 shown as a slider with its current value.
-export function PercentField({
-  id,
-  label,
-  value,
-  onChange,
-}: {
-  id: string
-  label: string
-  value: number
-  onChange: (value: number) => void
-}) {
-  return (
-    <Field
-      id={id}
-      label={label}
-      action={<span className="text-xs text-subtle-copy tabular-nums">{value}%</span>}
-    >
-      <input
-        id={id}
-        type="range"
-        min={0}
-        max={100}
-        step={1}
-        value={Number.isFinite(value) ? value : 0}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="h-1.5 w-full cursor-pointer accent-status-info"
-      />
-    </Field>
-  )
-}
-
 // On/off setting shown as a full row. Clicking anywhere on the row toggles it.
 export function ToggleRow({
   label,

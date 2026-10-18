@@ -92,4 +92,4 @@ const SheetDescription = ({
 )
 SheetDescription.displayName = SheetPrimitive.Description.displayName
 
-export { Sheet, SheetPortal, SheetOverlay, SheetContent, SheetHeader, SheetTitle, SheetDescription }
+export { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription }

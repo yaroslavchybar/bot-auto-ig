@@ -43,20 +43,17 @@ struct PointerInput {
     #[serde(flatten)]
     position: Position,
     wheel: Option<WheelDirection>,
-    #[serde(default, rename = "doubleClick")]
-    double_click: bool,
     #[serde(default)]
     back: bool,
 }
 
 #[cfg(any(target_os = "linux", test))]
 impl PointerInput {
-    fn button_clicks(&self) -> Result<Option<(u8, u8)>> {
-        match (&self.wheel, self.double_click, self.back) {
-            (Some(direction), false, false) => Ok(Some((direction.button(), 1))),
-            (None, true, false) => Ok(Some((1, 2))),
-            (None, false, true) => Ok(Some((8, 1))), // XButton1: browser Back.
-            (None, false, false) => Ok(None),
+    fn button(&self) -> Result<Option<u8>> {
+        match (&self.wheel, self.back) {
+            (Some(direction), false) => Ok(Some(direction.button())),
+            (None, true) => Ok(Some(8)), // XButton1: browser Back.
+            (None, false) => Ok(None),
             _ => Err(Failure::invalid("Conflicting pointer actions")),
         }
     }
@@ -141,25 +138,11 @@ pub async fn upgrade(
                     // Never redirect an old connection to a newly reused display port.
                     state.check_session(&session, false).await?;
                     let input: PointerInput = serde_json::from_str(&input)?;
-                    let clicks = input.button_clicks()?;
+                    let button = input.button()?;
                     pointer = tokio::task::spawn_blocking(move || {
                         pointer.move_to(input.position)?;
-                        if let Some((button, count)) = clicks {
-                            use rand::Rng;
-                            let mut random = rand::thread_rng();
-                            for index in 0..count {
-                                let delay = if index == 0 {
-                                    0
-                                } else {
-                                    random.gen_range(80..=140)
-                                };
-                                let hold = if button == 1 {
-                                    random.gen_range(40..=70)
-                                } else {
-                                    0
-                                };
-                                pointer.button_click(button, delay, hold)?;
-                            }
+                        if let Some(button) = button {
+                            pointer.button_click(button)?;
                         }
                         Ok::<_, Failure>(pointer)
                     })
@@ -266,34 +249,18 @@ impl Pointer {
         Ok(())
     }
 
-    // XTEST queues release before acknowledgements; its delay supplies the button hold.
-    fn button_click(&mut self, button: u8, delay: u32, hold: u32) -> Result<()> {
+    // Queue release before waiting for acknowledgements, so failed input never holds a button.
+    fn button_click(&mut self, button: u8) -> Result<()> {
         use x11rb::{
             connection::Connection,
             protocol::{xproto, xtest::ConnectionExt},
         };
         let connection = &self.connection;
         let press = connection
-            .xtest_fake_input(
-                xproto::BUTTON_PRESS_EVENT,
-                button,
-                delay,
-                self.root,
-                0,
-                0,
-                0,
-            )
+            .xtest_fake_input(xproto::BUTTON_PRESS_EVENT, button, 0, self.root, 0, 0, 0)
             .map_err(unavailable)?;
         let release = connection
-            .xtest_fake_input(
-                xproto::BUTTON_RELEASE_EVENT,
-                button,
-                hold,
-                self.root,
-                0,
-                0,
-                0,
-            )
+            .xtest_fake_input(xproto::BUTTON_RELEASE_EVENT, button, 0, self.root, 0, 0, 0)
             .map_err(unavailable)?;
         // Queue release before waiting for acknowledgements, including a rejected press.
         press.check().map_err(unavailable)?;
@@ -316,22 +283,9 @@ mod tests {
             "x": 120, "y": 250, "width": 1366, "height": 768, "back": true
         }))
         .unwrap();
-        assert_eq!(input.button_clicks().unwrap(), Some((8, 1)));
-        input.double_click = true;
-        assert!(input.button_clicks().is_err());
-        input.double_click = false;
+        assert_eq!(input.button().unwrap(), Some(8));
         input.wheel = Some(WheelDirection::Down);
-        assert!(input.button_clicks().is_err());
-    }
-    #[test]
-    fn double_click_is_two_left_clicks_and_cannot_be_combined_with_wheel_input() {
-        let mut input: PointerInput = serde_json::from_value(json!({
-            "x": 120, "y": 250, "width": 1366, "height": 768, "doubleClick": true
-        }))
-        .unwrap();
-        assert_eq!(input.button_clicks().unwrap(), Some((1, 2)));
-        input.wheel = Some(WheelDirection::Down);
-        assert!(input.button_clicks().is_err());
+        assert!(input.button().is_err());
     }
 
     #[test]

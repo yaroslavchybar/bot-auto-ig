@@ -33,23 +33,6 @@ export async function outreachProfileState(page: Page, username: string, timeout
   return { isPrivate, canMessage: !isPrivate && !pending };
 }
 
-// Instagram currently opens the composer as an overlay on the profile URL.
-// Older layouts exposed a named textbox, while the current layout exposes an
-// unnamed contenteditable textbox next to the visible “Message...” label.
-export async function messageComposer(page: Page) {
-  const named = page.locator('[role="textbox"][aria-label*="message" i], textarea[placeholder*="message" i]');
-  // The current chat overlay has no dialog role; limit unnamed editors to its root.
-  const fallback = page.locator('[data-pagelet="IGDChatTabsRootContentOffMsys"] [role="textbox"][contenteditable="true"]');
-  await named.or(fallback).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 15_000 });
-  for (const fields of [named, fallback]) {
-    for (let i = 0; i < await fields.count(); i++) {
-      const field = fields.nth(i);
-      if (await field.isVisible()) return field;
-    }
-  }
-  throw new Error('Instagram message composer is missing');
-}
-
 const blockedMessageText = "This account can't receive your message because they don't allow new message requests from everyone.";
 
 export async function messageWasBlocked(page: Page) {

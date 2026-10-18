@@ -78,17 +78,3 @@ export function formatTimestamp(ts?: number): string {
   if (!ts || !Number.isFinite(ts)) return '—'
   return new Date(ts).toLocaleString()
 }
-
-export function formatDuration(startMs?: number, endMs?: number): string {
-  if (!startMs) return '—'
-  const end = endMs || Date.now()
-  const diffMs = end - startMs
-  const seconds = Math.floor(diffMs / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return `${hours}h ${remainingMinutes}m`
-}

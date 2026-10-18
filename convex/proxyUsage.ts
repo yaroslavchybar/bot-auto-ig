@@ -1,5 +1,5 @@
 import type { MutationCtx } from './_generated/server'
-import type { Doc, Id } from './_generated/dataModel'
+import type { Doc } from './_generated/dataModel'
 import { normalizeProxy, proxyKey } from '../server/shared/proxy'
 
 /** Update the projection in the same transaction as a profile's name or proxy. */
@@ -25,12 +25,4 @@ export async function syncProxyUsage(
     existing.proxyType !== proxyType
   )
     await ctx.db.patch(existing._id, fields)
-}
-
-export async function clearProxyUsage(ctx: MutationCtx, profileId: Id<'profiles'>) {
-  const existing = await ctx.db
-    .query('proxyProfileAssignments')
-    .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-    .unique()
-  if (existing) await ctx.db.delete(existing._id)
 }

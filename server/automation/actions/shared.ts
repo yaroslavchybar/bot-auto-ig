@@ -12,7 +12,3 @@ export const chance = (value: unknown) =>
   Math.random() * 100 < Math.max(0, Math.min(100, Number(value) || 0))
 export const numeric = (value: unknown, fallback: number) =>
   value == null || !Number.isFinite(Number(value)) ? fallback : Number(value)
-
-export async function randomDelay(min: number, max: number): Promise<void> {
-  await sleep(random(min, max) * 1000)
-}

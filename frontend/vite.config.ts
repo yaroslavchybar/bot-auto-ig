@@ -27,15 +27,7 @@ function getVendorChunk(id: string): string | undefined {
 
   if (!packageName) return undefined
   if (packageName === '@novnc/novnc') return 'vnc'
-  if (
-    packageName.startsWith('@codemirror/') ||
-    packageName.startsWith('@lezer/') ||
-    packageName === '@marijn/find-cluster-break' ||
-    packageName === 'crelt' ||
-    packageName === 'w3c-keyname'
-  ) {
-    return 'codemirror'
-  }
+
   if (packageName === 'lucide-react') return 'icons'
   if (['react', 'react-dom', 'scheduler'].includes(packageName)) {
     return 'react-core'

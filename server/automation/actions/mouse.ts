@@ -53,22 +53,6 @@ export async function clickVisible(
   return false
 }
 
-export async function likeVisible(page: Page | Locator, session = new BrowseSession()): Promise<boolean> {
-  const unlike = page.locator('svg[aria-label="Unlike"]')
-  if (await unlike.count()) return false
-  if (!await clickVisible(page, 'div[role="button"]:has(svg[aria-label="Like"]), button:has(svg[aria-label="Like"])', session)) return false
-  await unlike.first().waitFor({ state: 'visible', timeout: session.timeout(2_000) }).catch(() => undefined)
-  return await unlike.count() > 0
-}
-
-export async function followVisible(page: Page | Locator, session = new BrowseSession()): Promise<boolean> {
-  return clickVisible(
-    page,
-    'button:text-is("Follow"), div[role="button"]:text-is("Follow"), button:text-is("Follow Back"), div[role="button"]:text-is("Follow Back")',
-    session,
-  )
-}
-
 // Park the cursor somewhere neutral. A single move call lets Cloak draw
 // its own human curve instead of our linear interpolation.
 export async function driftMouse(page: Page, x?: number, y?: number, session = new BrowseSession()): Promise<void> {
@@ -81,25 +65,5 @@ export async function driftMouse(page: Page, x?: number, y?: number, session = n
     )
   } catch {
     // Mouse may be unavailable in some contexts; scrolling still works.
-  }
-}
-
-export async function hoverPost(
-  page: Page,
-  target: Locator,
-): Promise<void> {
-  try {
-    const box = await target.boundingBox()
-    if (!box) return
-    // Never chase off-screen posts; the cursor would fly to the window top.
-    const vp = page.viewportSize() ?? { width: 1280, height: 800 }
-    if (!clickPointOnScreen(box, vp)) return
-    // Single move: Cloak draws the human curve.
-    await page.mouse.move(
-      box.x + box.width * random(0.3, 0.7),
-      box.y + Math.min(box.height * random(0.3, 0.6), 500),
-    )
-  } catch {
-    // Post may have scrolled away; safe to ignore.
   }
 }

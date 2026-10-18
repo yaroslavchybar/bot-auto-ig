@@ -60,12 +60,10 @@ test('analytics counts confirmed daily activity and excludes deleted profiles', 
   expect(result.quota).toMatchObject({
     used: 0,
     limit: 20,
-    unlimitedAccounts: 0,
-    unlimitedUsed: 0,
   })
   const previous = await t.query(api.analytics.overview, { date: '2026-10-10' })
   expect(previous.totals).toEqual({ follows: 4, dms: 2, warmupMinutes: 12.5 })
-  expect(previous.quota.unlimitedUsed).toBe(0)
+  expect(previous.quota.totalRequests).toBe(0)
   expect((await t.run((ctx) => ctx.db.query('analyticsDays').collect())).length).toBe(2)
 })
 
@@ -131,7 +129,7 @@ test('zero activity does not write counters and re-initializing preserves existi
   await t.mutation(api.analytics.initialize, {})
   const result = await t.query(api.analytics.overview, { date: '2026-10-11', period: 'all' })
   expect(result.totals.follows).toBe(2)
-  expect(result.quota).toMatchObject({ unlimitedAccounts: 0, unlimitedUsed: 0, totalRequests: 4 })
+  expect(result.quota).toMatchObject({ totalRequests: 4 })
 })
 
 test('analytics refuses uninitialized activity history and invalid dates', async () => {

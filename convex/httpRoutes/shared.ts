@@ -105,11 +105,6 @@ export async function requireAuth(request: Request): Promise<Response | null> {
   return null;
 }
 
-export function toIso(ms: unknown): string | null {
-  if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
-  return new Date(ms).toISOString();
-}
-
 export async function parseBody(request: Request): Promise<Record<string, any>> {
   try {
     const body = await request.json();
