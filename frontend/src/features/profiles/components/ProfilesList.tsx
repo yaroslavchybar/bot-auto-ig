@@ -34,6 +34,7 @@ import {
   Globe,
   Link,
   MessageSquare,
+  Info,
 } from 'lucide-react'
 import type { Profile } from '../types'
 import { cn } from '@/lib/utils'
@@ -46,6 +47,7 @@ interface ProfilesListProps {
   onEdit: (profile: Profile) => void
   onDelete: (profile: Profile) => void
   onToggleStatus: (profile: Profile) => void
+  onDetails: (profile: Profile) => void
   emptyTitle?: string
   emptyDescription?: string
 }
@@ -176,6 +178,7 @@ function ProfileMobileCard({
   onEdit,
   onDelete,
   onToggleStatus,
+  onDetails,
 }: {
   profile: Profile
 } & Omit<ProfilesListProps, 'profiles' | 'loading' | 'emptyTitle' | 'emptyDescription'>) {
@@ -194,6 +197,7 @@ function ProfileMobileCard({
           <h3 className="truncate text-base font-semibold text-ink">{profile.name}</h3>
         </div>
         <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+          <ProfileDetailsButton profile={profile} onDetails={onDetails} />
           <UnreadChatsBadge profile={profile} />
           <IgStateToggles profile={profile} />
           <ProfileActionsMenu
@@ -285,6 +289,7 @@ function ProfileDesktopRow({
   onEdit,
   onDelete,
   onToggleStatus,
+  onDetails,
 }: {
   profile: Profile
 } & Omit<ProfilesListProps, 'profiles' | 'loading' | 'emptyTitle' | 'emptyDescription'>) {
@@ -306,6 +311,7 @@ function ProfileDesktopRow({
       </TableCell>
       <TableCell className="pr-4 text-right">
         <div className="flex items-center justify-end gap-2">
+          <ProfileDetailsButton profile={profile} onDetails={onDetails} />
           <UnreadChatsBadge profile={profile} />
           <IgStateToggles profile={profile} />
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
@@ -340,6 +346,13 @@ function ProfileDesktopRow({
       </TableCell>
     </TableRow>
   )
+}
+
+function ProfileDetailsButton({ profile, onDetails }: { profile: Profile; onDetails: (profile: Profile) => void }) {
+  return <Button variant="ghost" size="icon" title="Profile details" aria-label={`View ${profile.name} details`}
+    className="text-muted-copy hover:bg-panel-muted hover:text-ink" onClick={() => onDetails(profile)}>
+    <Info className="h-4 w-4" />
+  </Button>
 }
 
 function UnreadChatsBadge({ profile }: { profile: Profile }) {
@@ -420,6 +433,7 @@ export function ProfilesList({
   onEdit,
   onDelete,
   onToggleStatus,
+  onDetails,
   emptyTitle = 'No profiles',
   emptyDescription = 'Create a new profile to get started.',
 }: ProfilesListProps) {
@@ -443,7 +457,7 @@ export function ProfilesList({
     )
   }
 
-  const actionProps = { onEdit, onDelete, onToggleStatus }
+  const actionProps = { onEdit, onDelete, onToggleStatus, onDetails }
 
   if (isMobile) {
     return (
@@ -463,7 +477,7 @@ export function ProfilesList({
           <TableHead className="h-12 w-[120px] font-medium text-muted-copy">Status</TableHead>
           <TableHead className="h-12 w-[180px] font-medium text-muted-copy">Config</TableHead>
           <TableHead className="h-12 font-medium text-muted-copy">Proxy</TableHead>
-          <TableHead className="h-12 w-[140px] pr-4 text-right font-medium text-muted-copy">
+          <TableHead className="h-12 w-[180px] pr-4 text-right font-medium text-muted-copy">
             Actions
           </TableHead>
         </TableRow>

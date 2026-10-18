@@ -19,7 +19,7 @@ test('list and detail markup, including tooltips, never contains proxy credentia
     const profile = { id: 'p', name: 'Profile', proxy, proxyType: 'socks5' }
     const views = [
       <ProxiesList key="proxies" proxies={[{ ...profile, purpose: 'work', maxProfiles: 3 }]} usage={{}} loading={false} onEdit={noop} onDelete={noop} />,
-      <ProfilesList key="profiles" profiles={[profile]} loading={false} onEdit={noop} onDelete={noop} onToggleStatus={noop} />,
+      <ProfilesList key="profiles" profiles={[profile]} loading={false} onEdit={noop} onDelete={noop} onToggleStatus={noop} onDetails={noop} />,
     ]
     for (const view of views) {
       const markup = renderToStaticMarkup(<ConvexProvider client={client}>{view}</ConvexProvider>)

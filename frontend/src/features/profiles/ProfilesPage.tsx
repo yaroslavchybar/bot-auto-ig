@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import { useState } from 'react'
 import { TableCard } from '@/components/shared/TablePagination'
 import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 import { Plus, Search } from 'lucide-react'
@@ -6,6 +7,7 @@ import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ProfileForm } from './components/ProfileForm'
 import { BatchCreateForm } from './components/BatchCreateForm'
 import { ProfilesList } from './components/ProfilesList'
+import { ProfileDetailsDialog } from './components/ProfileDetailsDialog'
 import type { Profile } from './types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,12 +16,14 @@ import { useProfilesPage } from './hooks/useProfilesPage'
 
 export function ProfilesPage() {
   const s = useProfilesPage()
+  const [detailsProfile, setDetailsProfile] = useState<Profile | null>(null)
   // Desktop: search and New Profile move into the app header. Mobile: they stay above the table.
   const headerSlot = useHeaderToolbarSlot('profiles-header-slot', 360)
   return (
     <div className="relative flex h-full flex-col bg-shell text-ink">
       {headerSlot ? createPortal(<ProfilesToolbar s={s} />, headerSlot) : null}
-      <ProfilesContent s={s} toolbarInHeader={Boolean(headerSlot)} />
+      <ProfilesContent s={s} toolbarInHeader={Boolean(headerSlot)} onDetails={setDetailsProfile} />
+      {detailsProfile && <ProfileDetailsDialog key={detailsProfile.id} profile={detailsProfile} onClose={() => setDetailsProfile(null)} />}
       <ProfileFormDialogs
         isCreateOpen={s.isCreateOpen}
         editProfile={s.editProfile}
@@ -46,9 +50,11 @@ export function ProfilesPage() {
 function ProfilesContent({
   s,
   toolbarInHeader,
+  onDetails,
 }: {
   s: ReturnType<typeof useProfilesPage>
   toolbarInHeader: boolean
+  onDetails: (profile: Profile) => void
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -66,6 +72,7 @@ function ProfilesContent({
           onEdit={s.handleEdit}
           onDelete={s.handleDeleteClick}
           onToggleStatus={(p) => s.toggleUsing(p)}
+          onDetails={onDetails}
           emptyTitle={s.searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
           emptyDescription={
             s.searchQuery.trim()

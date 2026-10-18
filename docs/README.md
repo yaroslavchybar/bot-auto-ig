@@ -333,7 +333,9 @@ rolling-hour usage, sleep status, and local wake/sleep times.
 The profile menu has Pause Profile / Resume Profile. Pausing excludes a profile
 from automations, setup, login queues, scraping, and browser-cookie requests. It stops its
 automated browser work and releases scraper leases while preserving credentials,
-progress, and request usage. The automation account pause control uses the same flag. A real Instagram 429 cools down that account for at least 30 minutes, with
+progress, and request usage. The Info button in Profiles Manager opens live profile details,
+including pause/resume, errors, daily outreach, next session, setup progress, and pending-action review.
+The automation popup's Profiles tab lists profile names only. A real Instagram 429 cools down that account for at least 30 minutes, with
 longer waits after repeated 429s or when Instagram sends `Retry-After`.
 `OPENROUTER_API_KEY` powers screenshot decisions and topic search generation.
 `BROWSER_MAX_CONCURRENCY` (default `1`, free Cloak tier allows one browser) caps active browser sessions across all

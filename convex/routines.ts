@@ -147,6 +147,59 @@ export const access = query({
   },
 });
 
+async function accountSummary(ctx: QueryCtx, p: Doc<'profiles'>, a: Doc<'automations'> | null) {
+  const savedState = await progress(ctx, p._id);
+  const state = savedState ? { ...savedState, ...routineRetryState(savedState) } : null;
+  const igAccount = p.igAccountId ? await ctx.db.get(p.igAccountId) : null;
+  const date = dayKey();
+  const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', p._id)).unique();
+  return {
+    profileId: p._id, name: p.name,
+    paused: p.paused === true || (state?.paused ?? false), issue: state?.issue,
+    stage: !p.igLoggedIn ? 'Not logged in'
+      : igAccount?.browserLoggedInAt && kyivDateKey(Date.now()) <= kyivDateKey(igAccount.browserLoggedInAt)
+        ? 'Browser logged in' : !p.outreachReady || (warmup?.day ?? 0) < 8 ? 'Warm-up' : 'Outreach',
+    activeDays: state?.activeDays ?? 0,
+    used: state?.outreachQuotaDate === date ? state.outreachUsedToday : 0,
+    sent: state?.dmCountDate === date ? (state.sentToday ?? 0) : 0,
+    followed: state?.outreachQuotaDate === date ? (state.followedToday ?? 0) : 0,
+    budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
+    allowance: a?.routine && a.routine.outreachEnabled && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
+      ? state?.outreachQuotaDate === date ? state.outreachAllowanceToday : outreachAllowance(a.routine, state?.outreachIncrease ?? 0)
+      : 0,
+    nextRunAt: state?.nextRunAt,
+  };
+}
+
+/** Profile manager details exclude cookies and encrypted account credentials. */
+export const profileDetails = query({
+  args: { profileId: v.id('profiles') },
+  handler: async (ctx, { profileId }) => {
+    const profile = await ctx.db.get(profileId);
+    if (!profile) return null;
+    const assigned = (await ctx.db.query('automations').collect()).filter(a =>
+      a.routine && routineModels(a).some(id => profile.modelIds?.includes(id as Id<'models'>)));
+    const automation = assigned.find(a => a.isActive !== false) ?? assigned[0] ?? null;
+    const setup = (await ctx.db.query('modelSetupStates').withIndex('by_profile', q => q.eq('profileId', profileId)).collect())
+      .find(row => profile.modelIds?.includes(row.modelId)) ?? null;
+    const modelId = profile.modelIds?.[0];
+    const model = modelId ? await ctx.db.get(modelId) : null;
+    return {
+      ...await accountSummary(ctx, profile, automation),
+      browserStatus: profile.inUse ? 'Active' : profile.status ?? 'idle',
+      igLoggedIn: profile.igLoggedIn === true,
+      changing: profile.status === 'deleting' || Boolean(profile.pendingRenameFrom),
+      model: model ? { name: model.name } : null,
+      automation: automation ? { name: automation.name, enabled: automation.isActive !== false, status: automation.status } : null,
+      setup: setup ? {
+        usernameDone: setup.usernameDone, fullNameDone: setup.fullNameDone, avatarDone: setup.avatarDone,
+        postsDone: setup.postSourceIds.length, postTarget: setup.postTarget,
+        pending: setup.pending, error: setup.error,
+      } : null,
+    };
+  },
+});
+
 export const accounts = query({
   args: { automationId: v.id("automations") },
   handler: async (ctx, { automationId }) => {
@@ -155,42 +208,7 @@ export const accounts = query({
     const profiles = (await ctx.db.query("profiles").collect()).filter((p) =>
       routineModels(a).some((id) => p.modelIds?.includes(id as Id<"models">)),
     );
-    return Promise.all(
-      profiles.map(async (p) => {
-        const savedState = await progress(ctx, p._id);
-        const state = savedState ? { ...savedState, ...routineRetryState(savedState) } : null;
-        const igAccount = p.igAccountId ? await ctx.db.get(p.igAccountId) : null;
-        const date = dayKey();
-        const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', (q) => q.eq('profileId', p._id)).unique();
-        return {
-          profileId: p._id,
-          name: p.name,
-          paused: p.paused === true || (state?.paused ?? false),
-          issue: state?.issue,
-          stage: !p.igLoggedIn
-            ? "Not logged in"
-            : igAccount?.browserLoggedInAt && kyivDateKey(Date.now()) <= kyivDateKey(igAccount.browserLoggedInAt)
-            ? "Browser logged in"
-            : !p.outreachReady || (warmup?.day ?? 0) < 8
-              ? "Warm-up"
-              : "Outreach",
-          activeDays: state?.activeDays ?? 0,
-          used: state?.outreachQuotaDate === date ? state.outreachUsedToday : 0,
-          sent: state?.dmCountDate === date ? (state.sentToday ?? 0) : 0,
-          followed: state?.outreachQuotaDate === date ? (state.followedToday ?? 0) : 0,
-          budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
-          allowance:
-            a.routine && a.routine.outreachEnabled && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
-              ? state?.outreachQuotaDate === date
-                ? state.outreachAllowanceToday
-                : outreachAllowance(
-                    a.routine,
-                    state?.outreachIncrease ?? 0)
-              : 0,
-          nextRunAt: state?.nextRunAt,
-        };
-      }),
-    );
+    return Promise.all(profiles.map(p => accountSummary(ctx, p, a)));
   },
 });
 

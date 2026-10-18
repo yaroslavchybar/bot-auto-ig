@@ -482,7 +482,7 @@ export function RoutinePopup({
 
             {tab === 'profiles' &&
               (automation ? (
-                <RoutineProfiles automationId={automation._id} modelId={automation.modelIds?.[0]} />
+                <RoutineProfiles profiles={profiles?.filter(profile => profile.modelIds?.some(id => modelIds.includes(id)))} />
               ) : (
                 <p className="text-sm text-subtle-copy">Save the automation to see its profiles.</p>
               ))}
