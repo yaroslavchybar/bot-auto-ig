@@ -1,3 +1,4 @@
+import { browsingNumbers, browsingFlags } from '../../../../../../server/shared/browsingSettings'
 import type { ActivityDefinition } from '../types'
 
 /**
@@ -17,8 +18,8 @@ export const browseFeed: ActivityDefinition = {
   color: '#3b82f6',
 
   inputs: [
-    { name: 'browse_home_feed', type: 'boolean', label: 'Home feed', default: true, group: 'Browsing' },
-    { name: 'scroll_reels', type: 'boolean', label: 'Reels scroll', default: true, group: 'Browsing' },
+    { name: 'browse_home_feed', type: 'boolean', label: 'Home feed', default: browsingFlags.browse_home_feed, group: 'Browsing' },
+    { name: 'scroll_reels', type: 'boolean', label: 'Reels scroll', default: browsingFlags.scroll_reels, group: 'Browsing' },
     { name: 'warmup_topics', type: 'string', label: 'Interests', default: '',
       placeholder: 'People sharing gym workouts and strength training tips', group: 'Browsing',
       helpText: 'Describe your interests in plain English. Luna generates search phrases. Blank uses normal browsing.' },
@@ -27,9 +28,7 @@ export const browseFeed: ActivityDefinition = {
       name: 'warmup_min_minutes',
       type: 'number',
       label: 'Min Minutes',
-      default: 10,
-      min: 1,
-      max: 100,
+      ...browsingNumbers.warmup_min_minutes,
       group: 'Daily Budget',
       helpText: 'Lower bound of the daily assigned time.',
     },
@@ -37,29 +36,27 @@ export const browseFeed: ActivityDefinition = {
       name: 'warmup_max_minutes',
       type: 'number',
       label: 'Max Minutes',
-      default: 20,
-      min: 1,
-      max: 100,
+      ...browsingNumbers.warmup_max_minutes,
       group: 'Daily Budget',
       helpText: 'Upper bound of the daily assigned time.',
     },
 
     {
       name: 'session_min_minutes', type: 'number', label: 'Min Minutes',
-      default: 5, min: 1, max: 60, group: 'Session Duration',
+      ...browsingNumbers.session_min_minutes, group: 'Session Duration',
       helpText: 'Each session is capped by the remaining daily budget.',
     },
     {
       name: 'session_max_minutes', type: 'number', label: 'Max Minutes',
-      default: 10, min: 1, max: 60, group: 'Session Duration',
+      ...browsingNumbers.session_max_minutes, group: 'Session Duration',
     },
     {
       name: 'rest_min_minutes', type: 'number', label: 'Min Minutes',
-      default: 60, min: 1, max: 1440, group: 'Rest Between Sessions',
+      ...browsingNumbers.rest_min_minutes, group: 'Rest Between Sessions',
     },
     {
       name: 'rest_max_minutes', type: 'number', label: 'Max Minutes',
-      default: 120, min: 1, max: 1440, group: 'Rest Between Sessions',
+      ...browsingNumbers.rest_max_minutes, group: 'Rest Between Sessions',
       helpText: 'This profile rests between sessions while the automation runs other eligible profiles.',
     },
 
@@ -67,7 +64,7 @@ export const browseFeed: ActivityDefinition = {
       name: 'watch_stories',
       type: 'boolean',
       label: 'Watch Stories Before Feed',
-      default: true,
+      default: browsingFlags.watch_stories,
       helpText: 'Watch unseen Stories for 1–3 minutes before content browsing.',
       group: 'Stories',
     },

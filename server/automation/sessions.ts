@@ -1,3 +1,4 @@
+import { browsingDefaults as defaults, browsingFlags } from '../shared/browsingSettings.js'
 import { randomUUID } from 'node:crypto'
 import type { Page } from 'playwright-core'
 import { warmupBeginRun, warmupFinishRun, warmupPrepareDay, type DbWarmupState } from '../shared/convexClient.js'
@@ -12,11 +13,6 @@ import { isInstagramHome } from './actions/navigation.js'
 import type { ActionLogger, StopCheck } from './actions/shared.js'
 import { setSessionAppearance } from './actions/appearance.js'
 
-const defaults = {
-  warmup_min_minutes: 10, warmup_max_minutes: 20,
-  session_min_minutes: 5, session_max_minutes: 10,
-  rest_min_minutes: 60, rest_max_minutes: 120,
-}
 export type SessionConfig = typeof defaults & {
   watch_stories: boolean; warmup_topics: string[]; browse_home_feed: boolean; scroll_reels: boolean; warmup_day?: number
 }
@@ -24,8 +20,8 @@ export type SessionConfig = typeof defaults & {
 /** Only session time and enabled surfaces are configurable; engagement follows interest evidence. */
 export function sessionConfig(input: Record<string, unknown>): SessionConfig {
   const config = { ...defaults, warmup_topics: warmupTopics(input.warmup_topics),
-    browse_home_feed: input.browse_home_feed !== false, scroll_reels: input.scroll_reels !== false,
-    watch_stories: input.watch_stories !== false }
+    browse_home_feed: typeof input.browse_home_feed === 'boolean' ? input.browse_home_feed : browsingFlags.browse_home_feed, scroll_reels: typeof input.scroll_reels === 'boolean' ? input.scroll_reels : browsingFlags.scroll_reels,
+    watch_stories: typeof input.watch_stories === 'boolean' ? input.watch_stories : browsingFlags.watch_stories }
   for (const key of Object.keys(defaults) as Array<keyof typeof defaults>) {
     const value = input[key]
     if (typeof value === 'number' && Number.isFinite(value)) config[key] = Math.max(0, value)

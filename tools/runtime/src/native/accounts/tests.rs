@@ -396,6 +396,100 @@ async fn browser_setup_prepares_without_mobile_and_keeps_uncertain_results_pendi
 }
 
 #[tokio::test]
+async fn manual_login_recovers_derived_connection_even_when_profile_name_matches() {
+    use crate::test_support::Fixture;
+    use axum::{response::IntoResponse, Json};
+
+    for scenario in [
+        "derived connection",
+        "assigned",
+        "verified connection",
+        "invalid",
+        "logged out",
+        "paused",
+        "in use",
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let encrypted = encrypt(
+            &[0xaa; 32],
+            &parse_credentials("example:password:JBSWY3DPEHPK3PXP").unwrap(),
+        )
+        .unwrap();
+        let mut account = serde_json::to_value(encrypted).unwrap();
+        account["_id"] = json!("a");
+        account["profileId"] = json!("p");
+        account["status"] = json!(match scenario {
+            "assigned" => "assigned",
+            "invalid" => "invalid",
+            _ => "connected",
+        });
+        if scenario == "verified connection" {
+            account["browserLoggedInAt"] = json!(1);
+        }
+        let updates = Arc::new(Mutex::new(Vec::new()));
+        let observed = updates.clone();
+        let fixture = Fixture::start(move |request| {
+            let account = account.clone();
+            let updates = observed.clone();
+            async move {
+                match request.uri().path() {
+                    "/api/profiles/by-id" => Json(json!({
+                        "id":"p", "name":"example",
+                        "igLoggedIn":scenario != "logged out",
+                        "paused":scenario == "paused",
+                        "inUse":scenario == "in use",
+                    }))
+                    .into_response(),
+                    "/api/ig-accounts-store" => {
+                        let body = crate::test_support::body(request).await;
+                        let value = match profiles::text(&body, "operation") {
+                            "byProfile" => account,
+                            "setState" => {
+                                updates.lock().await.push(body);
+                                json!({"ok":true})
+                            }
+                            _ => panic!("Unexpected account operation during manual recovery"),
+                        };
+                        Json(value).into_response()
+                    }
+                    _ => panic!("Manual recovery must not rename the profile or launch a browser"),
+                }
+            }
+        })
+        .await;
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.worker_url = fixture.url.clone();
+        api.key = "fixture".into();
+        let api = Arc::new(api);
+        let profiles = Profiles::new(
+            api.clone(),
+            super::super::processes::Processes::new(api.clone(), root.path().into()),
+            root.path().into(),
+        );
+        let mut accounts = Accounts::new(
+            api.clone(),
+            profiles,
+            Content::new(root.path().join("content")),
+            Subscriptions::new(api),
+        );
+        Arc::get_mut(&mut accounts).unwrap().credential_key = Some(vec![0xaa; 32]);
+
+        accounts.login("p").await.unwrap();
+
+        let updates = updates.lock().await;
+        if ["derived connection", "assigned"].contains(&scenario) {
+            assert_eq!(updates.len(), 1, "{scenario}");
+            assert_eq!(updates[0]["id"], "a");
+            assert_eq!(updates[0]["status"], "connected");
+            assert!(updates[0]["error"].is_null());
+        } else {
+            assert!(updates.is_empty(), "{scenario}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn login_claims_wait_for_cleanup_and_distinct_rejections_invalidate_credentials() {
     use crate::test_support::Fixture;
     use axum::{response::IntoResponse, Json};

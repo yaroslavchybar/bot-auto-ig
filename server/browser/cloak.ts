@@ -35,18 +35,6 @@ export type BrowserSession = {
   closed: Promise<void>
 }
 
-// One-time reclaim: a directory from the Camoufox era holds only Firefox
-// files, which Chromium ignores. Cookies live in the database, so on the
-// first Cloak open the directory is wiped for the new engine. Later opens
-// (cloak-seed.json present) hold live Chromium data and are never touched.
-const FIREFOX_MARKERS = [
-  'fingerprint.json',
-  'xulstore.json',
-  'prefs.js',
-  'places.sqlite',
-  'cookies.sqlite',
-]
-
 /**
  * Drop Chromium's remembered window position. The real window is taller than
  * the old 768px desktop, so a previously saved position can park the toolbar
@@ -64,16 +52,6 @@ export function clearSavedWindowPlacement(profileDir: string): void {
     fs.writeFileSync(prefsPath, JSON.stringify(prefs))
   } catch {
     /* keep the launch going; worst case the position persists */
-  }
-}
-
-export function migrateFirefoxProfile(profileDir: string): void {
-  if (fs.existsSync(path.join(profileDir, 'cloak-seed.json'))) return
-  if (!FIREFOX_MARKERS.some((file) => fs.existsSync(path.join(profileDir, file)))) return
-  for (const entry of fs.readdirSync(profileDir)) {
-    // The caller holds worker.lock; never sweep it with migrated contents.
-    if (entry === 'worker.lock') continue
-    fs.rmSync(path.join(profileDir, entry), { recursive: true, force: true })
   }
 }
 
@@ -293,7 +271,6 @@ export async function openBrowserSession(
       throw new Error('Profile maintenance is in progress')
     if (profileLockLost) throw new Error('Profile lock disconnected')
     fs.mkdirSync(profileDir, { recursive: true })
-    migrateFirefoxProfile(profileDir)
     fs.rmSync(devToolsPortFile, { force: true })
     clearSavedWindowPlacement(profileDir)
     await pruneProfileCache(profileDir)

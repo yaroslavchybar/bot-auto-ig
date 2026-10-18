@@ -53,7 +53,6 @@ test('runtimeSnapshot returns timing fields and requires the bridge token', asyn
     isActive: true,
     modelIds: [list!._id],
     routine: {
-      outreachStartDay: 7,
       initialDms: 3,
       maxDms: 30,
       outreachEnabled: false,
@@ -129,7 +128,6 @@ test('runtimeSnapshot stays bounded and list pages sweep every assignment', asyn
     isActive: true,
     modelIds: [list!._id],
     routine: {
-      outreachStartDay: 7,
       initialDms: 3,
       maxDms: 30,
       outreachEnabled: false,

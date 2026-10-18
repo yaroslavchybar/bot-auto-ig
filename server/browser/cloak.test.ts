@@ -398,7 +398,7 @@ test('cloak seed is stable per profile and platform', () => {
         profilesUpdateByName: async () => undefined,
         profilesSaveUnreadChats: async () => undefined,
       }))
-      const { cloakSeed, cloakPlatform, migrateFirefoxProfile } = await import('./server/browser/cloak.ts')
+      const { cloakSeed, cloakPlatform } = await import('./server/browser/cloak.ts')
       assert.equal(cloakPlatform('mac'), 'macos')
       assert.equal(cloakPlatform('windows'), 'windows')
       assert.equal(cloakPlatform('linux'), 'windows')
@@ -420,17 +420,6 @@ test('cloak seed is stable per profile and platform', () => {
       assert.equal(restored.seed, first.seed)
       assert.equal(restored.isNew, false)
       assert.equal(cloakSeed(moved, 'windows').seed, first.seed)
-      const mig = path.join(root, 'data', 'profiles', 'mig')
-      fs.mkdirSync(path.join(mig, 'cache2'), { recursive: true })
-      fs.writeFileSync(path.join(mig, 'fingerprint.json'), '{}')
-      fs.writeFileSync(path.join(mig, 'prefs.js'), '')
-      fs.writeFileSync(path.join(mig, 'cache2', 'data'), 'x')
-      migrateFirefoxProfile(mig)
-      assert.deepEqual(fs.readdirSync(mig), [])
-      fs.writeFileSync(path.join(mig, 'cloak-seed.json'), '{}')
-      fs.writeFileSync(path.join(mig, 'keep.txt'), '')
-      migrateFirefoxProfile(mig)
-      assert.deepEqual(fs.readdirSync(mig).sort(), ['cloak-seed.json', 'keep.txt'])
       console.log('seed stable verified')
     } finally {
       fs.rmSync(root, { recursive: true, force: true })

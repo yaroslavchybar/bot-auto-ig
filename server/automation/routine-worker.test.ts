@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { runAutomation } from './worker.js'
+import { runTestAutomation as runAutomation } from '../../tests/server/worker-runtime.js'
 import type { BrowserSession } from '../browser/cloak.js'
 
 test('a failed profile does not prevent the next eligible profile from starting', async () => {

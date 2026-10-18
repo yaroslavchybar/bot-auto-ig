@@ -74,17 +74,17 @@ export function registerIgAccountRoutes(http: HttpRouter): void {
           })
           return jsonResponse({ ok: true })
         case 'modelSetupList':
-          return jsonResponse(await ctx.runQuery(internal.igAccounts.modelSetupListInternal, {}))
+          return jsonResponse(await ctx.runQuery(internal.modelSetup.modelSetupListInternal, {}))
         case 'modelSetupEnroll':
           return jsonResponse(
-            await ctx.runMutation(internal.igAccounts.modelSetupEnrollInternal, {
+            await ctx.runMutation(internal.modelSetup.modelSetupEnrollInternal, {
               profileId: body.profileId,
               modelId: body.modelId,
               startedAt: body.startedAt,
             }),
           )
         case 'modelSetupPatch':
-          await ctx.runMutation(internal.igAccounts.modelSetupPatchInternal, {
+          await ctx.runMutation(internal.modelSetup.modelSetupPatchInternal, {
             profileId: body.profileId,
               modelId: body.modelId,
             patch: body.patch,
@@ -93,21 +93,21 @@ export function registerIgAccountRoutes(http: HttpRouter): void {
           return jsonResponse({ ok: true })
         case 'modelSetupReconcile':
           return jsonResponse(
-            await ctx.runMutation(internal.igAccounts.modelSetupReconcileInternal, {
+            await ctx.runMutation(internal.modelSetup.modelSetupReconcileInternal, {
               profileId: body.profileId,
               resolution: body.resolution,
             }),
           )
         case 'modelSetupGroupName':
           return jsonResponse(
-            await ctx.runQuery(internal.igAccounts.modelSetupGroupNameInternal, {
+            await ctx.runQuery(internal.modelSetup.modelSetupGroupNameInternal, {
               modelId: body.modelId,
               group: body.group,
             }),
           )
         case 'modelSetupSaveGroupName':
           return jsonResponse(
-            await ctx.runMutation(internal.igAccounts.modelSetupSaveGroupNameInternal, {
+            await ctx.runMutation(internal.modelSetup.modelSetupSaveGroupNameInternal, {
               modelId: body.modelId,
               group: body.group,
               name: body.name,

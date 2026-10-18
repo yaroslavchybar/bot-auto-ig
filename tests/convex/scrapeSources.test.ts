@@ -17,6 +17,22 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+test.each(['disable', 'remove', 'profile pause'] as const)('source cancellation clears the whole lease on %s', async action => {
+  const s = await setup()
+  await s.t.run(ctx => ctx.db.patch(s.sourceId, {
+    running: true, runId: 'lease', leaseUntil: Date.now() + HOUR, runKind: 'posts',
+  }))
+  if (action === 'disable') await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: false })
+  else if (action === 'remove') await s.t.mutation(api.scrapeSources.remove, { sourceId: s.sourceId })
+  else {
+    await s.t.run(ctx => ctx.db.patch(s.sourceId, { profileId: s.profileId }))
+    await s.t.mutation(api.profiles.mutations.setPaused, { profileId: s.profileId, paused: true })
+  }
+  const source = await s.t.run(ctx => ctx.db.get(s.sourceId))
+  expect(source?.running).toBe(false)
+  for (const key of ['runId', 'leaseUntil', 'runKind', 'currentPostId']) expect(source).not.toHaveProperty(key)
+})
+
 async function setup(
   options: {
     noCookie?: boolean

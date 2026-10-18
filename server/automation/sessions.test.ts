@@ -3,6 +3,23 @@ import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
 import { runBrowsingSession, sessionConfig, sessionReady } from './sessions.js'
 import { SessionEnded } from './actions/session.js'
+import { browsingNumbers, browsingFlags } from '../shared/browsingSettings.js'
+import { browseFeed } from '../../frontend/src/features/automations/activities/browsing/browse-feed.js'
+import { defaultRoutine, validateRoutine } from '../../convex/routinePolicy.js'
+
+test('editor defaults, routine limits, and session defaults share one browsing policy', () => {
+  const config = sessionConfig({})
+  for (const [key, rule] of Object.entries(browsingNumbers)) {
+    const definition = browseFeed.inputs.find(input => input.name === key)!
+    assert.equal(config[key as keyof typeof browsingNumbers], rule.default)
+    assert.deepEqual([definition.default, definition.min, definition.max], [rule.default, rule.min, rule.max])
+    assert.throws(() => validateRoutine({ ...defaultRoutine, activity: { [key]: rule.max + 1 } }))
+  }
+  for (const [key, value] of Object.entries(browsingFlags)) {
+    assert.equal(config[key as keyof typeof browsingFlags], value)
+    assert.equal(browseFeed.inputs.find(input => input.name === key)?.default, value)
+  }
+})
 
 function setup(day = 8, minutes = 10) {
   let now = Date.parse('2026-10-14T12:00:00Z')

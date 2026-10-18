@@ -240,7 +240,7 @@ test('automation ranges load, reject reversed ranges, and save both min/max pair
     nodes: [],
     edges: [],
     modelIds: ['model'],
-    routine: { ...defaultRoutine, warmupMinPosts: 3, warmupMaxPosts: 6,
+    routine: { ...defaultRoutine, outreachStartDay: 1, dailyIncrease: 35, warmupMinPosts: 3, warmupMaxPosts: 6,
       activity: { stories_max: 99, reels_min: 99, post_view_min_seconds: 99, profile_visit_chance: 42, watch_stories: false } },
     createdAt: 1,
     updatedAt: 1,
@@ -281,6 +281,9 @@ test('automation ranges load, reject reversed ranges, and save both min/max pair
       }),
     }),
   )
+  const savedRoutine = save.mock.calls[0][0].routine
+  expect(savedRoutine).not.toHaveProperty('outreachStartDay')
+  expect(savedRoutine).not.toHaveProperty('dailyIncrease')
 })
 
 test('Outreach settings expose gradual daily follow limits instead of DM limits', async () => {

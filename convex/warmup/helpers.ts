@@ -1,3 +1,4 @@
+import { browsingDefaults } from '../../server/shared/browsingSettings'
 import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
@@ -12,8 +13,8 @@ export type WarmupPlan = {
 
 /** Default daily budget. */
 export const DEFAULT_WARMUP_PLAN: WarmupPlan = {
-	minMinutes: 10,
-	maxMinutes: 20,
+	minMinutes: browsingDefaults.warmup_min_minutes,
+	maxMinutes: browsingDefaults.warmup_max_minutes,
 };
 
 /** UTC date key (YYYY-MM-DD) for "today" counters. */

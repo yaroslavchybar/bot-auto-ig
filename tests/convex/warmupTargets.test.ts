@@ -12,7 +12,7 @@ async function setup(min = 3, max = 6) {
   }))!
   const profile = (await seedProfile(t))!
   await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: model._id })
-  const enroll = () => t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
+  const enroll = () => t.mutation(internal.modelSetup.modelSetupEnrollInternal, {
     profileId: profile._id, modelId: model._id, startedAt: 1,
   })
   return { t, model, automation, profile, enroll }
@@ -26,11 +26,11 @@ test('each account draws and retains its own warm-up post target', async () => {
     rng.mockReturnValue(0.999)
     const other = (await seedProfile(t, { name: 'Other' }))!
     await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [other._id], modelId: model._id })
-    expect((await t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
+    expect((await t.mutation(internal.modelSetup.modelSetupEnrollInternal, {
       profileId: other._id, modelId: model._id, startedAt: 1,
     }))?.postTarget).toBe(6)
     expect((await enroll())?.postTarget).toBe(3)
-    expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))
+    expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))
       .find(row => row.profileId === profile._id)?.postTarget).toBe(3)
   } finally { rng.mockRestore() }
 })
@@ -38,11 +38,11 @@ test('each account draws and retains its own warm-up post target', async () => {
 test('returning to the same model restores completed setup without resetting activity', async () => {
   const { t, model, profile, enroll } = await setup(3, 3)
   await enroll()
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, {
     profileId: profile._id, modelId: model._id,
     patch: { postSourceIds: ['p1', 'p2', 'p3'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [],
   })
-  const savedSetup = (await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]
+  const savedSetup = (await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]
   await t.run(async ctx => {
     await ctx.db.insert('accountProgress', { profileId: profile._id, paused: false, activeDays: 20,
       outreachUsedToday: 0, outreachAllowanceToday: 0, nextRunAt: 0, updatedAt: 1 })
@@ -88,36 +88,36 @@ test('reconfirming completed setup repairs a previously cleared readiness flag',
   const { t, model, profile, enroll } = await setup(3, 3)
   await enroll()
   const args = { profileId: profile._id, modelId: model._id }
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { ...args,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { ...args,
     patch: { postSourceIds: ['p1', 'p2', 'p3'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [],
   })
-  const saved = (await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]
+  const saved = (await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]
   await t.run(ctx => ctx.db.patch(profile._id, { outreachReady: false }))
   // Native setup repeats this confirmation when the profile flag disagrees with saved setup.
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { ...args,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { ...args,
     patch: { outreachReadyMarked: true }, clear: ['error'],
   })
   expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true)
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]).toEqual(saved)
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]).toEqual(saved)
 })
 
 test.each(['confirmed', 'reviewed'])('three %s posts unlock Outreach before the publishing target', async mode => {
   const { t, model, profile, enroll } = await setup(9, 9)
   await enroll()
-  const patch = (updates: Record<string, unknown>) => t.mutation(internal.igAccounts.modelSetupPatchInternal, {
+  const patch = (updates: Record<string, unknown>) => t.mutation(internal.modelSetup.modelSetupPatchInternal, {
     profileId: profile._id, modelId: model._id, patch: updates, clear: [],
   })
   await patch({ postSourceIds: ['p1', 'p2'], postDates: ['2026-09-25', '2026-09-26'] })
   await expect(patch({ outreachReadyMarked: true })).rejects.toThrow('3 recorded posts')
   if (mode === 'reviewed') {
     await patch({ pending: { kind: 'post', sourceId: 'p3', date: '2026-09-27' } })
-    await t.mutation(internal.igAccounts.modelSetupReconcileInternal, { profileId: profile._id, resolution: 'completed' })
+    await t.mutation(internal.modelSetup.modelSetupReconcileInternal, { profileId: profile._id, resolution: 'completed' })
   } else {
     await patch({ postSourceIds: ['p1', 'p2', 'p3'] })
     await expect(patch({ outreachReadyMarked: true })).rejects.toThrow('3 recorded posts')
     await patch({ postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] })
   }
-  const state = (await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]!
+  const state = (await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]!
   expect(state).toMatchObject({ postTarget: 9, outreachReadyMarked: true, postSourceIds: ['p1', 'p2', 'p3'] })
   expect((await t.query(internal.profiles.queries.getByIdInternal, { profileId: profile._id }))?.outreachReady).toBe(true)
 })
@@ -126,10 +126,10 @@ test('continued posting and target changes keep three-post accounts ready for Ou
   const { t, model, automation, profile, enroll } = await setup(9, 9)
   await enroll()
   const args = { profileId: profile._id, modelId: model._id }
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { ...args,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { ...args,
     patch: { postSourceIds: ['p1', 'p2', 'p3'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [],
   })
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { ...args,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { ...args,
     patch: { pending: { kind: 'post', sourceId: 'p4', date: '2026-09-28' } }, clear: [],
   })
   await t.mutation(api.automations.mutations.update, { id: automation._id,
@@ -138,7 +138,7 @@ test('continued posting and target changes keep three-post accounts ready for Ou
   expect(await enroll()).toMatchObject({ postTarget: 6, outreachReadyMarked: true,
     postSourceIds: ['p1', 'p2', 'p3'], pending: { sourceId: 'p4' } })
   expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true)
-  await t.mutation(internal.igAccounts.modelSetupReconcileInternal, { profileId: profile._id, resolution: 'completed' })
+  await t.mutation(internal.modelSetup.modelSetupReconcileInternal, { profileId: profile._id, resolution: 'completed' })
   expect(await enroll()).toMatchObject({ postTarget: 6, outreachReadyMarked: true,
     postSourceIds: ['p1', 'p2', 'p3', 'p4'] })
   expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true)
@@ -147,19 +147,19 @@ test('continued posting and target changes keep three-post accounts ready for Ou
 test('changing the range updates unfinished setups and preserves completed accounts and posts', async () => {
   const { t, model, automation, profile, enroll } = await setup(9, 9)
   await enroll()
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: model._id,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { profileId: profile._id, modelId: model._id,
     patch: { postSourceIds: ['p1', 'p2'], postDates: ['2026-09-25', '2026-09-26'] }, clear: [] })
   const done = (await seedProfile(t, { name: 'Done' }))!
   await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [done._id], modelId: model._id })
-  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: done._id, modelId: model._id, startedAt: 1 })
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: done._id, modelId: model._id,
+  await t.mutation(internal.modelSetup.modelSetupEnrollInternal, { profileId: done._id, modelId: model._id, startedAt: 1 })
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { profileId: done._id, modelId: model._id,
     patch: { postSourceIds: Array.from({ length: 9 }, (_, i) => `p${i}`),
       postDates: Array.from({ length: 9 }, (_, i) => `2026-09-${i + 1}`) }, clear: [] })
   const rng = vi.spyOn(Math, 'random').mockReturnValue(0.999)
   try {
     const policy = { ...automation.routine!, warmupMinPosts: 3, warmupMaxPosts: 6 }
     await t.mutation(api.automations.mutations.update, { id: automation._id, routine: policy })
-    const states = await t.query(internal.igAccounts.modelSetupListInternal, {})
+    const states = await t.query(internal.modelSetup.modelSetupListInternal, {})
     expect(states.find(row => row.profileId === profile._id)).toMatchObject({ postTarget: 6, postSourceIds: ['p1', 'p2'] })
     expect(states.find(row => row.profileId === done._id)).toMatchObject({ postTarget: 9, outreachReadyMarked: true })
     rng.mockReturnValue(0)
@@ -180,12 +180,12 @@ test.each([2, 3])('a model-only update applies the existing policy to destinatio
   await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [recipient._id], modelId: destination._id,
   })
-  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
+  await t.mutation(internal.modelSetup.modelSetupEnrollInternal, {
     profileId: recipient._id, modelId: destination._id, startedAt: 1,
   })
   const postSourceIds = Array.from({ length: postCount }, (_, i) => `p${i}`)
   const postDates = Array.from({ length: postCount }, (_, i) => `2026-09-${i + 1}`)
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, {
     profileId: recipient._id, modelId: destination._id, patch: { postSourceIds, postDates }, clear: [],
   })
   const rng = vi.spyOn(Math, 'random').mockReturnValue(0)
@@ -194,7 +194,7 @@ test.each([2, 3])('a model-only update applies the existing policy to destinatio
       id: automation._id, modelIds: [destination._id],
     })
     expect(updated?.routine).toEqual(automation.routine)
-    const states = await t.query(internal.igAccounts.modelSetupListInternal, {})
+    const states = await t.query(internal.modelSetup.modelSetupListInternal, {})
     expect(states.find(row => row.profileId === recipient._id))
       .toMatchObject({ postTarget: 3, postSourceIds, postDates })
     expect((await t.query(internal.profiles.queries.getByIdInternal, {
@@ -205,7 +205,7 @@ test.each([2, 3])('a model-only update applies the existing policy to destinatio
     await t.mutation(api.automations.mutations.update, {
       id: automation._id, modelIds: [destination._id],
     })
-    expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))
+    expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))
       .find(row => row.profileId === recipient._id)?.postTarget).toBe(3)
   } finally { rng.mockRestore() }
 })

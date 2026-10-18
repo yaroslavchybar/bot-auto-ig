@@ -30,28 +30,21 @@ export function useProxiesPage(visible = true) {
     [data],
   )
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [editProxyId, setEditProxyId] = useState<string | null>(null)
-  const [deleteProxyId, setDeleteProxyId] = useState<string | null>(null)
+  // Dialogs own their selection independently of reactive table pages.
+  const [editProxy, setEditProxy] = useState<ProxyItem | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProxyItem | null>(null)
   const [saving, setSaving] = useState(false)
 
   const createProxy = useMutation(api.proxies.create)
   const updateProxy = useMutation(api.proxies.update)
   const deleteProxy = useMutation(api.proxies.remove)
 
-  const editProxy = useMemo(
-    () => (editProxyId ? (proxies.find((p) => p.id === editProxyId) ?? null) : null),
-    [editProxyId, proxies],
-  )
-  const deleteTarget = useMemo(
-    () => (deleteProxyId ? (proxies.find((p) => p.id === deleteProxyId) ?? null) : null),
-    [deleteProxyId, proxies],
-  )
-
   const handleCreate = useCallback(() => setIsCreateOpen(true), [])
-  const handleEdit = useCallback((proxy: ProxyItem) => setEditProxyId(proxy.id), [])
-  const handleDeleteClick = useCallback((proxy: ProxyItem) => setDeleteProxyId(proxy.id), [])
+  const handleEdit = useCallback((proxy: ProxyItem) => setEditProxy(proxy), [])
+  const handleDeleteClick = useCallback((proxy: ProxyItem) => setDeleteTarget(proxy), [])
   const handleCloseCreate = useCallback(() => setIsCreateOpen(false), [])
-  const handleCloseEdit = useCallback(() => setEditProxyId(null), [])
+  const handleCloseEdit = useCallback(() => setEditProxy(null), [])
+  const handleCloseDelete = useCallback(() => setDeleteTarget(null), [])
 
   const handleSave = useCallback(
     async (values: ProxyFormValues) => {
@@ -85,7 +78,7 @@ export function useProxiesPage(visible = true) {
             country: values.country,
             maxProfiles,
           })
-          setEditProxyId(null)
+          setEditProxy(null)
         }
       } catch (e) {
         handleError(e, 'Save proxy')
@@ -101,7 +94,7 @@ export function useProxiesPage(visible = true) {
     setSaving(true)
     try {
       await deleteProxy({ id: deleteTarget.id as Id<'proxies'> })
-      setDeleteProxyId(null)
+      setDeleteTarget(null)
     } catch (e) {
       handleError(e, 'Delete proxy')
     } finally {
@@ -143,6 +136,6 @@ export function useProxiesPage(visible = true) {
     handleCloseEdit,
     handleSave,
     handleDelete,
-    setDeleteProxyId,
+    handleCloseDelete,
   }
 }

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { BrowserSession } from '../browser/cloak.js'
 import { errors } from 'playwright-core'
-import { runAutomation, setProfilePollIntervalMs } from './worker.js'
+import { runTestAutomation as runAutomation, setProfilePollIntervalMs } from '../../tests/server/worker-runtime.js'
 
 for (const initialState of ['empty', 'busy', 'cooldown'] as const) {
   test(`initially ${initialState} profiles are picked up when available`, async () => {

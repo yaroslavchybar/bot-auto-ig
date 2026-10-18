@@ -1,9 +1,9 @@
 import { v } from 'convex/values'
 import { internalMutation } from './_generated/server'
-import { eligibility, ensureProgress } from './routines'
+import { eligibility, ensureProgress, canFollow } from './routines'
 import {
   dayKey,
-  outreachAllowance,
+  dailyOutreachQuota,
   profileOutreachRoutes,
   randomInRange,
   unfollowRange,
@@ -54,16 +54,9 @@ export const finish = internalMutation({
       throw new Error('A male screening must include the English text check')
     const e = await eligibility(ctx, args.automationId, args.profileId)
     const state = e ? await ensureProgress(ctx, args.profileId) : null
-    const used = state?.outreachQuotaDate === args.date ? state.outreachUsedToday : 0
-    const allowance =
-      e && state
-        ? Math.min(
-            e.policy.maxDms,
-            state.outreachQuotaDate === args.date
-              ? state.outreachAllowanceToday
-              : outreachAllowance(e.policy, state.outreachIncrease ?? 0),
-          )
-        : 0
+    const { used, allowance, followed } = e
+      ? dailyOutreachQuota(e.policy, state, args.date)
+      : { used: 0, allowance: 0, followed: 0 }
     const classification = args.category
     const membership = lead.screeningListId
       ? await ctx.db
@@ -78,12 +71,7 @@ export const finish = internalMutation({
       !lead.dmSent &&
       !lead.followed &&
       !lead.dmBlocked &&
-      e &&
-      e.maintenance &&
-      !e.followsBlocked &&
-      e.profile.outreachReady &&
-      e.policy.outreachEnabled &&
-      (!e.profile.igAccountId || e.igAccount?.status === 'connected') &&
+      canFollow(e) &&
       args.date === dayKey(now) &&
       used < allowance &&
       (e.policy.allowedCategories ?? ['male']).includes(classification) &&
@@ -142,7 +130,7 @@ export const finish = internalMutation({
         outreachQuotaDate: args.date,
         outreachUsedToday: used + 1,
         outreachAllowanceToday: allowance,
-        followedToday: state!.outreachQuotaDate === args.date ? (state!.followedToday ?? 0) : 0,
+        followedToday: followed,
         updatedAt: now,
       })
     return accepted

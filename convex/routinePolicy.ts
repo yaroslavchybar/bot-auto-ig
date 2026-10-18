@@ -1,3 +1,4 @@
+import { validateBrowsingRanges } from '../server/shared/browsingSettings'
 import { v } from "convex/values";
 import { validateOutreachMessage } from '../server/shared/outreachMessage';
 import { validateInterests } from '../server/shared/interests';
@@ -22,12 +23,11 @@ export const routineValidator = v.object({
   allowedCategories: v.optional(
     v.array(v.union(v.literal('male'), v.literal('female'), v.literal('business'))),
   ),
-  // Outreach now starts in maintenance on day 8; saved values are ignored.
+  // Accept older stored routines; the editor omits these ignored settings on save.
   outreachStartDay: v.optional(v.number()),
+  dailyIncrease: v.optional(v.number()),
   // Stored names are retained; these settings now limit new follows, not DMs.
   initialDms: v.number(),
-  // Accept saved routines from before random growth; this value is no longer used.
-  dailyIncrease: v.optional(v.number()),
   maxDms: v.number(),
   outreachEnabled: v.boolean(),
   leadListId: v.optional(v.id("leadLists")),
@@ -121,18 +121,7 @@ export function validateRoutine(p: RoutinePolicy) {
     )
       throw new Error(`Invalid activity setting: ${key}`);
   }
-  const minMinutes = Number(p.activity.warmup_min_minutes ?? 10),
-    maxMinutes = Number(p.activity.warmup_max_minutes ?? 20);
-  if (minMinutes < 1 || maxMinutes < minMinutes || maxMinutes > 100)
-    throw new Error("Daily browsing budget must be between 1 and 100 minutes");
-  const sessionMin = Number(p.activity.session_min_minutes ?? 5),
-    sessionMax = Number(p.activity.session_max_minutes ?? 10);
-  if (sessionMin < 1 || sessionMax < sessionMin || sessionMax > 60)
-    throw new Error("Sessions must be 1–60 minutes, with min no greater than max");
-  const restMin = Number(p.activity.rest_min_minutes ?? 60),
-    restMax = Number(p.activity.rest_max_minutes ?? 120);
-  if (restMin < 1 || restMax < restMin)
-    throw new Error("Rest between sessions must be positive, with min no greater than max");
+  validateBrowsingRanges(p.activity);
   for (const [name, value, min, max] of [
     ["Initial follows", p.initialDms, 1, 35],
     ["Maximum follows", p.maxDms, 1, 35],
@@ -167,6 +156,22 @@ export function outreachAllowance(
   return p.outreachEnabled
     ? Math.min(p.maxDms, p.initialDms + accumulatedIncrease)
     : 0;
+}
+
+/** All follow reservations use the same UTC rollover and allowance cap. */
+export function dailyOutreachQuota(policy: RoutinePolicy, state: {
+  outreachQuotaDate?: string
+  outreachUsedToday: number
+  outreachAllowanceToday: number
+  outreachIncrease?: number
+  followedToday?: number
+} | null, date: string) {
+  const today = state?.outreachQuotaDate === date
+  return {
+    used: today ? state.outreachUsedToday : 0,
+    allowance: Math.min(policy.maxDms, today ? state.outreachAllowanceToday : outreachAllowance(policy, state?.outreachIncrease ?? 0)),
+    followed: today ? state.followedToday ?? 0 : 0,
+  }
 }
 
 /** Source lists in Start are the single source of truth for graph membership. */

@@ -331,7 +331,7 @@ export function ProxiesPage() {
           saving={state.saving}
           error={null}
           onConfirm={() => void state.handleDelete()}
-          onCancel={() => state.setDeleteProxyId(null)}
+          onCancel={state.handleCloseDelete}
         />
       ) : null}
     </div>

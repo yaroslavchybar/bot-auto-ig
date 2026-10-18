@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { internalMutation, internalQuery, type QueryCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
 import { dayKey, profileOutreachRoutes } from './routinePolicy'
-import { eligibility, ensureProgress, pendingDm } from './routines'
+import { eligibility, ensureProgress, pendingDm, canOutreach } from './routines'
 import { reserveRequest } from './scraperRequests'
 
 const args = { automationId: v.id('automations'), profileId: v.id('profiles') }
@@ -10,14 +10,10 @@ const args = { automationId: v.id('automations'), profileId: v.id('profiles') }
 async function owner(ctx: QueryCtx, automationId: Id<'automations'>, profileId: Id<'profiles'>) {
   const e = await eligibility(ctx, automationId, profileId)
   if (
-    !e?.maintenance ||
-    !e.policy.outreachEnabled ||
-    !e.profile.outreachReady ||
-    (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
+    !canOutreach(e) ||
     !e.profile.inUse ||
     !e.warmup?.activeRun ||
-    (e.profile.scraperCooldownUntil ?? 0) > Date.now() ||
-    !profileOutreachRoutes(e.policy, profileId).length
+    (e.profile.scraperCooldownUntil ?? 0) > Date.now()
   )
     return null
   let ownerIgId: string | undefined

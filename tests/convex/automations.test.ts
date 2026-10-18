@@ -5,6 +5,20 @@ import { createConvexTest, insertDoc, seedModel, seedAutomation } from './helper
 import { selectedLists } from '../../server/automation/graph'
 import { defaultRoutine } from '../../convex/routinePolicy'
 
+test('older routine settings remain valid for stored automations', async () => {
+  const t = createConvexTest()
+  const model = (await seedModel(t))!
+  const routine = { ...defaultRoutine, outreachStartDay: 1, dailyIncrease: 35 }
+  const automation = await t.mutation(api.automations.mutations.create, {
+    name: 'Older routine', nodes: [], edges: [], modelIds: [model._id], routine,
+  })
+  expect(automation?.routine).toEqual(routine)
+  const saved = await t.mutation(api.automations.mutations.update, {
+    id: automation!._id, name: 'Renamed older routine',
+  })
+  expect(saved?.routine).toEqual(routine)
+})
+
 test('sleeping routines keep checkpoints on wake and become editable when disabled', async () => {
   const t = createConvexTest()
   const model = await seedModel(t)

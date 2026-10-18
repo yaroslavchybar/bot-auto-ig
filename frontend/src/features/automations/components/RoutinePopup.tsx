@@ -1,3 +1,5 @@
+import { browsingNumbers, browsingFlags, type BrowsingNumberKey, type BrowsingFlagKey } from '../../../../../server/shared/browsingSettings'
+import { routineDraft, routinePayload, routineProblem } from '../routineDraft'
 import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useMutation, useQuery } from 'convex/react'
@@ -6,10 +8,7 @@ import { BrainCircuit, Flame, Heart, Send, Settings2, Users } from 'lucide-react
 import { api } from '../../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../../convex/_generated/dataModel'
 import {
-  defaultRoutine,
   OUTREACH_MIN_POSTS,
-  outreachRoutes,
-  validateRoutine,
   warmupPostRange,
   type RoutinePolicy,
 } from '../../../../../convex/routinePolicy'
@@ -26,8 +25,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { browseFeed } from '../activities/browsing/browse-feed'
-import type { ActivityInput } from '../activities/types'
 import { getAutomationDisplayStatus, getStatusColor, getStatusLabel } from '../types'
 import { OutreachAssignments } from './OutreachAssignments'
 import { RoutineProfiles } from './RoutineProfiles'
@@ -54,13 +51,6 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]['id']
 
-// Returns a warm-up setting's definition from browse-feed.ts, which holds its bounds and defaults.
-function feedSetting(name: string): ActivityInput {
-  const input = browseFeed.inputs.find((item) => item.name === name)
-  if (!input) throw new Error(`Unknown warm-up setting: ${name}`)
-  return input
-}
-
 // Creates or edits an automation. Settings save together; the Profiles tab updates live on its own.
 export function RoutinePopup({
   automation,
@@ -72,19 +62,7 @@ export function RoutinePopup({
   const [tab, setTab] = useState<TabId>('general')
   const [name, setName] = useState(automation?.name ?? '')
   const [modelIds, setListIds] = useState<Id<'models'>[]>(automation?.modelIds ?? [])
-  const [policy, setPolicy] = useState<RoutinePolicy>(() => {
-    const initial = automation?.routine ?? defaultRoutine
-    const { warmup_topics, ...activity } = initial.activity
-    return {
-      ...initial,
-      activity: Object.fromEntries(Object.entries(activity).filter(([key]) => browseFeed.inputs.some(input => input.name === key))),
-      interests: initial.interests ?? (typeof warmup_topics === 'string' && warmup_topics.trim()
-        ? [{ label: warmup_topics.trim().slice(0, 300), description: warmup_topics.trim() }] : []),
-      leadListId: undefined,
-      message: '',
-      outreachRoutes: outreachRoutes(initial),
-    }
-  })
+  const [policy, setPolicy] = useState(() => routineDraft(automation?.routine))
   const [saving, setSaving] = useState(false)
   const [interestPending, setInterestPending] = useState(false)
   const lists = useQuery(api.models.list, {})
@@ -120,8 +98,8 @@ export function RoutinePopup({
   const change = <K extends keyof RoutinePolicy>(key: K, value: RoutinePolicy[K]) =>
     setPolicy((p) => ({ ...p, [key]: value }))
   // Reads an activity setting, falling back to its default when it has never been saved.
-  const num = (key: string) => Number(policy.activity[key] ?? feedSetting(key).default)
-  const flag = (key: string) => Boolean(policy.activity[key] ?? feedSetting(key).default)
+  const num = (key: BrowsingNumberKey) => Number(policy.activity[key] ?? browsingNumbers[key].default)
+  const flag = (key: BrowsingFlagKey) => Boolean(policy.activity[key] ?? browsingFlags[key])
   const setActivity = (patch: Record<string, number | boolean | string>) =>
     change('activity', { ...policy.activity, ...patch })
 
@@ -133,15 +111,14 @@ export function RoutinePopup({
     : 'Off. No outreach follows or DMs.'
 
   // Binds a min/max activity pair. Bounds come from the two settings' definitions.
-  const rangeSetting = (label: string, minKey: string, maxKey: string, unit?: string) => (
+  const rangeSetting = (label: string, minKey: BrowsingNumberKey, maxKey: BrowsingNumberKey, unit?: string) => (
     <RangeField
       id={minKey}
       label={label}
       unit={unit}
       limits={{
-        min: feedSetting(minKey).min,
-        max: feedSetting(maxKey).max,
-        step: feedSetting(minKey).step,
+        min: browsingNumbers[minKey].min,
+        max: browsingNumbers[maxKey].max,
       }}
       minValue={num(minKey)}
       maxValue={num(maxKey)}
@@ -192,16 +169,9 @@ export function RoutinePopup({
     if (!canSave) return
     setSaving(true)
     try {
-      validateRoutine(policy)
-      const data = {
-        name: name.trim(),
-        modelIds,
-        routine: policy,
-        nodes: [],
-        edges: [],
-      }
+      const data = routinePayload(name, modelIds, policy)
       if (automation) await update({ id: automation._id, ...data })
-      else await create(data)
+      else await create({ ...data, nodes: [], edges: [] })
       toast.success('Automation saved')
       onClose()
     } catch (error) {
@@ -509,14 +479,4 @@ export function RoutinePopup({
 function span(min: number, max: number) {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return '?'
   return min === max ? String(min) : `${min}–${max}`
-}
-
-// Returns the first rule the routine breaks, or an empty string when it is valid.
-function routineProblem(policy: RoutinePolicy) {
-  try {
-    validateRoutine(policy)
-    return ''
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error)
-  }
 }

@@ -39,19 +39,19 @@ test('login retries and setup starts are rounded up, reject invalid times, and a
   ).toBeUndefined()
   for (const startedAt of [0, -1, Number.MAX_SAFE_INTEGER + 1]) {
     await expect(
-      t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
+      t.mutation(internal.modelSetup.modelSetupEnrollInternal, {
         profileId: profile._id,
         modelId: list._id,
         startedAt,
       }),
     ).rejects.toThrow('Invalid setup start time')
   }
-  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
+  await t.mutation(internal.modelSetup.modelSetupEnrollInternal, {
     profileId: profile._id,
     modelId: list._id,
     startedAt: timestamp,
   })
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0].startedAt).toBe(
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0].startedAt).toBe(
     Math.ceil(timestamp),
   )
 })
@@ -88,6 +88,26 @@ test('encrypted IG credentials are deduplicated, assigned, and deleted with the 
   expect((await t.query(internal.igAccounts.availableInternal, { count: 1 })).page).toEqual([])
 })
 
+test('all account read paths use the linked profile connection after logout and login', async () => {
+  const t = createConvexTest()
+  const profile = (await seedProfile(t))!
+  const accountId = await t.run(async ctx => {
+    const id = await ctx.db.insert('igAccounts', { usernameHash: 'connection', ciphertext: 'encrypted', status: 'connected', profileId: profile._id, createdAt: 0 })
+    await ctx.db.patch(profile._id, { igAccountId: id, igLoggedIn: false })
+    return id
+  })
+  for (const loggedIn of [false, true, false]) {
+    await t.mutation(api.profiles.mutations.setIgState, { profileId: profile._id, igLoggedIn: loggedIn })
+    const expected = loggedIn ? 'connected' : 'assigned'
+    expect((await t.query(internal.igAccounts.byIdInternal, { id: accountId }))?.status).toBe(expected)
+    expect((await t.query(internal.igAccounts.byUsernameHashInternal, { usernameHash: 'connection' }))?.status).toBe(expected)
+    expect((await t.query(internal.igAccounts.byProfileInternal, { profileId: profile._id }))?.status).toBe(expected)
+    expect((await t.query(internal.igAccounts.listInternal, {}))[0].status).toBe(expected)
+    expect((await t.query(internal.igAccounts.pageInternal, { cursor: null, count: 10 })).page[0].status).toBe(expected)
+    expect((await t.query(internal.igAccounts.connectedNamesInternal, {})).page).toHaveLength(loggedIn ? 1 : 0)
+  }
+})
+
 test('allocation can scan past unreadable available credentials', async () => {
   const t = createConvexTest()
   await t.mutation(internal.igAccounts.importEncryptedInternal, { rows: [
@@ -107,29 +127,29 @@ test('model setup in Convex resets outreach on moves and opens it after three po
   const profile = (await seedProfile(t, { name: 'model profile' }))!
   await t.mutation(api.profiles.mutations.bulkAddToModel,
     { profileIds: [profile._id], modelId: first._id })
-  await t.mutation(internal.igAccounts.modelSetupEnrollInternal,
+  await t.mutation(internal.modelSetup.modelSetupEnrollInternal,
     { profileId: profile._id, modelId: first._id, startedAt: 1 })
   for (const postSourceIds of ['123456789', Array.from({ length: 9 }, (_, i) => i)]) {
-    await expect(t.mutation(internal.igAccounts.modelSetupPatchInternal,
+    await expect(t.mutation(internal.modelSetup.modelSetupPatchInternal,
       { profileId: profile._id, modelId: first._id, patch: { postSourceIds }, clear: [] }))
       .rejects.toThrow('Invalid model setup update')
   }
-  await expect(t.mutation(internal.igAccounts.modelSetupPatchInternal,
+  await expect(t.mutation(internal.modelSetup.modelSetupPatchInternal,
     { profileId: profile._id, modelId: first._id, patch: { postDates: ['2026-09-27', 1] }, clear: [] }))
     .rejects.toThrow('Invalid model setup update')
   expect((await t.query(internal.profiles.queries.getByIdInternal,
     { profileId: profile._id }))?.outreachReady).toBe(false)
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, {
     profileId: profile._id, modelId: first._id, patch: { postSourceIds: Array.from({ length: 9 }, (_, i) => `post-${i}`) }, clear: [],
   })
   expect((await t.query(internal.profiles.queries.getByIdInternal,
     { profileId: profile._id }))?.outreachReady).toBe(false)
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.outreachReadyMarked)
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]?.outreachReadyMarked)
     .toBeUndefined()
-  await expect(t.mutation(internal.igAccounts.modelSetupPatchInternal,
+  await expect(t.mutation(internal.modelSetup.modelSetupPatchInternal,
     { profileId: profile._id, modelId: first._id, patch: { outreachReadyMarked: true }, clear: [] }))
     .rejects.toThrow('3 recorded posts')
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: first._id,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { profileId: profile._id, modelId: first._id,
     patch: { postDates: Array.from({ length: 9 }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`) },
     clear: [] })
   expect((await t.query(internal.profiles.queries.getByIdInternal,
@@ -139,59 +159,59 @@ test('model setup in Convex resets outreach on moves and opens it after three po
     { profileIds: [profile._id], modelId: second._id })
   expect((await t.query(internal.profiles.queries.getByIdInternal,
     { profileId: profile._id }))?.outreachReady).toBe(false)
-  await expect(t.mutation(internal.igAccounts.modelSetupPatchInternal,
+  await expect(t.mutation(internal.modelSetup.modelSetupPatchInternal,
     { profileId: profile._id, modelId: first._id, patch: { outreachReadyMarked: true }, clear: [] }))
     .rejects.toThrow('moved to another model')
 
-  await t.mutation(internal.igAccounts.modelSetupEnrollInternal,
+  await t.mutation(internal.modelSetup.modelSetupEnrollInternal,
     { profileId: profile._id, modelId: second._id, startedAt: 2 })
-  const state = (await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]!
+  const state = (await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]!
   expect(state).toMatchObject({ modelId: second._id, postSourceIds: [], startedAt: 2 })
   expect((await t.query(internal.profiles.queries.getByIdInternal,
     { profileId: profile._id }))?.outreachReady).toBe(false)
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
     patch: { targetUsername: 'first_name', pending: { kind: 'username', date: '2026-09-27' } },
     clear: [] })
-  await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+  await t.mutation(internal.modelSetup.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'completed' })
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0])
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0])
     .toMatchObject({ usernameDone: true, targetUsername: 'first_name', postSourceIds: [] })
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.pending).toBeUndefined()
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]?.pending).toBeUndefined()
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
     patch: { targetUsername: 'new_name', pending: { kind: 'username', date: '2026-09-27' } },
     clear: [] })
-  await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+  await t.mutation(internal.modelSetup.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'completed' })
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0])
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0])
     .toMatchObject({ usernameDone: true, targetUsername: 'new_name' })
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.fullNameDone)
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]?.fullNameDone)
     .toBeUndefined()
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
     patch: { fullName: 'New Name', pending: { kind: 'fullName', date: '2026-09-27' } }, clear: [] })
-  await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+  await t.mutation(internal.modelSetup.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'completed' })
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0])
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0])
     .toMatchObject({ usernameDone: true, fullNameDone: true, fullName: 'New Name' })
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal,
     { profileId: profile._id, modelId: second._id, patch: { pending: { kind: 'avatar', date: '2026-09-27' } }, clear: [] })
-  await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+  await t.mutation(internal.modelSetup.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'failed' })
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.pending).toBeUndefined()
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal,
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]?.pending).toBeUndefined()
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal,
     { profileId: profile._id, modelId: second._id, patch: { pending: { kind: 'avatar', date: '2026-09-27' } }, clear: [] })
-  await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+  await t.mutation(internal.modelSetup.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'completed' })
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.avatarDone).toBe(true)
-  await expect(t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]?.avatarDone).toBe(true)
+  await expect(t.mutation(internal.modelSetup.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'completed' })).rejects.toThrow('No active model setup action')
 
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, { profileId: profile._id, modelId: second._id,
     patch: { postSourceIds: Array.from({ length: 8 }, (_, i) => `source-${i}`),
       postDates: Array.from({ length: 8 }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`),
       pending: { kind: 'post', sourceId: 'source-8', date: '2026-09-27' } }, clear: [] })
-  await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+  await t.mutation(internal.modelSetup.modelSetupReconcileInternal,
     { profileId: profile._id, resolution: 'completed' })
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.postSourceIds).toHaveLength(9)
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]?.postSourceIds).toHaveLength(9)
   expect((await t.query(internal.profiles.queries.getByIdInternal,
     { profileId: profile._id }))?.outreachReady).toBe(true)
 })
@@ -202,8 +222,8 @@ test.each(['post', 'avatar', 'username'] as const)('pending %s prevents model ch
   const second = (await seedModel(t, 'Second'))!
   const profile = (await seedProfile(t))!
   await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: first._id })
-  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: first._id, startedAt: 1 })
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
+  await t.mutation(internal.modelSetup.modelSetupEnrollInternal, { profileId: profile._id, modelId: first._id, startedAt: 1 })
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, {
     profileId: profile._id, modelId: first._id, patch: { pending: { kind, date: '2026-10-10' } }, clear: [],
   })
   await expect(t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: second._id }))
@@ -212,17 +232,17 @@ test.each(['post', 'avatar', 'username'] as const)('pending %s prevents model ch
     .rejects.toThrow('pending model setup action')
   await expect(t.mutation(api.models.remove, { id: first._id })).rejects.toThrow('pending model setup actions')
   await t.run(ctx => ctx.db.patch(profile._id, { modelIds: [second._id] }))
-  await expect(t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: second._id, startedAt: 1 }))
+  await expect(t.mutation(internal.modelSetup.modelSetupEnrollInternal, { profileId: profile._id, modelId: second._id, startedAt: 1 }))
     .rejects.toThrow('pending model setup action')
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.pending?.kind).toBe(kind)
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]?.pending?.kind).toBe(kind)
   await t.run(ctx => ctx.db.patch(profile._id, { modelIds: [first._id] }))
-  await t.mutation(internal.igAccounts.modelSetupReconcileInternal, { profileId: profile._id, resolution: 'failed' })
+  await t.mutation(internal.modelSetup.modelSetupReconcileInternal, { profileId: profile._id, resolution: 'failed' })
   await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: second._id })
-  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: second._id, startedAt: 1 })
-  await expect(t.mutation(internal.igAccounts.modelSetupPatchInternal, {
+  await t.mutation(internal.modelSetup.modelSetupEnrollInternal, { profileId: profile._id, modelId: second._id, startedAt: 1 })
+  await expect(t.mutation(internal.modelSetup.modelSetupPatchInternal, {
     profileId: profile._id, modelId: first._id, patch: { pending: { kind, date: '2026-10-10' } }, clear: [],
   })).rejects.toThrow('moved to another model')
-  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.pending).toBeUndefined()
+  expect((await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]?.pending).toBeUndefined()
 })
 
 test('browser login records a connected browser account and starts model setup', async () => {

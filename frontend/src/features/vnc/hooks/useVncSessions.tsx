@@ -64,7 +64,6 @@ function useVncSessionSource(enabled: boolean) {
     topic: 'displays',
     onEvent: handleSocketEvent,
     enabled: active,
-    eventsOnly: true,
     pauseWhenHidden: true,
   })
 

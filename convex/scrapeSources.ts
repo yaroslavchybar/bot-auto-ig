@@ -1,3 +1,4 @@
+import { releasedSourceRun } from './scraperPolicy'
 import { v } from 'convex/values'
 import { paginationOptsValidator } from 'convex/server'
 import { internalMutation, mutation, query } from './_generated/server'
@@ -184,11 +185,7 @@ export const settings = mutation({
     // Fence in-flight work so changing the range never saves out-of-range leads.
     for (const source of sources) {
       await ctx.db.patch(source._id, {
-        running: false,
-        runId: undefined,
-        leaseUntil: undefined,
-        runKind: undefined,
-        currentPostId: undefined,
+        ...releasedSourceRun,
         nextCheckAt: Date.now(),
         error: undefined,
       })
@@ -205,11 +202,7 @@ export const setEnabled = mutation({
     if (source.enabled === enabled) return
     await ctx.db.patch(sourceId, {
       enabled,
-      running: false,
-      runId: undefined,
-      leaseUntil: undefined,
-      currentPostId: undefined,
-      runKind: undefined,
+      ...releasedSourceRun,
       ...(enabled ? { nextCheckAt: Date.now(), error: undefined } : {}),
     })
     if (!enabled)
@@ -235,10 +228,8 @@ export const remove = mutation({
     if (!source) return
     await ctx.db.patch(sourceId, {
       enabled: false,
-      running: false,
+      ...releasedSourceRun,
       deleting: true,
-      runId: undefined,
-      leaseUntil: undefined,
     })
     await syncSourceCount(ctx, source.listId)
     await ctx.scheduler.runAfter(0, internal.scrapeSources.cleanup, { sourceId, remove: true })
@@ -351,11 +342,7 @@ export const trimPosts = internalMutation({
     }
     if (cancelled)
       await ctx.db.patch(source._id, {
-        running: false,
-        runId: undefined,
-        leaseUntil: undefined,
-        currentPostId: undefined,
-        runKind: undefined,
+        ...releasedSourceRun,
       })
     if (!batch.isDone)
       await ctx.scheduler.runAfter(0, internal.scrapeSources.trimPosts, {
@@ -384,9 +371,8 @@ export const cleanupList = internalMutation({
     for (const source of rows) {
       await ctx.db.patch(source._id, {
         enabled: false,
-        running: false,
+        ...releasedSourceRun,
         deleting: true,
-        runId: undefined,
       })
       await ctx.scheduler.runAfter(0, internal.scrapeSources.cleanup, {
         sourceId: source._id,
@@ -558,9 +544,7 @@ export const claim = internalMutation({
     if (!source.enabled || source.deleting || !list) {
       await ctx.db.patch(source._id, {
         enabled: false,
-        running: false,
-        runId: undefined,
-        leaseUntil: undefined,
+        ...releasedSourceRun,
       })
       await ctx.scheduler.runAfter(0, internal.scrapeSources.cleanup, {
         sourceId: source._id,
@@ -577,11 +561,7 @@ export const claim = internalMutation({
     ) {
       if (post) await ctx.db.patch(post._id, { scheduled: false, monitoring: false })
       await ctx.db.patch(source._id, {
-        running: false,
-        runId: undefined,
-        leaseUntil: undefined,
-        currentPostId: undefined,
-        runKind: undefined,
+        ...releasedSourceRun,
       })
       return null
     }
@@ -716,11 +696,7 @@ export const finish = internalMutation({
     const success = args.status === 'completed'
     const delay = success ? DAY : args.status === 'paused' ? 0 : HOUR
     const patch: Partial<Doc<'scrapeSources'>> = {
-      running: false,
-      runKind: undefined,
-      runId: undefined,
-      leaseUntil: undefined,
-      currentPostId: undefined,
+      ...releasedSourceRun,
       error: args.error?.slice(0, 500),
     }
     if (source.runKind === 'posts') {
@@ -800,11 +776,7 @@ export const expirePost = internalMutation({
     const source = await ctx.db.get(post.sourceId)
     if (source?.currentPostId === postId)
       await ctx.db.patch(source._id, {
-        running: false,
-        runId: undefined,
-        leaseUntil: undefined,
-        currentPostId: undefined,
-        runKind: undefined,
+        ...releasedSourceRun,
       })
   },
 })

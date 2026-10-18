@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as accountConnection from "../accountConnection.js";
 import type * as analytics from "../analytics.js";
 import type * as analyticsActivity from "../analyticsActivity.js";
 import type * as automations_helpers from "../automations/helpers.js";
@@ -31,6 +32,7 @@ import type * as leadMemberships from "../leadMemberships.js";
 import type * as leadScreening from "../leadScreening.js";
 import type * as leadStats from "../leadStats.js";
 import type * as leads from "../leads.js";
+import type * as modelSetup from "../modelSetup.js";
 import type * as modelSetupPolicy from "../modelSetupPolicy.js";
 import type * as models from "../models.js";
 import type * as ownPostLikers from "../ownPostLikers.js";
@@ -64,6 +66,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  accountConnection: typeof accountConnection;
   analytics: typeof analytics;
   analyticsActivity: typeof analyticsActivity;
   "automations/helpers": typeof automations_helpers;
@@ -87,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   leadScreening: typeof leadScreening;
   leadStats: typeof leadStats;
   leads: typeof leads;
+  modelSetup: typeof modelSetup;
   modelSetupPolicy: typeof modelSetupPolicy;
   models: typeof models;
   ownPostLikers: typeof ownPostLikers;

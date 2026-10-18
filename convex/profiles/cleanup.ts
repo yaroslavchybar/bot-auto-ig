@@ -1,3 +1,4 @@
+import { releasedSourceRun } from '../scraperPolicy'
 import { internal } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx } from '../_generated/server'
@@ -113,11 +114,7 @@ export async function cleanupProfileReferences(
   for (const source of sources)
     await ctx.db.patch(source._id, {
       profileId: undefined,
-      running: false,
-      runId: undefined,
-      leaseUntil: undefined,
-      runKind: undefined,
-      currentPostId: undefined,
+      ...releasedSourceRun,
       nextCheckAt: Math.min(source.nextCheckAt, Date.now()),
     })
   if ([senders, screenings, sources].some((rows) => rows.length === batchSize))

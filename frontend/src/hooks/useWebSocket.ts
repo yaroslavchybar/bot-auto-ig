@@ -4,12 +4,6 @@ import { env } from '@/lib/env'
 import { useAppAuth } from '@/lib/auth'
 import { addWebSocketBreadcrumb } from '@/lib/sentry'
 
-export interface AutomationProgress {
-  totalAccounts: number
-  currentProfile: string | null
-  currentTask: string | null
-}
-
 import type { SocketTopic, WorkerEvent } from '../../../server/shared/contracts'
 export type WebSocketMessage = WorkerEvent
 
@@ -18,8 +12,6 @@ interface UseWebSocketOptions {
   autoConnect?: boolean
   enabled?: boolean
   pauseWhenHidden?: boolean
-  eventsOnly?: boolean
-  automationId?: string | null
   topic?: SocketTopic
   onEvent?: (message: WebSocketMessage) => void
 }
@@ -44,81 +36,6 @@ function getReconnectDelay(attempt: number): number {
   const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, attempt), MAX_RECONNECT_DELAY)
   const jitter = delay * 0.2 * Math.random()
   return delay + jitter
-}
-
-/* ── Check if message matches the automation filter ── */
-
-function matchesAutomationFilter(
-  data: WebSocketMessage,
-  activeAutomationId: string | null,
-): boolean {
-  const msgAutomationId = data.automationId ?? null
-  if (!activeAutomationId) return true
-  return msgAutomationId === activeAutomationId
-}
-
-/* ── Handle progress-related messages (pure function) ── */
-
-function handleProgressUpdate(
-  data: WebSocketMessage,
-  currentProfileRef: React.MutableRefObject<string | null>,
-  setProgress: React.Dispatch<React.SetStateAction<AutomationProgress>>,
-) {
-  if (data.type === 'session_started') {
-    setProgress({ totalAccounts: data.totalAccounts || 0, currentProfile: null, currentTask: null })
-  } else if (data.type === 'profile_started') {
-    currentProfileRef.current = data.profileName || null
-    setProgress((prev) => ({
-      ...prev,
-      currentProfile: data.profileName || null,
-      currentTask: null,
-    }))
-  } else if (data.type === 'task_started') {
-    setProgress((prev) => ({ ...prev, currentTask: data.task || null }))
-  } else if (data.type === 'profile_completed') {
-    currentProfileRef.current = null
-    setProgress((prev) => ({ ...prev, currentProfile: null, currentTask: null }))
-  }
-}
-
-/* ── Message processing (plain fn, no hooks) ── */
-
-function processSocketMessage(
-  rawMessage: string,
-  options: {
-    automationId?: string | null
-    eventsOnly: boolean
-    onEvent?: (message: WebSocketMessage) => void
-    currentProfileRef: React.MutableRefObject<string | null>
-    setStatus: React.Dispatch<React.SetStateAction<'idle' | 'running' | 'stopping'>>
-    setProgress: React.Dispatch<React.SetStateAction<AutomationProgress>>
-  },
-) {
-  const { automationId, eventsOnly, onEvent, currentProfileRef, setStatus, setProgress } = options
-  try {
-    const data: WebSocketMessage = JSON.parse(rawMessage)
-    try {
-      onEvent?.(data)
-    } catch {
-      /* ignore */
-    }
-    if (eventsOnly) return
-    const activeAutomationId = automationId ?? null
-    const msgAutomationId = data.automationId ?? null
-    const matches = matchesAutomationFilter(data, activeAutomationId)
-
-    if (data.type === 'status' && data.status) {
-      if (activeAutomationId || msgAutomationId) return
-      setStatus(data.status as 'idle' | 'running' | 'stopping')
-    } else if (data.type === 'automation_status' && data.status) {
-      if (!matches || (activeAutomationId && !msgAutomationId)) return
-      setStatus(data.status as 'idle' | 'running' | 'stopping')
-    } else if (matches && !(activeAutomationId && !msgAutomationId)) {
-      handleProgressUpdate(data, currentProfileRef, setProgress)
-    }
-  } catch {
-    /* ignore parse errors */
-  }
 }
 
 /* ── Safely close a WebSocket if it is not already closed ── */
@@ -235,9 +152,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     autoConnect = true,
     enabled = true,
     pauseWhenHidden = false,
-    automationId,
     onEvent,
-    eventsOnly = false,
     topic = 'all',
   } = options
   const defaultUrl = getDefaultWebSocketUrl()
@@ -246,12 +161,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const wsUrl = subscriptionUrl.toString()
   const { getToken } = useAppAuth()
 
-  const [status, setStatus] = useState<'idle' | 'running' | 'stopping'>('idle')
-  const [progress, setProgress] = useState<AutomationProgress>({
-    totalAccounts: 0,
-    currentProfile: null,
-    currentTask: null,
-  })
   const documentVisible = useDocumentVisibility()
   const isVisible = !pauseWhenHidden || documentVisible
   const connectionRef = useRef<SocketConnection>({
@@ -262,17 +171,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     reconnectAttempt: 0,
     cancelled: { current: false },
   })
-  const currentProfileRef = useRef<string | null>(null)
 
   const handleSocketMessage = useEffectEvent((rawMessage: string) => {
-    processSocketMessage(rawMessage, {
-      automationId,
-      eventsOnly,
-      onEvent,
-      currentProfileRef,
-      setStatus,
-      setProgress,
-    })
+    try {
+      onEvent?.(JSON.parse(rawMessage) as WebSocketMessage)
+    } catch {
+      // Malformed events and consumer failures must not disconnect the stream.
+    }
   })
 
   const [connected, setConnected] = useState(false)
@@ -338,5 +243,5 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     cleanupConnection(connection, connection.cancelled, setConnected)
   }, [])
 
-  return { status, progress, connected, connect, disconnect }
+  return { connected, connect, disconnect }
 }

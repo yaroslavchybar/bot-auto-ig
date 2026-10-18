@@ -34,6 +34,7 @@ export async function loadFullRuntimeSnapshot(
   automationId: string,
   modelIds: string[],
   first: RuntimeSnapshot,
+  fetchPage = automationsRuntimePage,
 ): Promise<NonNullable<RuntimeSnapshot>> {
   const base = first ?? { automation: {}, profiles: [] }
   const seen = new Map<string, Record<string, any>>()
@@ -44,25 +45,29 @@ export async function loadFullRuntimeSnapshot(
   for (const row of base.progress ?? []) progress.set(String(row.profileId), row)
   for (const listId of modelIds.map(String)) {
     let cursor: string | null | undefined = null
-    let guard = 0
-    while (guard++ < 500) {
-      const page = await automationsRuntimePage(automationId, listId, cursor ?? undefined)
-      if (!page) break
+    const cursors = new Set<string>()
+    let complete = false
+    for (let pageNumber = 0; pageNumber < 500; pageNumber++) {
+      const page = await fetchPage(automationId, listId, cursor ?? undefined)
+      if (!page) throw new Error('Runtime page is unavailable')
       for (const profile of page.profiles ?? []) {
         const id = String(profile.id ?? '')
-        if (id && !seen.has(id)) seen.set(id, profile as Record<string, any>)
+        if (id) seen.set(id, profile as Record<string, any>)
       }
       for (const row of page.warmups ?? []) {
         const id = String(row.profileId)
-        if (id && !warmups.has(id)) warmups.set(id, row)
+        if (id) warmups.set(id, row)
       }
       for (const row of page.progress ?? []) {
         const id = String(row.profileId)
-        if (id && !progress.has(id)) progress.set(id, row)
+        if (id) progress.set(id, row)
       }
-      if (page.isDone || !page.nextCursor) break
+      if (page.isDone) { complete = true; break }
+      if (!page.nextCursor || cursors.has(page.nextCursor)) throw new Error('Runtime pagination cursor is missing or repeated')
+      cursors.add(page.nextCursor)
       cursor = page.nextCursor
     }
+    if (!complete) throw new Error('Runtime pagination exceeded the page limit')
   }
   return {
     automation: base.automation,

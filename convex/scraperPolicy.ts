@@ -2,6 +2,14 @@ import type { Doc, Id } from './_generated/dataModel'
 import type { QueryCtx } from './_generated/server'
 
 export const DAY = 86_400_000
+/** Release the complete source lease on every cancellation or completion path. */
+export const releasedSourceRun = {
+  running: false,
+  runId: undefined,
+  leaseUntil: undefined,
+  runKind: undefined,
+  currentPostId: undefined,
+} satisfies Partial<Doc<'scrapeSources'>>
 export const scraperBusy = (profile: Pick<Doc<'profiles'>, 'inUse' | 'status'>) =>
   profile.inUse || profile.status === 'running'
 

@@ -1,0 +1,19 @@
+{
+  "now": 1790812500000,
+  "cases": [
+    { "name": "ready", "profile": { "igLoggedIn": true }, "delay": 0 },
+    { "name": "logged out", "profile": { "igLoggedIn": false }, "delay": 900000 },
+    { "name": "paused", "profile": { "igLoggedIn": true, "paused": true }, "delay": 900000 },
+    { "name": "busy", "profile": { "igLoggedIn": true, "inUse": true }, "delay": 900000 },
+    { "name": "renaming", "profile": { "igLoggedIn": true, "pendingRenameFrom": "old" }, "delay": 900000 },
+    { "name": "invalid credential", "profile": { "igLoggedIn": true, "igAccountStatus": "invalid" }, "delay": 900000 },
+    { "name": "first login today", "profile": { "igLoggedIn": true, "igAccountStatus": "assigned", "browserLoggedInAt": 1790812499000 }, "delay": 900000 },
+    { "name": "first login yesterday", "profile": { "igLoggedIn": true, "igAccountStatus": "assigned", "browserLoggedInAt": 1790726100000 }, "delay": 0 },
+    { "name": "connected without new login", "profile": { "igLoggedIn": true, "igAccountStatus": "connected" }, "delay": 0 },
+    { "name": "fractional rest", "profile": { "igLoggedIn": true }, "progress": { "nextRunAt": 1790812530000.25 }, "delay": 30001 },
+    { "name": "active reservation", "profile": { "igLoggedIn": true }, "warmup": { "date": "2026-09-30", "activeRun": true }, "delay": 300000 },
+    { "name": "spent daily budget", "profile": { "igLoggedIn": true }, "warmup": { "date": "2026-09-30", "todayMinutes": 10, "minutesUsedToday": 10 }, "delay": 300000 },
+    { "name": "daily rollover", "profile": { "igLoggedIn": true }, "warmup": { "date": "2026-09-29", "todayMinutes": 10, "minutesUsedToday": 10 }, "delay": 0 },
+    { "name": "account issue", "profile": { "igLoggedIn": true }, "progress": { "issue": "Check account" }, "delay": 900000 }
+  ]
+}

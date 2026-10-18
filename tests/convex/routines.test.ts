@@ -12,11 +12,10 @@ test('routine settings accept plain-English topic descriptions up to 1,000 chara
   expect(() => validateRoutine({ ...defaultRoutine, activity: { warmup_topics: 'x'.repeat(1001) } })).toThrow('Invalid activity setting');
 });
 
-test('outreach waits until day eight even when an old saved setting enables day one', async () => {
+test('outreach waits until day eight', async () => {
   const { t, automation, args, loggedIn } = await setup();
   await loggedIn();
   await t.run(async ctx => {
-    await ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreachStartDay: 1 } });
     const warmup = await ctx.db.query('warmupStates').unique();
     await ctx.db.patch(warmup!._id, { day: 7 });
   });
@@ -37,16 +36,36 @@ test('outreach waits until day eight even when an old saved setting enables day 
   expect(await reserveFollow(t, args)).toBeNull();
 });
 
+test('outreach stages use the linked browser login even when the stored credential status is stale', async () => {
+  const { t, args, profile, loggedIn } = await setup();
+  await loggedIn();
+  const accountId = await t.run(async ctx => {
+    const id = await ctx.db.insert('igAccounts', { ciphertext: 'encrypted', usernameHash: 'linked-browser', status: 'connected', profileId: profile._id, createdAt: 0 });
+    await ctx.db.patch(profile._id, { igAccountId: id, igLoggedIn: false });
+    return id;
+  });
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
+  expect(await reserveFollow(t, args)).toBeNull();
+  expect(await t.query(internal.routines.notifications, args)).toBeNull();
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
+  await t.run(async ctx => {
+    await ctx.db.patch(accountId, { status: 'assigned', browserLoggedInAt: Date.now() - 86_400_000 });
+    await ctx.db.patch(profile._id, { igLoggedIn: true });
+  });
+  expect((await t.query(internal.routines.target, args)).remaining).toBe(2);
+  expect(await reserveFollow(t, args)).not.toBeNull();
+});
+
 test('confirmed posts automatically unlock outreach on day eight without a profile toggle', async () => {
   const { t, profile, list, args } = await setup();
   await t.mutation(api.profiles.mutations.setIgState, { profileId: profile._id, igLoggedIn: true });
-  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
+  await t.mutation(internal.modelSetup.modelSetupEnrollInternal, {
     profileId: profile._id, modelId: list._id, startedAt: Date.now(), });
   await t.run(async ctx => {
     const warmup = await ctx.db.query('warmupStates').unique();
     await ctx.db.patch(warmup!._id, { day: 7 });
   });
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
+  await t.mutation(internal.modelSetup.modelSetupPatchInternal, {
     profileId: profile._id, modelId: list._id,
     patch: { postSourceIds: ['one', 'two', 'three'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [], });
   expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true);
@@ -255,11 +274,9 @@ test('uncertain sends remain reserved and show as an incomplete target when time
   expect(await t.query(internal.routines.ready, args)).toBe(false);
 });
 
-test('saved routines with a fixed daily increase still load and use random growth', async () => {
-  const { t, args, loggedIn, profile, automation } = await setup();
+test('confirmed follows grow the outreach allowance by a random daily increment', async () => {
+  const { t, args, loggedIn, profile } = await setup();
   await loggedIn();
-  await t.run(ctx => ctx.db.patch(automation._id, {
-    routine: { ...automation.routine!, dailyIncrease: 35 }, }));
   const claim = (await reserveFollow(t, args))!;
   await t.mutation(internal.routines.recordFollow, {
     profileId: profile._id, leadId: claim.leadId, followed: true, });
@@ -294,7 +311,6 @@ async function setup() {
     modelIds: [list._id],
     routine: {
       ...defaultRoutine,
-      outreachStartDay: 1,
       initialDms: 2,
       maxDms: 3,
       outreachEnabled: true,
@@ -602,7 +618,7 @@ test('moving between models preserves account progress, warm-up budgets, and fol
   await t.mutation(api.profiles.mutations.bulkRemoveFromModel, { profileIds: [profile._id], modelId: list._id });
   expect(await snapshot()).toEqual(before);
   await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: destination._id });
-  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: destination._id, startedAt: Date.now() });
+  await t.mutation(internal.modelSetup.modelSetupEnrollInternal, { profileId: profile._id, modelId: destination._id, startedAt: Date.now() });
   expect(await snapshot()).toEqual(before);
   await loggedIn();
   const nextArgs = { ...args, automationId: next._id };

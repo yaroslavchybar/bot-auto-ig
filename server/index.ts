@@ -6,7 +6,6 @@ import './shared/sentry.js'
 import { captureConsole } from './logs/console.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { pruneOldCloakBrowsers } from './browser/cloakCache.js'
-import { backfillLocalCloakSeeds } from './browser/seedBackfill.js'
 import logger, { logOperation, addLogContext, redactLogValues } from './shared/logger.js'
 import { automationsReconcileInterrupted } from './shared/convexClient.js'
 import { startRuntime, stopRuntime, runtimeRequest } from './shared/runtime.js'
@@ -103,12 +102,6 @@ async function startServer(): Promise<void> {
     // Convex dev deploys alongside the server, so the reconcile endpoint
     // may 404 until the new functions are live. Retry instead of crashing.
     await retryStartup(() => automationsReconcileInterrupted(), 'automation reconcile')
-
-    await retryStartup(backfillLocalCloakSeeds, 'Cloak fingerprint seed backfill')
-    logger.info({
-      event: 'index.cloak_fingerprint_seed_backfill_complete',
-      message: 'Cloak fingerprint seed backfill complete',
-    })
 
     // Reset stale profile runtime flags left behind by unexpected restarts.
     const reconciled = await runtimeRequest<{ cleared: number; errors: string[] }>(

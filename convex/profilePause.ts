@@ -1,3 +1,4 @@
+import { releasedSourceRun } from './scraperPolicy'
 import type { Id } from './_generated/dataModel'
 import type { MutationCtx } from './_generated/server'
 import { patchProfile } from './workerMetadata'
@@ -26,11 +27,7 @@ export async function setProfilePaused(
     for (const source of sources)
       if (source.running)
         await ctx.db.patch(source._id, {
-          running: false,
-          runId: undefined,
-          leaseUntil: undefined,
-          runKind: undefined,
-          currentPostId: undefined,
+          ...releasedSourceRun,
         })
   }
 }

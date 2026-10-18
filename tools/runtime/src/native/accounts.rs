@@ -601,8 +601,12 @@ impl Accounts {
     async fn login_inner(&self, id: &str, context: &mut Value) -> Result<()> {
         let account = self.account_for_profile(id).await?;
         let profile = self.profiles.by_id(id).await?;
+        // A manual login can make the query report connected before recovery is persisted.
+        let needs_manual_recovery = account["status"] == "connected"
+            && account["browserLoggedInAt"].is_null()
+            && profile["igLoggedIn"] == true;
         if account.is_null()
-            || account["status"] != "assigned"
+            || (account["status"] != "assigned" && !needs_manual_recovery)
             || profile.is_null()
             || profile["paused"] == true
             || profile["status"] == "deleting"

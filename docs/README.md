@@ -125,11 +125,6 @@ cookies on open and close. The disk cookie jar is not a fallback when Convex is
 unavailable. Cloak Chromium 151+ writes these cookies in a portable format
 because `--fingerprint-portable-cookies` is enabled.
 
-`server/browser/seedBackfill.ts` handles profiles created before seeds were
-stored in Convex. At startup it copies seeds from local files even if those
-profiles are never opened. Failed writes are retried; if they still fail, the
-server does not start. New profiles save their seeds when first opened.
-
 On a future VPS using the same Convex deployment, cookies and seeds can be
 restored. Keep the same proxy and Cloak binary version where possible: a changed
 IP can trigger an Instagram login challenge, and a newer Cloak binary may
