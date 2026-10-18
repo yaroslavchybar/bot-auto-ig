@@ -78,8 +78,6 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     recordNotifications: async () => ({ ok: true, scanLikers: false }),
     readNotifications: async () => [],
     scanPostLikers: async () => {},
-    ownUsername: async () => 'sender',
-    followsUs: async () => { calls.push('follows-us'); return true; },
     reserve: async () => { calls.push('reserve'); return attempt; },
     begin: async () => { calls.push('authorize'); return true; },
     finish: async (_, __, ___, value, blocked) => { calls.push(value ? 'sent' : blocked ? 'blocked' : 'uncertain'); sent = value; },
@@ -367,7 +365,7 @@ test('Instagram warnings stop outreach before reserving or following a lead', as
 
 test('an existing followed recipient is checked and authorized before sending', async () => {
   const s = setup(); await s.run();
-  assert.deepEqual(s.calls, ['browse', 'navigate', 'check-message', 'follows-us', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'close-message', 'browse', 'record-completed',
+  assert.deepEqual(s.calls, ['browse', 'navigate', 'check-message', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'close-message', 'browse', 'record-completed',
   ]);
   assert.equal(s.result().sent, true);
 });
@@ -425,40 +423,47 @@ test('a recipient we no longer follow cannot receive a DM', async () => {
   assert.ok(!s.calls.includes('send') && !s.calls.includes('follow'));
 });
 
-test('notification evidence still requires a current follow-back before composing', async () => {
+test('a follow-back notification permits a DM without opening the Following list', async () => {
   const s = setup();
-  s.deps.followsUs = async (_page, username) => { assert.equal(username, 'sender'); return false; };
+  s.page.getByRole = (() => { throw new Error('Following-list dialogs must not be opened'); }) as Page['getByRole'];
   await s.run();
-  assert.ok(s.calls.includes('dismiss-dm'));
-  assert.ok(!s.calls.includes('message-button') && !s.calls.includes('send'));
-});
-
-test('a failed own-username lookup skips follow-back tasks and retains both kinds of engagement DMs', async () => {
-  const s = setup();
-  s.deps.dmTasks = async () => [s.attempt, { ...s.attempt, leadId: 'liker', engagement: 'like' },
-    { ...s.attempt, leadId: 'commenter', engagement: 'comment' }];
-  s.deps.ownUsername = async () => { throw new Error('Navigation avatar missing'); };
-  s.deps.followsUs = async () => { throw new Error('Follow-back tasks should be skipped'); };
-  await s.run();
-  assert.equal(s.calls.filter(call => call === 'sent').length, 2);
+  assert.ok(s.calls.includes('send') && s.calls.includes('close-message'));
   assert.ok(!s.calls.includes('dismiss-dm'));
   assert.equal(s.result().issue, undefined);
 });
 
-test('a failed own-username lookup still allows new follows and leaves skipped DMs pending', async () => {
-  const s = setup('follow');
-  s.deps.dmTasks = async () => [s.attempt];
-  s.deps.ownUsername = async () => { throw new Error('Navigation avatar missing'); };
+test('notification DMs do not need a signed-in username lookup', async () => {
+  const s = setup();
+  s.deps.dmTasks = async () => [s.attempt, { ...s.attempt, leadId: 'liker', engagement: 'like' },
+    { ...s.attempt, leadId: 'commenter', engagement: 'comment' }];
+  const locate = s.page.locator.bind(s.page);
+  s.page.locator = ((selector: string) => {
+    assert.notEqual(selector, 'a', 'Do not look up the navigation avatar');
+    return locate(selector);
+  }) as Page['locator'];
   await s.run();
-  assert.ok(s.calls.includes('follow'));
-  assert.ok(!s.calls.includes('sent') && !s.calls.includes('dismiss-dm'));
+  assert.equal(s.calls.filter(call => call === 'sent').length, 3);
+  assert.ok(!s.calls.includes('dismiss-dm'));
   assert.equal(s.result().issue, undefined);
 });
 
-test('a stop during own-username lookup does not continue with engagement or follows', async () => {
+test('notification DMs and new follows share the session without a follow-back lookup', async () => {
+  const s = setup('follow');
+  s.deps.dmTasks = async () => [s.attempt];
+  // A DM is for an existing followed lead; new outreach still starts from Follow.
+  s.deps.inspectProfile = async () => {
+    s.setRelationship(s.calls.includes('reserve') ? 'Follow' : 'Following');
+    return { isPrivate: false, canMessage: true };
+  };
+  await s.run();
+  assert.ok(s.calls.includes('follow'));
+  assert.ok(s.calls.includes('sent') && !s.calls.includes('dismiss-dm'));
+  assert.equal(s.result().issue, undefined);
+});
+
+test('a stop while loading DM tasks does not continue with DMs or follows', async () => {
   const s = setup('follow'); let stopped = false;
-  s.deps.dmTasks = async () => [s.attempt, { ...s.attempt, engagement: 'like' }];
-  s.deps.ownUsername = async () => { stopped = true; throw new SessionEnded('Stopped'); };
+  s.deps.dmTasks = async () => { stopped = true; return [s.attempt, { ...s.attempt, engagement: 'like' }]; };
   await s.run(() => stopped);
   assert.ok(!s.calls.includes('sent') && !s.calls.includes('follow') && !s.calls.includes('reserve'));
   assert.equal(s.result().issue, undefined);
@@ -468,8 +473,6 @@ for (const engagement of ['like', 'comment'] as const) for (const relationship o
   test(`${engagement} on our post permits a DM without a follow-back (${relationship})`, async () => {
     const s = setup('dm', relationship);
     s.deps.dmTasks = async () => [{ ...s.attempt, engagement }];
-    s.deps.ownUsername = async () => { throw new Error('Engagement does not require a follower lookup'); };
-    s.deps.followsUs = async () => { throw new Error('An engager need not follow us'); };
     await s.run();
     assert.ok(s.calls.includes('send') && s.calls.includes('close-message'));
     assert.ok(!s.calls.includes('follow'));
@@ -555,7 +558,6 @@ test('a matching like notification triggers snapshots before DM activity without
     checked = true;
   };
   s.deps.dmTasks = async () => checked ? [{ ...s.attempt, engagement: 'like' }] : [];
-  s.deps.followsUs = async () => { throw new Error('Liker snapshots do not require a follow-back'); };
   await s.run();
   assert.ok(s.calls.includes('sent'));
 });
@@ -587,7 +589,7 @@ test('a due follow-back scan queues discovered DMs before activity starts', asyn
   s.deps.dmTasks = async () => discovered ? [s.attempt] : [];
   await s.run();
   assert.ok(s.calls.indexOf('read-notifications') < s.calls.indexOf('record-notifications'));
-  assert.ok(s.calls.indexOf('record-notifications') < s.calls.indexOf('follows-us'));
+  assert.ok(s.calls.indexOf('record-notifications') < s.calls.indexOf('message-button'));
   assert.ok(s.calls.includes('sent'));
 });
 

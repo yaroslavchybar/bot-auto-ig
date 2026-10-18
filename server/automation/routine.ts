@@ -19,7 +19,7 @@ import { followButton, isFollowing, messageWasBlocked, unfollow, outreachProfile
 } from './follow.js';
 import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage } from './outreach-message.js';
 import { renderOutreachMessage } from '../shared/outreachMessage.js';
-import { readOutreachNotifications, ownUsername, followsUs } from './follow-back.js';
+import { readOutreachNotifications } from './follow-back.js';
 import type { OutreachNotification } from '../shared/outreachNotifications.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 import { sleep, random } from "./actions/shared.js";
@@ -54,8 +54,6 @@ const dependencies = {
   recordNotifications: routineRecordNotifications,
   readNotifications: readOutreachNotifications,
   scanPostLikers: scanOwnPostLikers,
-  ownUsername,
-  followsUs,
   dmTasks: routineDmTasks,
   dismissDm: routineDismissDm,
   checkNotifications,
@@ -172,16 +170,7 @@ export async function runRoutineSession(
         }
         if (shouldStop()) return 'stopped';
         const outreachTarget = await deps.target(automation._id, profileId);
-        let dms = await deps.dmTasks(automation._id, profileId);
-        let username = '';
-        if (dms.some(task => !task.engagement)) {
-          try { username = await deps.ownUsername(page); }
-          catch (error) {
-            if (shouldStop()) return 'stopped';
-            dms = dms.filter(task => task.engagement);
-            log({ event: 'automation.routine.follow_back_lookup_skipped', error });
-          }
-        }
+        const dms = await deps.dmTasks(automation._id, profileId);
         if (shouldStop()) return 'stopped';
         let outreachRemaining = outreachTarget.remaining;
         let preferDm = true;
@@ -331,7 +320,7 @@ export async function runRoutineSession(
                 const engagement = 'engagement' in attempt ? attempt.engagement : undefined;
                 scope.add({ dmTrigger: engagement ?? 'follow_back' });
                 if (!(await isFollowing(page)) || (!engagement &&
-                  (!profileState.canMessage || profileState.isPrivate || !(await timed('followBack', () => deps.followsUs(page, username)))))) {
+                  (!profileState.canMessage || profileState.isPrivate))) {
                   await deps.dismissDm(profileId, attempt.leadId);
                   return 'blocked';
                 }

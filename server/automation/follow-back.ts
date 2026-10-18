@@ -1,5 +1,4 @@
 import type { Page } from 'playwright-core';
-import { profileControls } from './follow.js';
 import { actionLocator } from './actions/action-locator.js';
 import { closeNotifications, notificationsHeading, openNotifications } from './actions/instagram-state.js';
 import { BrowseSession } from './actions/session.js';
@@ -101,22 +100,4 @@ export async function ownUsername(page: Page) {
   const username = navigationPath?.split('/')[1];
   if (!username) throw new Error('Could not identify the signed-in Instagram account');
   return username;
-}
-
-/** Notifications can be old: verify the current relationship before composing a DM. */
-export async function followsUs(page: Page, username: string) {
-  if (await page.getByText(/This (?:account|profile) is private/i, { exact: true }).isVisible()) return false;
-  await (await actionLocator(profileControls(page).getByRole('link', { name: /^[\d,.\sKMB]+ following$/i }))).click({ timeout: 10_000 });
-  const dialog = page.getByRole('dialog');
-  try {
-    const search = dialog.getByRole('textbox', { name: 'Search input', exact: true });
-    await search.waitFor({ state: 'visible', timeout: 15_000 });
-    // Instagram puts our account first when present. Otherwise use its server-side search.
-    const own = dialog.getByRole('link', { name: username, exact: true });
-    if (await own.isVisible()) return true;
-    await (await actionLocator(search)).fill(username);
-    return await own.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true, () => false);
-  } finally {
-    await (await actionLocator(dialog.getByRole('button', { name: 'Close', exact: true }), 5000)).click({ timeout: 5000 });
-  }
 }

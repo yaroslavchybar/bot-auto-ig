@@ -174,3 +174,21 @@ test('unrelated likes and empty scans do not trigger liker scraping; matching li
   // Eligibility comes from current follow/DM state, even when the same row is shown again.
   for (let i = 0; i < 2; i++) expect(await record([{ username: lead.username, kind: 'like' }])).toBe(true)
 })
+
+test.each(['follow', 'like', 'comment'] as const)('%s notifications cannot message an already-sent lead, even from a stale queue', async kind => {
+  const { t, args, claim } = await setup()
+  const lead = await claim()
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
+  const notification = { ...args, date: dayKey(), events: [{ username: lead.username, kind }] }
+  await t.mutation(internal.routines.recordNotifications, notification)
+  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
+
+  // Another worker or a manual status update can mark the lead sent after tasks were loaded.
+  await t.run(ctx => ctx.db.patch(lead.leadId, { dmSent: true }))
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: lead.leadId, date: dayKey() })).toBe(false)
+  expect(await t.mutation(internal.routines.recordNotifications, notification)).toBe(false)
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.dmStartedAt).toBeUndefined()
+})

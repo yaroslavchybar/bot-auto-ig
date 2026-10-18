@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Window } from 'happy-dom';
 import type { Page } from 'playwright-core';
-import { readOutreachNotifications, notificationTimeUpperBound, followsUs, ownUsername } from './follow-back.js';
+import { readOutreachNotifications, notificationTimeUpperBound, ownUsername } from './follow-back.js';
 import { followButton, followingButton, messageButton } from './follow.js';
 import { BrowseSession } from './actions/session.js';
 
@@ -110,11 +110,6 @@ test('coarse notification dates keep boundary events and handle the year rollove
   assert.equal(notificationTimeUpperBound(' неизвестноFollowing', now), Infinity);
 });
 
-for (const wording of ['This profile is private', 'This account is private']) test(`${wording} skips inaccessible following lists`, async () => {
-  const page = { getByText: (text: RegExp) => ({ isVisible: async () => text.test(wording) }) } as unknown as Page;
-  assert.equal(await followsUs(page, 'sender'), false);
-});
-
 test('relationship selectors support humanized clicks without role or chained engines', () => {
   const selectors: string[] = [];
   const page = { locator: (selector: string) => { selectors.push(selector); } } as unknown as Page;
@@ -136,33 +131,4 @@ test('own username comes from the navigation avatar, not the recipient avatar', 
   const links = [...window.document.querySelectorAll('a')];
   const page = { locator: () => ({ filter: () => ({ evaluateAll: async (fn: (links: unknown[]) => unknown) => fn(links) }) }) } as unknown as Page;
   try { assert.equal(await ownUsername(page), 'sender'); } finally { await window.happyDOM.close(); }
-});
-
-test('live follow-back verification requires an exact username in the current following dialog', async () => {
-  for (const present of [false, true]) {
-    let closed = false, searched = '';
-    const controls = new Map<string, unknown>();
-    const actionable = <T extends object>(index: number, methods: T) => {
-      const xpath = `/*[1]/*[${index}]`;
-      const target = { ...methods, elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, ...methods, dispose: async () => {} }) };
-      controls.set(`xpath=${xpath}`, target);
-      return target;
-    };
-    const own = { isVisible: async () => false, waitFor: async () => { if (!present) throw new Error('missing'); } };
-    const search = actionable(1, { waitFor: async () => {}, fill: async (value: string) => { searched = value; } });
-    const dialog = { getByRole: (role: string, options: { name: string }) => {
-      if (role === 'textbox') return search;
-      if (role === 'link') { assert.equal(options.name, 'sender'); return own; }
-      return actionable(2, { click: async () => { closed = true; } });
-    } };
-    const page = {
-      getByText: () => ({ isVisible: async () => false }),
-      locator: (selector: string) => selector === 'main header'
-        ? { getByRole: () => actionable(3, { click: async () => {} }) }
-        : controls.get(selector),
-      getByRole: () => dialog,
-    } as unknown as Page;
-    assert.equal(await followsUs(page, 'sender'), present);
-    assert.equal(searched, 'sender'); assert.equal(closed, true);
-  }
 });
