@@ -4,45 +4,67 @@ import { actionLocator } from './actions/action-locator.js';
 import { closeNotifications, notificationsHeading, openNotifications } from './actions/instagram-state.js';
 import { BrowseSession } from './actions/session.js';
 import { smoothScroll } from './actions/scroll.js';
+import type { OutreachNotification } from '../shared/outreachNotifications.js';
 
-/** Read only follow events; likes/comments and suggested accounts are not followers. */
-export async function readFollowNotifications(page: Page, stopped: () => boolean, since = 0,
-  session = new BrowseSession(Infinity, stopped)): Promise<string[] | null> {
+/** Only links before Instagram's event text identify actors; comment mentions are not actors. */
+export function notificationState(el: Element) {
+  let panel = el.parentElement;
+  while (panel && !['auto', 'scroll'].includes(getComputedStyle(panel).overflowY)) panel = panel.parentElement;
+  if (!panel) throw new Error('Notifications scroll container missing');
+  const rows = [...panel.querySelectorAll('[data-pressable-container="true"]')].map(row => {
+    const body = row.children[1];
+    const description = body?.matches('span') ? body : body?.querySelector('span[dir="auto"]');
+    const actors: HTMLAnchorElement[] = [];
+    let kind: OutreachNotification['kind'] | undefined, tail = '';
+    for (const node of description?.childNodes ?? []) {
+      if (node.nodeType === 1 && (node as Element).matches('a[href]')) actors.push(node as HTMLAnchorElement);
+      if (node.nodeType !== 3) continue;
+      const match = node.textContent?.match(/^\s*(?:and\s+(?:\d+\s+)?others\s+)?(started following you\.|liked your (?:post|photo|video|reel)\.|commented:)/i);
+      if (!match) continue;
+      kind = /^started/i.test(match[1]) ? 'follow' : /^liked/i.test(match[1]) ? 'like' : 'comment';
+      tail = node.textContent!.slice(match[0].length);
+      break;
+    }
+    // Likes on comments, story reactions, and mentions do not qualify as post engagement.
+    if (kind !== 'follow' && !row.querySelector('a[href^="/p/"], a[href^="/reel/"]')) kind = undefined;
+    const events: OutreachNotification[] = kind ? actors.flatMap(a => {
+      const href = a.getAttribute('href') ?? '', username = a.textContent?.trim().toLowerCase();
+      return /^\/[\w.]+\/$/.test(href) && username === href.split('/')[1]?.toLowerCase()
+        ? [{ username, kind: kind! }] : [];
+    }) : [];
+    const last = description?.lastElementChild;
+    const date = description?.querySelector('abbr')?.textContent ?? (last?.matches('span') ? last.textContent : tail) ?? '';
+    return { events, date };
+  });
+  const rect = panel.getBoundingClientRect(), view = el.ownerDocument.defaultView!;
+  return { rows, bottom: panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 2,
+    height: panel.scrollHeight, loading: !!panel.querySelector('[role="progressbar"]'), panelHeight: panel.clientHeight,
+    box: { left: Math.max(0, rect.left), right: Math.min(view.innerWidth, rect.right),
+      top: Math.max(0, rect.top), bottom: Math.min(view.innerHeight, rect.bottom) } };
+}
+
+/** Read follow-backs and engagement on our posts from the All notifications filter. */
+export async function readOutreachNotifications(page: Page, stopped: () => boolean, since = 0,
+  session = new BrowseSession(Infinity, stopped)): Promise<OutreachNotification[] | null> {
   if (stopped()) return null;
   if (!await openNotifications(page, session)) return null;
   const heading = notificationsHeading(page);
   try {
-    await (await actionLocator(page.getByRole('button', { name: 'Follows', exact: true }))).click({ timeout: 10_000 });
-    const names = new Set<string>();
+    await (await actionLocator(page.getByRole('button', { name: 'All', exact: true }))).click({ timeout: 10_000 });
+    const events = new Map<string, OutreachNotification>();
     let stable = 0, previous = '';
     for (let step = 0; step < 60 && !stopped() && !session.stopped(); step++) {
-      const state = await heading.evaluate(el => {
-        let panel = el.parentElement;
-        while (panel && !['auto', 'scroll'].includes(getComputedStyle(panel).overflowY)) panel = panel.parentElement;
-        if (!panel) throw new Error('Notifications scroll container missing');
-        const rows = [...panel.querySelectorAll('[data-pressable-container="true"]')]
-          .filter(row => /started following you\./i.test(row.textContent ?? ''));
-        const usernames = rows.flatMap(row => [...row.querySelectorAll<HTMLAnchorElement>('a[href]')]
-            .filter(a => /^\/[\w.]+\/$/.test(a.getAttribute('href') ?? '') &&
-              a.textContent?.trim().toLowerCase() === a.getAttribute('href')?.split('/')[1]?.toLowerCase())
-            .map(a => a.textContent!.trim().toLowerCase()));
-        return { usernames, dates: rows.map(row => row.textContent?.split(/started following you\./i)[1] ?? ''),
-          bottom: panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 2,
-          height: panel.scrollHeight, loading: !!panel.querySelector('[role="progressbar"]'),
-          panelHeight: panel.clientHeight, box: (() => {
-            const rect = panel.getBoundingClientRect();
-            const view = el.ownerDocument.defaultView!;
-            return { left: Math.max(0, rect.left), right: Math.min(view.innerWidth, rect.right),
-              top: Math.max(0, rect.top), bottom: Math.min(view.innerHeight, rect.bottom) };
-          })() };
-      });
-      for (const name of state.usernames) names.add(name);
+      const state = await heading.evaluate(notificationState);
+      for (const row of state.rows) {
+        if (notificationTimeUpperBound(row.date) < since) continue;
+        for (const event of row.events) events.set(`${event.kind}:${event.username}`, event);
+      }
       // Let the filter/load settle before treating cached rows as the end of the scan.
-      const old = state.dates.some(date => notificationTimeUpperBound(date) < since);
-      const signature = `${state.height}:${names.size}:${state.dates.join('|')}`;
+      const old = state.rows.some(row => notificationTimeUpperBound(row.date) < since);
+      const signature = `${state.height}:${events.size}:${state.rows.map(row => row.date).join('|')}`;
       stable = !state.loading && signature === previous ? stable + 1 : 0;
-      if (stable >= 2 && (state.bottom || old)) return [...names];
-      if (names.size > 1000) return null;
+      if (stable >= 2 && (state.bottom || old)) return [...events.values()];
+      if (events.size > 1000) return null;
       previous = signature;
       if (!old && state.box.right > state.box.left && state.box.bottom > state.box.top) {
         session.check();

@@ -8,12 +8,25 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 struct RequestBudget {
     api: Arc<Api>,
     profile_id: String,
-    source_id: String,
+    source_id: Option<String>,
+    automation_id: Option<String>,
     run_id: String,
 }
 impl RequestBudget {
     async fn reserve(&self) -> Result<()> {
-        let result=self.api.convex_retry(reqwest::Method::POST,"/api/scraper/requests/reserve",Some(&json!({"profileId":self.profile_id,"sourceId":self.source_id,"runId":self.run_id,"requestId":uuid::Uuid::new_v4().to_string()}))).await.map_err(Error::failed)?;
+        let mut body = json!({"profileId":self.profile_id,"runId":self.run_id,"requestId":uuid::Uuid::new_v4().to_string()});
+        let route = if let Some(automation_id) = &self.automation_id {
+            body["automationId"] = json!(automation_id);
+            "/api/routines/own-likers-reserve"
+        } else {
+            body["sourceId"] = json!(self.source_id);
+            "/api/scraper/requests/reserve"
+        };
+        let result = self
+            .api
+            .convex_retry(reqwest::Method::POST, route, Some(&body))
+            .await
+            .map_err(Error::failed)?;
         if result["allowed"] == true {
             return Ok(());
         }
@@ -31,6 +44,7 @@ pub struct Web {
     client: reqwest::Client,
     cookies: String,
     csrf: String,
+    pub(super) owner_id: Option<String>,
     budget: Option<RequestBudget>,
     #[cfg(test)]
     base: Option<String>,
@@ -63,6 +77,10 @@ impl Web {
             .get("csrftoken")
             .map(|v| safe(v))
             .unwrap_or_default();
+        let owner_id = cookies
+            .get("ds_user_id")
+            .filter(|id| instagram::digits(id))
+            .cloned();
         let cookie = cookies
             .into_iter()
             .map(|(k, v)| format!("{k}={}", safe(&v)))
@@ -78,6 +96,7 @@ impl Web {
             client: instagram::transport_client(&proxy).map_err(|error| Error::failed(&error))?,
             cookies: cookie,
             csrf,
+            owner_id,
             budget: None,
             #[cfg(test)]
             base: None,
@@ -93,7 +112,24 @@ impl Web {
         self.budget = Some(RequestBudget {
             api,
             profile_id: profile_id.into(),
-            source_id: source_id.into(),
+            source_id: Some(source_id.into()),
+            automation_id: None,
+            run_id: run_id.into(),
+        });
+        self
+    }
+    pub(super) fn with_owner_budget(
+        mut self,
+        api: Arc<Api>,
+        profile_id: &str,
+        automation_id: &str,
+        run_id: &str,
+    ) -> Self {
+        self.budget = Some(RequestBudget {
+            api,
+            profile_id: profile_id.into(),
+            source_id: None,
+            automation_id: Some(automation_id.into()),
             run_id: run_id.into(),
         });
         self
@@ -118,23 +154,39 @@ impl Web {
         {
             return Err(Error::failed("Invalid post ID or shortcode"));
         }
+        let data = self
+            .get_json(
+                &format!("/api/v1/media/{id}/likers/?count=100"),
+                &format!("https://www.instagram.com/p/{code}/"),
+                check_available,
+            )
+            .await?;
+        snapshot(&data)
+    }
+
+    pub(super) async fn get_json(
+        &self,
+        path: &str,
+        referer: &str,
+        check_available: &(dyn Fn() -> Result<()> + Sync),
+    ) -> Result<Value> {
         let mut last = Error::failed("Instagram request failed");
         for attempt in 0..3 {
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_millis(attempt * 1500)).await;
             }
             check_available()?;
-            let url = format!("https://www.instagram.com/api/v1/media/{id}/likers/?count=100");
+            let url = format!("https://www.instagram.com{path}");
             #[cfg(test)]
             let url = self
                 .base
                 .as_ref()
-                .map(|base| format!("{base}/api/v1/media/{id}/likers/?count=100"))
+                .map(|base| format!("{base}{path}"))
                 .unwrap_or(url);
             let mut request=self.client.get(url)
                 .header("user-agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
                 .header("accept","*/*").header("accept-language","en-US,en;q=0.9").header("x-ig-app-id","936619743392459").header("x-requested-with","XMLHttpRequest")
-                .header("referer",format!("https://www.instagram.com/p/{code}/")).header("cookie",&self.cookies).timeout(Duration::from_secs(15));
+                .header("referer",referer).header("cookie",&self.cookies).timeout(Duration::from_secs(15));
             if !self.csrf.is_empty() {
                 request = request.header("x-csrftoken", &self.csrf);
             }
@@ -164,7 +216,7 @@ impl Web {
                                 last = Error::failed("Instagram API request failed");
                                 continue;
                             }
-                            return snapshot(&data);
+                            return Ok(data);
                         }
                         Err(message) => last = Error::failed(message),
                     }

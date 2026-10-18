@@ -73,6 +73,8 @@ export default defineSchema({
     unfollowAt: v.optional(v.number()),
     dmBlocked: v.optional(v.boolean()),
     dmEligible: v.optional(v.boolean()),
+    followBackAt: v.optional(v.number()),
+    postEngagement: v.optional(v.object({ kind: v.union(v.literal('like'), v.literal('comment')), at: v.number() })),
     lastDmCheckDate: v.optional(v.string()),
     dmStartedAt: v.optional(v.number()),
     dmStartedDate: v.optional(v.string()),
@@ -80,7 +82,7 @@ export default defineSchema({
     .index('by_username', ['username'])
     .index('by_ig_id', ['igId'])
     .index('by_classification', ['classification'])
-    .index('by_dm_revisit', ['senderId', 'followed', 'dmStartedAt', 'lastDmCheckDate'])
+    .index('by_dm_pending', ['senderId', 'dmEligible', 'dmStartedAt'])
     .index('by_screening', ['screeningStatus', 'screeningRefused'])
     .index('by_screening_profile', ['screeningProfileId'])
     .index('by_follow_due', ['senderId', 'followed', 'followDate'])
@@ -110,12 +112,23 @@ export default defineSchema({
     followedToday: v.optional(v.number()),
     lastActivityDate: v.optional(v.string()),
     lastOutreachDate: v.optional(v.string()),
+    lastNotificationsDate: v.optional(v.string()),
+    lastNotificationsAt: v.optional(v.number()),
+    lastLikerScanDate: v.optional(v.string()),
     outreachUsedToday: v.number(),
     outreachAllowanceToday: v.number(),
     lastLeadListId: v.optional(v.id('leadLists')),
     nextRunAt: v.number(),
     updatedAt: v.number(),
   }).index('by_profile', ['profileId']),
+  ownPostLikerSnapshots: defineTable({
+    profileId: v.id('profiles'),
+    ownerIgId: v.string(),
+    mediaId: v.string(),
+    ids: v.array(v.string()),
+    date: v.string(),
+    updatedAt: v.number(),
+  }).index('by_profile', ['profileId']).index('by_profile_media', ['profileId', 'mediaId']),
   models: defineTable({
     name: v.string(),
     baseFullName: v.optional(v.string()),

@@ -4,6 +4,17 @@ import { internal } from "../_generated/api";
 import { jsonResponse, parseBody, withErrorHandling } from "./shared";
 
 export function registerRoutineRoutes(http: HttpRouter) {
+  http.route({ path: '/api/routines/own-likers-plan', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    return jsonResponse(await ctx.runQuery(internal.ownPostLikers.plan, { automationId: b.automationId, profileId: b.profileId }));
+  }) });
+  for (const path of ['reserve', 'snapshot', 'finish'] as const) http.route({ path: `/api/routines/own-likers-${path}`, method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    const common = { automationId: b.automationId, profileId: b.profileId, runId: b.runId };
+    if (path === 'reserve') return jsonResponse(await ctx.runMutation(internal.ownPostLikers.reserve, { ...common, requestId: b.requestId }));
+    if (path === 'finish') return jsonResponse(await ctx.runMutation(internal.ownPostLikers.finish, { ...common, date: b.date }));
+    return jsonResponse(await ctx.runMutation(internal.ownPostLikers.snapshot, { ...common, date: b.date, ownerIgId: b.ownerIgId, mediaId: b.mediaId, likers: b.likers }));
+  }) });
   http.route({
     path: '/api/routines/screening',
     method: 'POST',
@@ -28,19 +39,20 @@ export function registerRoutineRoutes(http: HttpRouter) {
 
   for (const [path, endpoint] of [
     ['/api/routines/dm-tasks', internal.routines.dmTasks],
+    ['/api/routines/notifications', internal.routines.notifications],
   ] as const) http.route({ path, method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
     return jsonResponse(await ctx.runQuery(endpoint, {
       automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
     }));
   }) });
-  http.route({ path: '/api/routines/record-dm-check', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+  http.route({ path: '/api/routines/record-notifications', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
-    return jsonResponse(await ctx.runMutation(internal.routines.recordDmCheck, {
+    const scanLikers = await ctx.runMutation(internal.routines.recordNotifications, {
       automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
-      leadId: b.leadId as Id<'leads'>, date: String(b.date), canMessage: b.canMessage === true,
-      isPrivate: typeof b.isPrivate === 'boolean' ? b.isPrivate : undefined,
-    }));
+      date: String(b.date), events: b.events,
+    });
+    return jsonResponse({ ok: true, scanLikers });
   }) });
   http.route({ path: '/api/routines/dismiss-dm', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);

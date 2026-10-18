@@ -36,6 +36,133 @@ fn task(run_kind: TaskKind) -> Task {
 }
 
 #[tokio::test]
+async fn own_post_likers_reuse_only_the_owners_cookie_and_keep_the_100_cap() {
+    let raw_calls = Arc::new(AtomicUsize::new(0));
+    let requested = raw_calls.clone();
+    let fixture = Fixture::start(move |request| {
+        let requested = requested.clone();
+        async move {
+            match request.uri().path() {
+                "/api/routines/own-likers-plan" => {
+                    let input = body(request).await;
+                    assert_eq!(input["profileId"], "owner-profile");
+                    Json(json!({"ownerIgId":"123","runId":"owner-run","date":"2026-10-12","checkedMediaIds":[]})).into_response()
+                },
+                "/api/profiles/by-id" => {
+                    assert_eq!(request.uri().query(), Some("profileId=owner-profile"));
+                    Json(json!({"instagramSessionId":"owner-cookie","cookiesJson":"[{\"name\":\"ds_user_id\",\"value\":\"123\"}]"})).into_response()
+                },
+                "/api/routines/own-likers-reserve" => {
+                    let input = body(request).await;
+                    assert_eq!(input["profileId"], "owner-profile");
+                    assert_eq!(input["automationId"], "automation");
+                    assert_eq!(input["runId"], "owner-run");
+                    Json(json!({"allowed":true})).into_response()
+                },
+                "/api/v1/media/1/likers/" => {
+                    requested.fetch_add(1, Ordering::SeqCst);
+                    assert_eq!(request.uri().query(), Some("count=100"));
+                    assert_eq!(request.headers()["cookie"], "ds_user_id=123; sessionid=owner-cookie;");
+                    Json(json!({"status":"ok","users":(1..=150).map(|id|json!({"pk":id.to_string(),"username":format!("user{id}")})).collect::<Vec<_>>()})).into_response()
+                },
+                "/api/routines/own-likers-snapshot" => {
+                    let input = body(request).await;
+                    assert_eq!(input["profileId"], "owner-profile");
+                    assert_eq!(input["ownerIgId"], "123");
+                    assert_eq!(input["mediaId"], "1");
+                    assert_eq!(input["likers"].as_array().unwrap().len(), 100);
+                    Json(json!({"saved":true,"queued":2})).into_response()
+                },
+                "/api/routines/own-likers-finish" => Json(json!(true)).into_response(),
+                path => panic!("Unexpected own-post request or scraper-pool fallback: {path}"),
+            }
+        }
+    }).await;
+    let service = scraper_fixture(&fixture);
+    let input = serde_json::from_value(json!({"profileId":"owner-profile","automationId":"automation","ownerIgId":"123","posts":[{"id":"1","code":"B"}]})).unwrap();
+    let result = service.scan_own_posts(&input).await.unwrap();
+    assert_eq!(result["queued"], 2);
+    assert_eq!(result["posts"], 1);
+    assert_eq!(raw_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn own_post_likers_never_fall_back_after_an_owner_mismatch_or_quota_denial() {
+    for mode in ["live-mismatch", "saved-mismatch", "quota"] {
+        let fixture = Fixture::start(move |request| async move {
+            match request.uri().path() {
+                "/api/routines/own-likers-plan" => Json(json!({"ownerIgId":"123","runId":"run","date":"2026-10-12","checkedMediaIds":[]})).into_response(),
+                "/api/profiles/by-id" if mode != "live-mismatch" => {
+                    let owner = if mode == "saved-mismatch" { "456" } else { "123" };
+                    Json(json!({"instagramSessionId":"owner-cookie","cookiesJson":json!([{"name":"ds_user_id","value":owner}]).to_string()})).into_response()
+                },
+                "/api/routines/own-likers-reserve" if mode == "quota" => Json(json!({"allowed":false,"reason":"Hourly scraper request limit reached"})).into_response(),
+                path => panic!("No Instagram requests or fallback profile should be used: {path}"),
+            }
+        }).await;
+        let service = scraper_fixture(&fixture);
+        let owner = if mode == "live-mismatch" {
+            "456"
+        } else {
+            "123"
+        };
+        let input = serde_json::from_value(json!({"profileId":"profile","automationId":"automation","ownerIgId":owner,"posts":[{"id":"1","code":"B"}]})).unwrap();
+        assert!(service.scan_own_posts(&input).await.is_err());
+    }
+}
+
+#[tokio::test]
+async fn own_post_likers_resume_unchecked_posts_after_a_partial_scan() {
+    let saved = Arc::new(AtomicUsize::new(0));
+    let first_saved = saved.clone();
+    let retry = Arc::new(AtomicUsize::new(0));
+    let attempt = retry.clone();
+    let finished = Arc::new(AtomicUsize::new(0));
+    let completions = finished.clone();
+    let fixture = Fixture::start(move |request| {
+        let saved = first_saved.clone();
+        let retry = attempt.clone();
+        let finished = completions.clone();
+        async move {
+            match request.uri().path() {
+                "/api/routines/own-likers-plan" => Json(json!({"ownerIgId":"123","runId":"run","date":"2026-10-12",
+                    "checkedMediaIds":if saved.load(Ordering::SeqCst) > 0 {vec!["1"]} else {vec![]}})).into_response(),
+                "/api/profiles/by-id" => Json(json!({"instagramSessionId":"owner-cookie","cookiesJson":"[{\"name\":\"ds_user_id\",\"value\":\"123\"}]"})).into_response(),
+                "/api/routines/own-likers-reserve" => Json(json!({"allowed":saved.load(Ordering::SeqCst)==0 || retry.load(Ordering::SeqCst)>0})).into_response(),
+                "/api/v1/media/1/likers/" => {
+                    assert_eq!(saved.load(Ordering::SeqCst), 0, "An acknowledged post must not be fetched again");
+                    Json(json!({"status":"ok","users":[]})).into_response()
+                },
+                "/api/v1/media/2/likers/" => Json(json!({"status":"ok","users":[]})).into_response(),
+                "/api/routines/own-likers-snapshot" => {
+                    saved.fetch_add(1, Ordering::SeqCst);
+                    Json(json!({"saved":true,"queued":0})).into_response()
+                },
+                "/api/routines/own-likers-finish" => {
+                    assert_eq!(saved.load(Ordering::SeqCst), 2);
+                    finished.fetch_add(1, Ordering::SeqCst);
+                    Json(json!(true)).into_response()
+                },
+                path => panic!("Unexpected owner request: {path}"),
+            }
+        }
+    }).await;
+    let service = scraper_fixture(&fixture);
+    let input = serde_json::from_value(
+        json!({"profileId":"profile","automationId":"automation","ownerIgId":"123",
+        "posts":[{"id":"1","code":"B"},{"id":"2","code":"C"},{"id":"2","code":"C"}]}),
+    )
+    .unwrap();
+    assert!(service.scan_own_posts(&input).await.is_err());
+    assert_eq!(saved.load(Ordering::SeqCst), 1);
+    assert_eq!(finished.load(Ordering::SeqCst), 0);
+    retry.store(1, Ordering::SeqCst);
+    assert_eq!(service.scan_own_posts(&input).await.unwrap()["posts"], 1);
+    assert_eq!(saved.load(Ordering::SeqCst), 2);
+    assert_eq!(finished.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn browser_ownership_blocks_scraping_without_fallback_and_resumes_when_idle() {
     let calls = Arc::new(AtomicUsize::new(0));
     let requests = calls.clone();

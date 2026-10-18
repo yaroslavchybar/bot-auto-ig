@@ -30,6 +30,7 @@ export async function deleteProfileData(ctx: MutationCtx, profileId: Id<'profile
     'profileModelAssignments',
     'scraperProfiles',
     'scraperRequestUsage',
+    'ownPostLikerSnapshots',
     'proxyProfileAssignments',
   ] as const) {
     const rows = await ctx.db
@@ -82,6 +83,8 @@ export async function cleanupProfileReferences(
       outreachListId: undefined,
       outreachAutomationId: undefined,
       dmEligible: undefined,
+      followBackAt: undefined,
+      postEngagement: undefined,
       lastDmCheckDate: undefined,
     }
     await ctx.db.patch(lead._id, patch)

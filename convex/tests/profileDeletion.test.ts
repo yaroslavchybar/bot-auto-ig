@@ -116,6 +116,8 @@ test('deletion clears lead leases and scraper ownership without losing shared da
         ...(followed ? { followDate: 1 } : {}),
         outreachListId: list,
         dmEligible: true,
+        followBackAt: Date.now(),
+        postEngagement: { kind: 'like', at: Date.now() },
         lastDmCheckDate: '2026-10-16',
         classification: 'male',
         screeningStatus: 'ready', })
@@ -190,6 +192,8 @@ test('deletion clears lead leases and scraper ownership without losing shared da
   expect(read.leads[0]).toMatchObject({ followed: true, dmSent: true, followDate: 1 })
   expect(read.leads[0]).not.toHaveProperty('senderId')
   expect(read.leads[0]).not.toHaveProperty('dmEligible')
+  expect(read.leads[0]).not.toHaveProperty('followBackAt')
+  expect(read.leads[0]).not.toHaveProperty('postEngagement')
   expect(read.memberships.map((row) => row?.available)).toEqual([false, true, false])
   expect(read.leads[2]?.senderId).toBe(other._id)
   expect(read.screening).not.toHaveProperty('screeningProfileId')

@@ -99,45 +99,64 @@ export const reserve = internalMutation({
     sourceId: v.optional(v.id('scrapeSources')),
     runId: v.optional(v.string()),
   },
-  handler: async (ctx, { profileId, requestId, sourceId, runId }) => {
-    if (!requestId || requestId.length > 100) throw new Error('Invalid request ID')
-    const now = Date.now()
-    const state = await scraperRequestState(ctx, profileId, now)
-    if (state.paused) return { allowed: false, retryAt: now, reason: 'Profile is paused' }
-    if (state.blocked)
-      return { allowed: false, retryAt: now, reason: 'Scraper profile is busy in the browser' }
-    if (sourceId) {
-      if (!runId) throw new Error('Missing scraper run ID')
-      const source = await activeSource(ctx, sourceId, runId, 'likers')
-      if (source.profileId !== profileId) throw new Error('Scraper profile changed')
-    }
-    if (
-      state.usage?.requests.some(
-        (request) => request.id === requestId && request.reservedAt > now - 3_600_000,
-      )
-    )
-      return { allowed: true, retryAt: now }
-    if (state.availableAt === null)
-      return {
-        allowed: false,
-        retryAt: now + 3_600_000,
-        reason: 'Set the country on this session’s saved proxy',
-      }
-    if (state.availableAt > now) {
-      await publishSleep(ctx, profileId, state)
-      return {
-        allowed: false,
-        retryAt: state.availableAt,
-        reason: state.sleeping
-          ? 'Browser session is sleeping'
-          : 'Hourly scraper request limit reached',
-      }
-    }
-    const requests = (state.usage?.requests ?? []).filter((request) => request.reservedAt > now - 3_600_000)
-    requests.push({ id: requestId, reservedAt: now })
-    if (state.usage) await ctx.db.patch(state.usage._id, { requests })
-    else await ctx.db.insert('scraperRequestUsage', { profileId, requests })
-    await recordActivity(ctx, new Date(now).toISOString().slice(0, 10), { scraperRequests: 1 })
-    return { allowed: true, retryAt: now }
-  },
+  handler: (ctx, args) => reserveRequest(ctx, args),
 })
+
+/** The owning automation may use its own browser session; source scrapers still require an idle profile. */
+export async function reserveRequest(
+  ctx: MutationCtx,
+  {
+    profileId,
+    requestId,
+    sourceId,
+    runId,
+  }: {
+    profileId: Id<'profiles'>
+    requestId: string
+    sourceId?: Id<'scrapeSources'>
+    runId?: string
+  },
+  ownBrowser = false,
+) {
+  if (!requestId || requestId.length > 100) throw new Error('Invalid request ID')
+  const now = Date.now()
+  const state = await scraperRequestState(ctx, profileId, now)
+  if (state.paused) return { allowed: false, retryAt: now, reason: 'Profile is paused' }
+  if (state.blocked && !ownBrowser)
+    return { allowed: false, retryAt: now, reason: 'Scraper profile is busy in the browser' }
+  if (sourceId) {
+    if (!runId) throw new Error('Missing scraper run ID')
+    const source = await activeSource(ctx, sourceId, runId, 'likers')
+    if (source.profileId !== profileId) throw new Error('Scraper profile changed')
+  }
+  if (
+    state.usage?.requests.some(
+      (request) => request.id === requestId && request.reservedAt > now - 3_600_000,
+    )
+  )
+    return { allowed: true, retryAt: now }
+  if (state.availableAt === null)
+    return {
+      allowed: false,
+      retryAt: now + 3_600_000,
+      reason: 'Set the country on this session’s saved proxy',
+    }
+  if (state.availableAt > now) {
+    await publishSleep(ctx, profileId, state)
+    return {
+      allowed: false,
+      retryAt: state.availableAt,
+      reason: state.sleeping
+        ? 'Browser session is sleeping'
+        : 'Hourly scraper request limit reached',
+    }
+  }
+  const requests = (state.usage?.requests ?? []).filter(
+    (request) => request.reservedAt > now - 3_600_000,
+  )
+  requests.push({ id: requestId, reservedAt: now })
+  if (state.usage) await ctx.db.patch(state.usage._id, { requests })
+  else await ctx.db.insert('scraperRequestUsage', { profileId, requests })
+  await recordActivity(ctx, new Date(now).toISOString().slice(0, 10), { scraperRequests: 1 })
+  return { allowed: true, retryAt: now }
+}

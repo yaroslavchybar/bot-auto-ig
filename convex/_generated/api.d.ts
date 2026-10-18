@@ -33,6 +33,7 @@ import type * as leadStats from "../leadStats.js";
 import type * as leads from "../leads.js";
 import type * as modelSetupPolicy from "../modelSetupPolicy.js";
 import type * as models from "../models.js";
+import type * as ownPostLikers from "../ownPostLikers.js";
 import type * as profilePause from "../profilePause.js";
 import type * as profiles_cleanup from "../profiles/cleanup.js";
 import type * as profiles_helpers from "../profiles/helpers.js";
@@ -88,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   leads: typeof leads;
   modelSetupPolicy: typeof modelSetupPolicy;
   models: typeof models;
+  ownPostLikers: typeof ownPostLikers;
   profilePause: typeof profilePause;
   "profiles/cleanup": typeof profiles_cleanup;
   "profiles/helpers": typeof profiles_helpers;

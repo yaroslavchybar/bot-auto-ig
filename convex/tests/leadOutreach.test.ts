@@ -41,38 +41,17 @@ async function setup() {
   return { t, args, claim }
 }
 
-test('live public checks allow one DM without a follow or cleanup deadline', async () => {
+test('a same-day public or private follow uses its screening slot exactly once', async () => {
   const { t, args, claim } = await setup()
   const lead = await claim(), input = { ...args, leadId: lead.leadId, date: dayKey() }
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...input, isPrivate: false, canMessage: true })).toBe(true)
-  expect(await t.mutation(internal.routines.beginFollow, input)).toBe(false)
-  expect(await t.mutation(internal.routines.beginSend, input)).toBe(true)
-  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
-  const finish = { profileId: args.profileId, leadId: lead.leadId, date: dayKey(), sent: true }
-  await t.mutation(internal.routines.finishSend, finish)
-  await t.mutation(internal.routines.finishSend, finish)
-  const saved = (await t.run(ctx => ctx.db.get(lead.leadId)))!
-  expect(saved).toMatchObject({ isPrivate: false, followed: false, dmSent: true })
-  expect(saved.followDate).toBeUndefined()
-  expect(saved.unfollowAt).toBeUndefined()
-  expect(await t.query(internal.routines.followTasks, args)).toEqual([])
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
-  const state = (await t.run(ctx => ctx.db.query('accountProgress').unique()))!
-  expect(state).toMatchObject({ outreachUsedToday: 1, followedToday: 0, sentToday: 1 })
-  expect(state.outreachIncrease).toBeGreaterThanOrEqual(1)
-  expect(state.outreachIncrease).toBeLessThanOrEqual(4)
-})
-
-test('a same-day private follow uses its screening slot exactly once', async () => {
-  const { t, args, claim } = await setup()
-  const lead = await claim(), input = { ...args, leadId: lead.leadId, date: dayKey() }
+  await t.run(ctx => ctx.db.patch(lead.leadId, { isPrivate: false }))
   const before = await t.query(internal.routines.target, args)
   expect(await t.mutation(internal.routines.beginFollow, input)).toBe(true)
   expect(await t.mutation(internal.routines.beginFollow, input)).toBe(false)
   expect(await t.query(internal.routines.target, args)).toEqual(before)
 })
 
-test('later-day private follows atomically reserve the remaining quota before follow intent', async () => {
+test('later-day public or private follows atomically reserve the remaining quota before follow intent', async () => {
   const { t, args, claim } = await setup()
   const leads = [await claim(), await claim()]
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
@@ -93,110 +72,105 @@ test('later-day private follows atomically reserve the remaining quota before fo
   expect(await t.run(ctx => ctx.db.get(state._id))).toMatchObject({ outreachUsedToday: 1 })
 })
 
-test.each([true, false, undefined])('unfollowed private leads stay out of revisits; public/unknown leads retain history guards (%s)', async isPrivate => {
+test('old public-DM eligibility cannot bypass following and notification evidence', async () => {
   const { t, args, claim } = await setup()
   const lead = await claim()
+  await t.run(ctx => ctx.db.patch(lead.leadId, { isPrivate: false, dmEligible: true, lastDmCheckDate: dayKey() }))
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
-  for (const history of [{}, { followDate: Date.now() }, { followStartedAt: Date.now() }]) {
-    await t.run(ctx => ctx.db.patch(lead.leadId, { isPrivate, followDate: undefined, followStartedAt: undefined, ...history }))
-    expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(isPrivate !== true && Object.keys(history).length === 0 ? 1 : 0)
-  }
-})
-
-test('public DM revisits stay quota-free when the daily outreach limit is exhausted', async () => {
-  const { t, args, claim } = await setup()
-  const lead = await claim()
-  await t.mutation(internal.routines.recordDmCheck, { ...args, leadId: lead.leadId, date: dayKey(), isPrivate: false, canMessage: true })
-  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
-  await t.run(async ctx => {
-    const state = (await ctx.db.query('accountProgress').unique())!
-    await ctx.db.patch(state._id, { outreachQuotaDate: dayKey(), outreachUsedToday: 3, outreachAllowanceToday: 3 })
-  })
-  const before = await t.query(internal.routines.target, args)
-  expect(before.remaining).toBe(0)
-  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
   const input = { ...args, leadId: lead.leadId, date: dayKey() }
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...input, isPrivate: false, canMessage: true })).toBe(true)
+  expect(await t.query(internal.routines.notifications, args)).toBeNull()
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'follow' }] })
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  await t.run(ctx => ctx.db.patch(lead.leadId, { followed: true, followDate: Date.now() - 86_400_000 }))
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'follow' }] })
+  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
+  const before = await t.query(internal.routines.target, args)
   expect(await t.mutation(internal.routines.beginSend, input)).toBe(true)
+  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
   expect(await t.query(internal.routines.target, args)).toEqual(before)
 })
 
-test.each([true, false, null, undefined, 0, 'false', {}, []])('DM-check HTTP privacy accepts only booleans (%j)', async isPrivate => {
+test('follow-back notifications stop enabling DMs when unfollow becomes due', async () => {
   const { t, args, claim } = await setup()
   const lead = await claim()
+  await t.mutation(internal.routines.beginFollow, { ...args, leadId: lead.leadId, date: dayKey() })
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
+  expect(await t.query(internal.routines.notifications, args)).toBeNull()
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
+  expect(await t.query(internal.routines.notifications, args)).toMatchObject({ date: dayKey() })
   vi.stubGlobal('process', { env: { INTERNAL_API_KEY: 'test-outreach-token' } })
-  const response = await t.fetch('/api/routines/record-dm-check', {
+  const response = await t.fetch('/api/routines/record-notifications', {
     method: 'POST', headers: { authorization: 'Bearer test-outreach-token', 'content-type': 'application/json' },
-    body: JSON.stringify({ ...args, leadId: lead.leadId, date: dayKey(), canMessage: false, isPrivate }),
+    body: JSON.stringify({ ...args, date: dayKey(), events: [{ username: lead.username.toUpperCase(), kind: 'follow' }] }),
   })
   expect(response.status).toBe(200)
-  expect(await response.json()).toBe(false)
-  expect(await t.run(ctx => ctx.db.get(lead.leadId))).toMatchObject({ isPrivate: typeof isPrivate === 'boolean' ? isPrivate : true })
-})
-
-test('private requests wait until tomorrow and expire into unfollow cleanup', async () => {
-  const { t, args, claim } = await setup()
-  const lead = await claim()
-  const input = () => ({ ...args, leadId: lead.leadId, date: dayKey() })
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...input(), isPrivate: true, canMessage: true })).toBe(false)
-  expect(await t.mutation(internal.routines.beginSend, input())).toBe(false)
-  expect(await t.mutation(internal.routines.beginFollow, input())).toBe(true)
-  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await response.json()).toEqual({ ok: true, scanLikers: false })
+  expect(await t.query(internal.routines.notifications, args)).toBeNull()
+  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
   const saved = (await t.run(ctx => ctx.db.get(lead.leadId)))!
-  for (let day = 1; Date.now() + 86_400_000 < saved.unfollowAt!; day++) {
-    vi.setSystemTime(new Date(`2026-10-${String(11 + day).padStart(2, '0')}T10:00:00Z`))
-    expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
-    expect(await t.mutation(internal.routines.recordDmCheck, { ...input(), isPrivate: true, canMessage: false })).toBe(false)
-    expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
-    expect(await t.mutation(internal.routines.beginSend, input())).toBe(false)
-  }
   vi.setSystemTime(saved.unfollowAt!)
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: lead.leadId, date: dayKey() })).toBe(false)
   expect(await t.query(internal.routines.followTasks, args)).toMatchObject([{ leadId: lead.leadId }])
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...input(), isPrivate: false, canMessage: true })).toBe(false)
-  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: false })
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
 })
 
-test('approval permits one DM and public DMs share the private-follow daily ramp', async () => {
+test.each(['like', 'comment'] as const)('%s notifications permit one DM to a followed lead without a follow-back', async kind => {
   const { t, args, claim } = await setup()
-  const first = await claim()
-  const firstInput = { ...args, leadId: first.leadId, date: dayKey() }
-  await t.mutation(internal.routines.recordDmCheck, { ...firstInput, isPrivate: true, canMessage: false })
-  await t.mutation(internal.routines.beginFollow, firstInput)
-  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: first.leadId, followed: true })
-  const before = (await t.run(ctx => ctx.db.query('accountProgress').unique()))!
-  const second = await claim()
-  const secondInput = { ...args, leadId: second.leadId, date: dayKey() }
-  await t.mutation(internal.routines.recordDmCheck, { ...secondInput, isPrivate: false, canMessage: true })
-  await t.mutation(internal.routines.beginSend, secondInput)
-  await t.mutation(internal.routines.finishSend, { profileId: args.profileId, leadId: second.leadId, date: dayKey(), sent: true })
-  expect(await t.run(ctx => ctx.db.query('accountProgress').unique())).toMatchObject({
-    outreachIncrease: before.outreachIncrease, followedToday: 1, sentToday: 1,
-  })
+  const lead = await claim()
+  const event = { username: lead.username, kind }
+  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [event] })).toBe(false)
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
+  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [event] })).toBe(false)
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
-  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
-  const approved = { ...firstInput, date: dayKey() }
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...approved, isPrivate: false, canMessage: true })).toBe(true)
-  expect(await t.mutation(internal.routines.beginSend, approved)).toBe(true)
-  expect(await t.mutation(internal.routines.beginSend, approved)).toBe(false)
+  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [event, event] })).toBe(kind === 'like')
+  expect(await t.run(ctx => ctx.db.get(lead.leadId))).toMatchObject({ postEngagement: { kind, at: Date.now() } })
+  expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.followBackAt).toBeUndefined()
+  expect(await t.query(internal.routines.dmTasks, args)).toMatchObject([{ leadId: lead.leadId, engagement: kind }])
+  const input = { ...args, leadId: lead.leadId, date: dayKey() }
+  const before = await t.query(internal.routines.target, args)
+  expect(await t.mutation(internal.routines.beginSend, input)).toBe(true)
+  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
+  await t.mutation(internal.routines.finishSend, { profileId: args.profileId, leadId: lead.leadId, date: dayKey(), sent: true })
+  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [event] })).toBe(false)
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await t.query(internal.routines.target, args)).toEqual(before)
 })
 
-test.each(['blocked', 'uncertain'] as const)('public pre-send interruptions retry daily but %s attempts never retry', async result => {
+test.each(['expired', 'other sender', 'unfollowed', 'uncertain', 'blocked', 'sent'] as const)(
+  'post engagement cannot authorize a DM when the lead is %s', async reason => {
+    const { t, args, claim } = await setup()
+    const lead = await claim()
+    await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
+    vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
+    const other = (await seedProfile(t, { name: 'Other sender' }))!
+    await t.run(ctx => ctx.db.patch(lead.leadId, {
+      ...(reason === 'expired' ? { unfollowAt: Date.now() } : {}),
+      ...(reason === 'other sender' ? { senderId: other._id } : {}),
+      ...(reason === 'unfollowed' ? { followed: false } : {}),
+      ...(reason === 'uncertain' ? { dmStartedAt: Date.now() } : {}),
+      ...(reason === 'blocked' ? { dmBlocked: true } : {}),
+      ...(reason === 'sent' ? { dmSent: true } : {}),
+    }))
+    expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'like' }] })).toBe(false)
+    expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+    expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: lead.leadId, date: dayKey() })).toBe(false)
+  },
+)
+
+test('unrelated likes and empty scans do not trigger liker scraping; matching likes need no notification cache', async () => {
   const { t, args, claim } = await setup()
-  const lead = await claim(), input = { ...args, leadId: lead.leadId, date: dayKey() }
-  await t.mutation(internal.routines.recordDmCheck, { ...input, isPrivate: false, canMessage: true })
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  const lead = await claim()
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
-  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
-  const next = { ...input, date: dayKey() }
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...next, isPrivate: false, canMessage: true })).toBe(true)
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
-  await t.mutation(internal.routines.beginSend, next)
-  await t.mutation(internal.routines.finishSend, { profileId: args.profileId, leadId: lead.leadId, date: dayKey(),
-    sent: false, blocked: result === 'blocked' })
-  vi.setSystemTime(new Date('2026-10-13T10:00:00Z'))
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
-  expect(await t.mutation(internal.routines.beginFollow, { ...input, date: dayKey() })).toBe(false)
+  const record = (events: { username: string; kind: 'like' }[]) => t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events })
+  expect(await record([])).toBe(false)
+  expect(await record([{ username: 'stranger', kind: 'like' }])).toBe(false)
+  // Eligibility comes from current follow/DM state, even when the same row is shown again.
+  for (let i = 0; i < 2; i++) expect(await record([{ username: lead.username, kind: 'like' }])).toBe(true)
 })

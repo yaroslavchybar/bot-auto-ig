@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Window } from 'happy-dom';
 import type { Page } from 'playwright-core';
-import { readFollowNotifications, notificationTimeUpperBound, followsUs, ownUsername } from './follow-back.js';
+import { readOutreachNotifications, notificationTimeUpperBound, followsUs, ownUsername } from './follow-back.js';
 import { followButton, followingButton, messageButton } from './follow.js';
 import { BrowseSession } from './actions/session.js';
 
@@ -51,18 +51,40 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
   try {
     const session = new BrowseSession(Infinity, () => options.stopped ?? false);
     session.wait = async () => { session.check(); };
-    const result = await readFollowNotifications(page, () => options.stopped ?? false, options.since, session);
+    const result = await readOutreachNotifications(page, () => options.stopped ?? false, options.since, session);
     assert.equal(closed, !options.stopped);
     return { result, scrolls, wheels };
   } finally { globalThis.getComputedStyle = previous; await window.happyDOM.close(); }
 }
 
-const row = (name: string, text: string) => `<div data-pressable-container="true"><a href="/${name}/"><img alt="${name}'s profile picture"></a><span><a href="/${name}/">${name}</a> ${text}</span><button>Following</button></div>`;
+const row = (name: string, text: string) => `<div data-pressable-container="true"><a href="/${name}/"><img alt="${name}'s profile picture"></a><span><a href="/${name}/">${name}</a> ${text}</span><button>Following</button><a href="/p/own-post/">Media thumbnail</a></div>`;
 
-test('notifications extract only follow events, excluding likes, comments and duplicate avatars', async () => {
+test('notifications identify follow, like and comment actors without duplicate avatars', async () => {
   const { result, wheels } = await notifications(row('alice', 'started following you. 1d') + row('bob', 'liked your post. 1h') + row('carol', 'commented: started following someone else.') + row('alice', 'started following you. 2d'));
-  assert.deepEqual(result, ['alice']);
+  assert.deepEqual(result, [{ username: 'alice', kind: 'follow' }, { username: 'bob', kind: 'like' }, { username: 'carol', kind: 'comment' }]);
   assert.ok(wheels > 1, 'notification scanning uses smooth wheel input');
+});
+
+test('grouped likes include only named actors and comments exclude mentioned usernames', async () => {
+  const grouped = `<div data-pressable-container="true"><button>Avatars</button><div><span dir="auto"><a href="/alice/">alice</a>, <a href="/bob/">bob</a> and 7 others liked your photo. <span>Oct 05</span></span></div><a href="/p/own/">Media thumbnail</a></div>`;
+  const comment = row('carol', 'commented: Hi <a href="/someone_else/">someone_else</a> started following you. <span>Oct 04</span>');
+  const { result } = await notifications(grouped + comment);
+  assert.deepEqual(result, [
+    { username: 'alice', kind: 'like' }, { username: 'bob', kind: 'like' }, { username: 'carol', kind: 'comment' },
+  ]);
+});
+
+test('comment likes, story reactions, mentions and suggestions never qualify as post engagement', async () => {
+  const html = ['liked your comment.', 'liked your story.', 'mentioned you in a comment: started following you.',
+    'is on Instagram. Follow them to see their posts.'].map(text => row('alice', text)).join('') +
+    row('bob', 'commented: Hello').replace('<a href="/p/own-post/">Media thumbnail</a>', '');
+  assert.deepEqual((await notifications(html)).result, []);
+});
+
+test('stale engagement rows are ignored using the timestamp outside comment text', async () => {
+  const html = row('alice', 'commented: 1s old content <span>Jan 01</span>') +
+    row('bob', 'liked your photo. <span>Jan 02</span>');
+  assert.deepEqual((await notifications(html, { since: Date.UTC(new Date().getUTCFullYear(), 0, 5) })).result, []);
 });
 
 test('a fully loaded empty notification panel completes as an empty list', async () => {
@@ -75,7 +97,7 @@ test('an interrupted or still-loading notification panel never marks the scan co
 });
 
 test('notification scanning stops at old history instead of scrolling the full account lifetime', async () => {
-  const result = await notifications(row('alice', 'started following you. Jan 01'), { since: Date.UTC(2026, 9, 10) });
+  const result = await notifications(row('alice', 'started following you. Jan 01'), { since: Date.UTC(new Date().getUTCFullYear(), 0, 5) });
   assert.equal(result.scrolls, 2);
 });
 

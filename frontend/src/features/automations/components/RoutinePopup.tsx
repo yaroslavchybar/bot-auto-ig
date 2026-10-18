@@ -129,7 +129,7 @@ export function RoutinePopup({
   const [postsMin, postsMax] = warmupPostRange(policy)
   const warmupSummary = `Browse ${span(num('warmup_min_minutes'), num('warmup_max_minutes'))} min a day in ${span(num('session_min_minutes'), num('session_max_minutes'))} min sessions, resting ${span(num('rest_min_minutes'), num('rest_max_minutes'))} min between them. Outreach starts from day 8 with ${OUTREACH_MIN_POSTS} posts. Posting continues to the ${span(postsMin, postsMax)} post target.`
   const outreachSummary = policy.outreachEnabled
-    ? `Outreach from day 8 with ${OUTREACH_MIN_POSTS} posts: ${policy.initialDms} follows a day, growing up to ${policy.maxDms}. DMs follow immediately when available; pending requests are checked daily.`
+    ? `Outreach from day 8 with ${OUTREACH_MIN_POSTS} posts: ${policy.initialDms} follows a day, growing up to ${policy.maxDms}. Daily checks find follow-backs, post likes, and comments before sending DMs.`
     : 'Off. No outreach follows or DMs.'
 
   // Binds a min/max activity pair. Bounds come from the two settings' definitions.
@@ -432,20 +432,24 @@ export function RoutinePopup({
                     </div>
                   </SettingsGroup>
                   <SettingsGroup title="Daily outreach">
-                    {routineNumber('initial-follows', 'Initial leads per day', 'initialDms', {
+                    {routineNumber('initial-follows', 'Initial follows per day', 'initialDms', {
                       min: 1,
                       max: 35,
                     })}
-                    {routineNumber('max-follows', 'Max leads per day', 'maxDms', {
+                    {routineNumber('max-follows', 'Max follows per day', 'maxDms', {
                       min: 1,
                       max: 35,
                     })}
                   </SettingsGroup>
                   <p className="text-sm text-muted-copy">
-                    Message public accounts without following. Only private accounts receive a follow
-                    request and are checked daily until approval or scheduled unfollow. Public posts
-                    can be browsed before messaging. Existing followed leads without a DM remain in
-                    the daily check queue. All outreach uses the existing session time.
+                    Follow screened public and private accounts first. Starting the next day, check
+                    notifications for follow-backs, likes, and comments. A like notification from a
+                    followed lead we have not messaged triggers a post-liker check (up to 100 likers per
+                    post, using this account). The first snapshot is a baseline.
+                    Only leads we followed can qualify. A new like or
+                    comment qualifies for a DM without a follow-back. Otherwise, verify the follow-back
+                    before messaging. Accounts without qualifying activity wait until scheduled unfollow.
+                    All outreach uses the existing session time.
                   </p>
                   <SettingsGroup title="Unfollow">
                     {routineRange(

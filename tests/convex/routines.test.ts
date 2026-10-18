@@ -127,6 +127,7 @@ test('DM tasks keep message variations intact and supply the recipient name for 
   await t.run(ctx => ctx.db.patch(claim.leadId, { fullName: 'Alice Smith' }));
   await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: claim.username, kind: 'follow' }] });
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([
     { leadId: claim.leadId, username: claim.username, fullName: 'Alice Smith', message, date: dayKey() },
   ]);
@@ -271,7 +272,9 @@ test('saved routines with a fixed daily increase still load and use random growt
 // Create a previously followed recipient for delivery-specific regression cases.
 async function authorizeDm(t: ReturnType<typeof createConvexTest>, args: { automationId: Id<'automations'>; profileId: Id<'profiles'> }, claim: { leadId: Id<'leads'>; date: string }) {
   await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
-  await t.mutation(internal.routines.recordDmCheck, { ...args, leadId: claim.leadId, date: claim.date, canMessage: true });
+  await t.run(ctx => ctx.db.patch(claim.leadId, { followDate: Date.now() - 86_400_000 }));
+  const lead = (await t.run(ctx => ctx.db.get(claim.leadId)))!;
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: claim.date, events: [{ username: lead.username, kind: 'follow' }] });
   expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: claim.leadId, date: claim.date })).toBe(true);
 }
 
@@ -507,7 +510,6 @@ test('a pending request waits until the next day and stays claimed after unfollo
 
   await t.mutation(internal.routines.recordFollow, {
     profileId: profile._id, leadId: claim.leadId, followed: true, });
-  await t.mutation(internal.routines.recordDmCheck, { ...args, leadId: claim.leadId, date: claim.date, canMessage: false });
   expect(await t.mutation(internal.routines.beginSend, check)).toBe(false);
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
 
@@ -798,100 +800,91 @@ test("completed daily browsing advances once; removing and readding profiles pre
   expect(await t.query(internal.routines.ready, args)).toBe(false);
 });
 
-test('public follows can be messaged immediately without consuming another follow slot', async () => {
-  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
-  const { t, args, profile, loggedIn } = await setup(); await loggedIn();
-  await t.mutation(api.analytics.initialize, {});
-  const claim = (await reserveFollow(t, args))!;
-  await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
-  const before = await t.query(internal.routines.target, args);
-  const input = { ...args, leadId: claim.leadId, date: dayKey() };
-  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false);
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...input, canMessage: true })).toBe(true);
-  expect(await t.mutation(internal.routines.beginSend, input)).toBe(true);
-  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false);
-  const finish = { profileId: profile._id, leadId: claim.leadId, date: dayKey(), sent: true };
-  await t.mutation(internal.routines.finishSend, finish);
-  await t.mutation(internal.routines.finishSend, finish);
-  expect(await t.query(internal.routines.target, args)).toEqual(before);
-  expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals).toMatchObject({ follows: 1, dms: 1 });
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
-});
-
-test('private requests are revisited once daily until approved, then receive one DM', async () => {
-  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
-  const { t, args, loggedIn } = await setup(); await loggedIn();
-  const claim = (await reserveFollow(t, args))!;
-  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
-  const check = () => ({ ...args, leadId: claim.leadId, date: dayKey() });
-  await t.mutation(internal.routines.recordDmCheck, { ...check(), canMessage: false });
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
-  for (const date of ['2026-10-12', '2026-10-13']) {
-    vi.setSystemTime(new Date(date + 'T10:00:00Z'));
-    expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1);
-    expect(await t.mutation(internal.routines.recordDmCheck, { ...check(), canMessage: false })).toBe(false);
+test('daily follow-back discovery enables next-day DMs independently of follow quota', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
+    const { t, args, profile, loggedIn } = await setup(); await loggedIn();
+    await t.mutation(api.analytics.initialize, {});
+    const claims = [];
+    for (let i = 0; i < 2; i++) {
+      const claim = (await reserveFollow(t, args))!;
+      claims.push(claim);
+      await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
+    }
+    expect(await t.query(internal.routines.notifications, args)).toBeNull();
     expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
-    expect(await t.mutation(internal.routines.beginSend, check())).toBe(false);
-  }
-  vi.setSystemTime(new Date('2026-10-14T10:00:00Z'));
-  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1);
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...check(), canMessage: true })).toBe(true);
-  expect(await t.mutation(internal.routines.beginSend, check())).toBe(true);
-  await t.mutation(internal.routines.finishSend, { profileId: args.profileId, leadId: claim.leadId, date: dayKey(), sent: true });
-  vi.setSystemTime(new Date('2026-10-15T10:00:00Z'));
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
+    vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
+    expect(await t.query(internal.routines.notifications, args)).toMatchObject({ date: dayKey() });
+    await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [claims[0].username, claims[1].username, 'stranger', claims[0].username].map(username => ({ username, kind: 'follow' as const })) });
+    expect(await t.query(internal.routines.notifications, args)).toBeNull();
+    const tasks = await t.query(internal.routines.dmTasks, args);
+    expect(tasks).toHaveLength(2);
+    const before = await t.query(internal.routines.target, args);
+    for (const task of tasks) {
+      const input = { ...args, leadId: task.leadId, date: task.date };
+      expect(await t.mutation(internal.routines.beginSend, input)).toBe(true);
+      expect(await t.mutation(internal.routines.beginSend, input)).toBe(false);
+      const finish = { profileId: profile._id, leadId: task.leadId, date: task.date, sent: true };
+      await t.mutation(internal.routines.finishSend, finish);
+      await t.mutation(internal.routines.finishSend, finish);
+    }
+    expect(await t.query(internal.routines.target, args)).toEqual(before);
+    expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]).toMatchObject({ followed: 0, sent: 2 });
+    expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals).toMatchObject({ follows: 2, dms: 2 });
+    expect((await t.query(api.analytics.overview, { date: dayKey(), period: 'today' })).totals).toMatchObject({ follows: 0, dms: 2 });
+    expect((await t.query(api.analytics.overview, { date: dayKey(), period: '7days' })).totals).toMatchObject({ follows: 2, dms: 2 });
+    expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
+  } finally { vi.useRealTimers(); }
 });
 
-test('existing followed unsent leads enter the revisit queue without notification evidence or a reset', async () => {
-  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
-  const { t, args, loggedIn } = await setup(); await loggedIn();
-  const claim = (await reserveFollow(t, args))!;
-  await t.run(ctx => ctx.db.patch(claim.leadId, {
-    followed: true, followDate: Date.now() - 86_400_000,
-    // Existing leads can have neither a revisit date nor a saved cleanup deadline.
-    unfollowAt: undefined, dmEligible: false, }));
-  expect(await t.query(internal.routines.dmTasks, args)).toMatchObject([{ leadId: claim.leadId }]);
-  const check = { ...args, leadId: claim.leadId, date: dayKey(), canMessage: true };
-  expect(await t.mutation(internal.routines.recordDmCheck, check)).toBe(true);
-  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: claim.leadId, date: dayKey() })).toBe(true);
+test('daily notification completion is reset next day; stale completion is ignored', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
+    const { t, args, loggedIn } = await setup(); await loggedIn();
+    const claim = (await reserveFollow(t, args))!;
+    await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
+    vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
+    await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [] });
+    expect(await t.query(internal.routines.notifications, args)).toBeNull();
+    vi.setSystemTime(new Date('2026-10-13T10:00:00Z'));
+    await t.mutation(internal.routines.recordNotifications, { ...args, date: '2026-10-12', events: [{ username: claim.username, kind: 'follow' }] });
+    expect(await t.query(internal.routines.notifications, args)).toMatchObject({ date: dayKey() });
+    expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
+  } finally { vi.useRealTimers(); }
 });
 
-test('unapproved leads leave the revisit queue as soon as unfollow is due', async () => {
-  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
-  const { t, args, loggedIn } = await setup(); await loggedIn();
-  const claim = (await reserveFollow(t, args))!;
-  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
-  vi.setSystemTime(new Date('2026-10-18T10:00:00Z'));
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
-  expect(await t.query(internal.routines.followTasks, args)).toMatchObject([{ leadId: claim.leadId }]);
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...args, leadId: claim.leadId, date: dayKey(), canMessage: true })).toBe(false);
+test.each(['expired', 'unfollowed', 'paused', 'route removed', 'automation disabled'])('DM authorization rejects %s recipients', async reason => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
+    const { t, args, loggedIn, automation } = await setup(); await loggedIn();
+    const claim = (await reserveFollow(t, args))!;
+    await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
+    vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
+    await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: claim.username, kind: 'follow' }] });
+    const [task] = await t.query(internal.routines.dmTasks, args);
+    expect(task).toBeDefined();
+    if (reason === 'expired') await t.run(ctx => ctx.db.patch(claim.leadId, { unfollowAt: Date.now() }));
+    if (reason === 'unfollowed') await t.run(ctx => ctx.db.patch(claim.leadId, { followed: false }));
+    if (reason === 'paused') await t.mutation(api.routines.setAccount, { profileId: args.profileId, paused: true });
+    if (reason === 'route removed') await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreachRoutes: [] } }));
+    if (reason === 'automation disabled') await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });
+    expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: task.leadId, date: task.date })).toBe(false);
+    expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
+  } finally { vi.useRealTimers(); }
 });
 
-for (const reason of ['expired', 'unfollowed', 'paused', 'route removed', 'automation disabled']) test(`DM authorization rechecks live state after the profile visit: ${reason}`, async () => {
-  const { t, args, loggedIn, automation } = await setup(); await loggedIn();
-  const claim = (await reserveFollow(t, args))!;
-  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
-  const input = { ...args, leadId: claim.leadId, date: dayKey() };
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...input, canMessage: true })).toBe(true);
-  if (reason === 'expired') await t.run(ctx => ctx.db.patch(claim.leadId, { unfollowAt: Date.now() }));
-  if (reason === 'unfollowed') await t.run(ctx => ctx.db.patch(claim.leadId, { followed: false }));
-  if (reason === 'paused') await t.mutation(api.routines.setAccount, { profileId: args.profileId, paused: true });
-  if (reason === 'route removed') await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreachRoutes: [] } }));
-  if (reason === 'automation disabled') await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });
-  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false);
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...input, canMessage: true })).toBe(false);
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
-});
-
-test('profile checks cannot approve another sender, unfollowed leads or a stale day', async () => {
-  const { t, args, loggedIn } = await setup(); await loggedIn();
-  const claim = (await reserveFollow(t, args))!;
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...args, leadId: claim.leadId, date: dayKey(), canMessage: true })).toBe(false);
-  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...args, leadId: claim.leadId, date: '2000-01-01', canMessage: true })).toBe(false);
+test('notification events for other senders and non-followed leads do not enable DMs', async () => {
+  const { t, args, loggedIn, leads } = await setup(); await loggedIn();
   const other = (await seedProfile(t, { name: 'Other' }))!;
-  await t.run(ctx => ctx.db.patch(claim.leadId, { senderId: other._id }));
-  expect(await t.mutation(internal.routines.recordDmCheck, { ...args, leadId: claim.leadId, date: dayKey(), canMessage: true })).toBe(false);
+  await t.run(async ctx => {
+    await ctx.db.patch(leads[0]._id, { senderId: other._id, followed: true, followDate: Date.now() - 86_400_000, unfollowAt: Date.now() + 86_400_000 });
+    await ctx.db.patch(leads[1]._id, { senderId: args.profileId, followed: false, followDate: Date.now() - 86_400_000 });
+  });
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: leads.map(lead => ({ username: lead.username, kind: 'follow' as const })) });
+  expect((await readLeads(t)).some(lead => lead.dmEligible)).toBe(false);
 });
 
 test('a delivery result cannot be recorded without a one-time authorization', async () => {
