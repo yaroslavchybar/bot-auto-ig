@@ -79,18 +79,24 @@ test('invalid tile counts and empty grids never call the provider', async () => 
   }
 })
 
-async function gridFixture() {
+async function gridFixture(count = 4, columns = 4) {
   const window = new Window({ width: 1000, height: 700 }),
     document = window.document
   document.body.innerHTML =
     '<main>' +
-    [1, 2, 3, 4].map((n) => `<a href="/alice/p/post${n}/"><img></a>`).join('') +
+    Array.from({ length: count }, (_, i) => `<a href="/alice/p/post${i + 1}/"><img></a>`).join('') +
     '</main>'
+  let scroll = 0
   for (const [index, node] of [...document.querySelectorAll('a')].entries()) {
     node.getBoundingClientRect = () =>
-      ({ x: 40 + index * 201, y: 100, width: 200, height: 300 }) as DOMRect
+      ({
+        x: 40 + (index % columns) * 201,
+        y: 100 + Math.floor(index / columns) * 301 - scroll,
+        width: 200,
+        height: 300,
+      }) as DOMRect
     Object.defineProperties(node.querySelector('img')!, {
-      complete: { value: true },
+      complete: { value: true, configurable: true },
       naturalWidth: { value: 1000, configurable: true },
     })
   }
@@ -101,20 +107,29 @@ async function gridFixture() {
     .toBuffer()
   let url = 'https://www.instagram.com/alice/',
     stopped = false,
-    captures = 0
+    captures = 0,
+    reveals = 0
   const page = {
     url: () => url,
     viewportSize: () => ({ width: 1000, height: 700 }),
     locator: (selector: string) => ({
+      first() {
+        return this
+      },
+      getAttribute: async (name: string) =>
+        document.querySelector(selector)?.getAttribute(name) ?? null,
       evaluateAll: async (fn: (nodes: Element[], username: string) => unknown, username: string) =>
         fn([...document.querySelectorAll(selector)] as unknown as Element[], username),
     }),
-    screenshot: async (options: { clip?: unknown; caret?: string }) => {
-      captures++
-      assert.equal(options.clip, undefined)
-      assert.equal(options.caret, 'initial')
-      return image
-    },
+    context: () => ({ newCDPSession: async () => ({
+      send: async (command: string, options: Record<string, unknown>) => {
+        captures++
+        assert.equal(command, 'Page.captureScreenshot')
+        assert.deepEqual(options, { format: 'png', fromSurface: false, captureBeyondViewport: false })
+        return { data: image.toString('base64') }
+      },
+      detach: async () => {},
+    }) }),
   } as unknown as Page
   const run = (request: NonNullable<Parameters<typeof matchLeadPostGrid>[4]>) =>
     matchLeadPostGrid(
@@ -123,12 +138,26 @@ async function gridFixture() {
       new BrowseSession(Date.now() + 30_000, () => stopped),
       () => {},
       request,
+      async (_page, target, session) => {
+        session.check()
+        reveals++
+        const href = await target.getAttribute('href')
+        const index = [...document.querySelectorAll('a')].findIndex(
+          (node) => node.getAttribute('href') === href,
+        )
+        assert.ok(index >= 0)
+        scroll = Math.floor(index / columns) * 301
+        for (const image of document.querySelectorAll('img'))
+          Object.defineProperty(image, 'complete', { value: true, configurable: true })
+        return true
+      },
     )
   return {
     document,
     page,
     run,
     captures: () => captures,
+    reveals: () => reveals,
     stop: () => {
       stopped = true
     },
@@ -171,6 +200,92 @@ test('lead grid matching returns no posts on provider failure or no-human answer
       [],
     )
     assert.deepEqual(await s.run(async () => []), [])
+  } finally {
+    await s.close()
+  }
+})
+
+test('an approved first row never scrolls or classifies a second row', async () => {
+  const s = await gridFixture(6, 3)
+  let requests = 0
+  try {
+    assert.deepEqual(
+      await s.run(async () => {
+        requests++
+        return [2]
+      }),
+      ['/alice/p/post2/'],
+    )
+    assert.equal(requests, 1)
+    assert.equal(s.captures(), 1)
+    assert.equal(s.reveals(), 0)
+  } finally {
+    await s.close()
+  }
+})
+
+for (const count of [4, 5, 6, 9])
+  test(`no first-row match checks only the next available row (${count} posts)`, async () => {
+    const s = await gridFixture(count, 3)
+    let requests = 0
+    // The fallback must reveal the next row even when its thumbnails have not loaded.
+    for (const image of [...s.document.querySelectorAll('img')].slice(3))
+      Object.defineProperty(image, 'complete', { value: false, configurable: true })
+    try {
+      const selected = await s.run(async (_image, tiles) => {
+        requests++
+        assert.equal(tiles, requests === 1 ? 3 : Math.min(3, count - 3))
+        return requests === 1 ? [] : [tiles]
+      })
+      assert.deepEqual(selected, [`/alice/p/post${Math.min(6, count)}/`])
+      assert.equal(requests, 2)
+      assert.equal(s.captures(), 2)
+      assert.equal(s.reveals(), 1)
+    } finally {
+      await s.close()
+    }
+  })
+
+test('no approved posts in either row never checks a third row', async () => {
+  const s = await gridFixture(9, 3)
+  try {
+    assert.deepEqual(await s.run(async () => []), [])
+    assert.equal(s.captures(), 2)
+    assert.equal(s.reveals(), 1)
+  } finally {
+    await s.close()
+  }
+})
+
+test('a failed first-row request does not trigger a second request', async () => {
+  const s = await gridFixture(6, 3)
+  try {
+    assert.deepEqual(
+      await s.run(async () => {
+        throw new Error('Provider unavailable')
+      }),
+      [],
+    )
+    assert.equal(s.captures(), 1)
+    assert.equal(s.reveals(), 0)
+  } finally {
+    await s.close()
+  }
+})
+
+test('cancellation during second-row classification cannot approve interaction', async () => {
+  const s = await gridFixture(6, 3)
+  let requests = 0
+  try {
+    await assert.rejects(
+      s.run(async () => {
+        if (++requests === 1) return []
+        s.stop()
+        return [1]
+      }),
+      SessionEnded,
+    )
+    assert.equal(requests, 2)
   } finally {
     await s.close()
   }

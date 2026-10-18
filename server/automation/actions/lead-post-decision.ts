@@ -2,6 +2,7 @@ import type { Page } from 'playwright-core'
 import { currentAiStep } from '../ai-settings.js'
 import { requestOpenRouterDecision } from './openrouter-decision.js'
 import { captureGridScreenshot, gridRow, sameGridTiles, type GridTile } from './post-grid.js'
+import { revealForClick } from './scroll.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import type { ActionLogger } from './shared.js'
 
@@ -56,7 +57,12 @@ export async function decideLeadPostGrid(
 }
 
 /** Read loaded thumbnails belonging to this exact profile, excluding suggested accounts. */
-export function leadGridTiles(links: Element[], username: string): GridTile[] {
+export function leadGridTiles(
+  links: Element[],
+  profile: string | { username: string; includeUnloaded: boolean },
+): GridTile[] {
+  const username = typeof profile === 'string' ? profile : profile.username
+  const includeUnloaded = typeof profile !== 'string' && profile.includeUnloaded
   const seen = new Set<string>()
   return links.flatMap((link) => {
     const href = link.getAttribute('href') ?? '',
@@ -68,7 +74,7 @@ export function leadGridTiles(links: Element[], username: string): GridTile[] {
     )
       return []
     const image = link.querySelector('img')
-    if (!image?.complete || !image.naturalWidth) return []
+    if (!image || (!includeUnloaded && (!image.complete || !image.naturalWidth))) return []
     const box = link.getBoundingClientRect(),
       view = link.ownerDocument.defaultView!
     if (
@@ -82,15 +88,18 @@ export function leadGridTiles(links: Element[], username: string): GridTile[] {
   })
 }
 
-/** Match one visible grid row before opening any post. Failures skip optional interaction. */
+/** Try the next row only when the first row has no approved posts. Never open a post to classify it. */
 export async function matchLeadPostGrid(
   page: Page,
   username: string,
   parent: BrowseSession,
   log: ActionLogger,
   request = decideLeadPostGrid,
+  reveal = revealForClick,
 ): Promise<string[]> {
-  const session = new BrowseSession(Math.min(parent.end, Date.now() + 5000), () => parent.stopped())
+  const session = new BrowseSession(Math.min(parent.end, Date.now() + 15_000), () =>
+    parent.stopped(),
+  )
   const correctProfile = () =>
     new URL(page.url()).pathname.toLowerCase() === `/${username.toLowerCase()}/`
   const readTiles = () =>
@@ -108,19 +117,50 @@ export async function matchLeadPostGrid(
       await session.wait(200)
     }
     if (!row.length) return []
-    const screenshot = await captureGridScreenshot(page, row, session, readTiles)
-    if (!correctProfile()) throw new Error('Lead profile navigation changed')
-    const numbers = await request(screenshot, row.length, session.timeout(5000))
-    session.check()
-    if (!correctProfile() || !sameGridTiles(row, await readTiles()))
-      throw new Error('Lead grid changed during classification')
-    log({
-      event: 'automation.lead_posts.grid_classified',
-      tileCount: row.length,
-      selectedNumbers: numbers,
-      model: currentAiStep('leadPostPerson').model,
-    })
-    return numbers.map((number) => row[number - 1]!.href)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const decision = new BrowseSession(Math.min(session.end, Date.now() + 5000), () =>
+        session.stopped(),
+      )
+      const screenshot = await captureGridScreenshot(page, row, decision, readTiles)
+      if (!correctProfile()) throw new Error('Lead profile navigation changed')
+      const numbers = await request(screenshot, row.length, decision.timeout(5000))
+      decision.check()
+      if (!correctProfile() || !sameGridTiles(row, await readTiles()))
+        throw new Error('Lead grid changed during classification')
+      log({
+        event: 'automation.lead_posts.grid_classified',
+        tileCount: row.length,
+        selectedNumbers: numbers,
+        model: currentAiStep('leadPostPerson').model,
+      })
+      if (numbers.length) return numbers.map((number) => row[number - 1]!.href)
+      if (attempt === 1) return []
+
+      // Include unloaded images only to locate the next row; capture still requires loaded tiles.
+      const layout = await page
+        .locator('main a[href*="/p/"], main a[href*="/reel/"]')
+        .evaluateAll(leadGridTiles, { username, includeUnloaded: true })
+      const next = layout
+        .filter((tile) => tile.box.y > row[0]!.box.y + 4)
+        .sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x)
+      if (!next.length) return []
+      const nextRow = next.filter((tile) => Math.abs(tile.box.y - next[0]!.box.y) < 4)
+      const target = page.locator(`main a[href="${next[0]!.href}"]`).first()
+      if (!(await reveal(page, target, session))) return []
+      row = []
+      for (let tries = 0; tries < 10; tries++) {
+        session.check()
+        if (!correctProfile()) throw new Error('Lead profile navigation changed')
+        row = gridRow(
+          (await readTiles()).filter((tile) => nextRow.some((next) => next.href === tile.href)),
+          viewport,
+        )
+        if (row.length) break
+        await session.wait(200)
+      }
+      if (!row.length) return []
+    }
+    return []
   } catch (error) {
     if (parent.stopped()) throw new SessionEnded('Browsing session ended')
     log({ event: 'automation.lead_posts.grid_skipped', error })

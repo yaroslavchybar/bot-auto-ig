@@ -307,20 +307,16 @@ test('screening waits for the target header, captures once, and rejects navigati
         : {
             filter: () => ({ evaluateAll: async () => null }),
           },
-    screenshot: async (options: {
-      type: string
-      fullPage: boolean
-      caret?: string
-      clip?: { x: number; y: number; width: number; height: number }
-    }) => {
-      assert.equal(headerReady, true)
-      assert.equal(options.type, 'png')
-      assert.equal(options.fullPage, false)
-      assert.equal(options.clip, undefined, 'browser clipping can make the profile flicker')
-      assert.equal(options.caret, 'initial')
-      captures++
-      return viewportImage
-    },
+    context: () => ({ newCDPSession: async () => ({
+      send: async (command: string, options: Record<string, unknown>) => {
+        assert.equal(headerReady, true)
+        assert.equal(command, 'Page.captureScreenshot')
+        assert.deepEqual(options, { format: 'png', fromSurface: false, captureBeyondViewport: false })
+        captures++
+        return { data: viewportImage.toString('base64') }
+      },
+      detach: async () => {},
+    }) }),
   } as unknown as Page
   await assert.rejects(
     screenLead(page, 'target', new BrowseSession(), async (screenshot) => {

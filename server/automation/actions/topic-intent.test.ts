@@ -17,7 +17,10 @@ const element = { boundingBox: async () => ({ x: 100, y: 100, width: 500, height
   evaluate: async () => true, dispose: async () => {},
 }
 const target = { elementHandle: async () => element, page: () => ({
-  viewportSize: () => ({ width: 800, height: 600 }), screenshot: async () => viewportImage,
+  viewportSize: () => ({ width: 800, height: 600 }),
+  context: () => ({ newCDPSession: async () => ({
+    send: async () => ({ data: (await viewportImage).toString('base64') }), detach: async () => {},
+  }) }),
 }) } as unknown as Locator
 const response = (noul: unknown, type = 'noul') =>
   Response.json({ answers: { matches_topic: { type, noul } } })
@@ -206,15 +209,15 @@ test('capture crops the viewport in memory without browser clipping, scrolling, 
   const source = { elementHandle: async () => ({ boundingBox: async () => box,
     evaluate: async () => connected, dispose: async () => { disposed = true },
   }), page: () => ({ viewportSize: () => ({ width: 800, height: 600 }),
-    screenshot: async (options: Record<string, unknown>) => {
-      shots++
-      assert.equal(options.clip, undefined, 'a clipped browser capture makes the post viewer jump')
-      assert.equal(options.type, 'png')
-      assert.equal(options.scale, 'css'); assert.equal(options.fullPage, false)
-      assert.equal(options.caret, 'initial', 'capture must not modify the popup comment field')
-      assert.equal(options.path, undefined)
-      return viewportImage
-    },
+    context: () => ({ newCDPSession: async () => ({
+      send: async (command: string, options: Record<string, unknown>) => {
+        shots++
+        assert.equal(command, 'Page.captureScreenshot')
+        assert.deepEqual(options, { format: 'png', fromSurface: false, captureBeyondViewport: false })
+        return { data: (await viewportImage).toString('base64') }
+      },
+      detach: async () => {},
+    }) }),
   }) } as unknown as Locator
   const screenshot = await captureTopicScreenshot(source, new BrowseSession())
   const metadata = await sharp(screenshot).metadata()

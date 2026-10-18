@@ -112,12 +112,14 @@ test('tile numbers resolve to original hrefs and a changing grid is skipped befo
   const page = {
     viewportSize: () => ({ width: 1440, height: 680 }),
     locator: () => ({ evaluateAll: async () => current }),
-    screenshot: async (options: { clip?: unknown; type: string; caret?: string }) => {
-      assert.equal(options.clip, undefined, 'browser clipping can make Explore flicker')
-      assert.equal(options.type, 'png')
-      assert.equal(options.caret, 'initial')
-      return image
-    },
+    context: () => ({ newCDPSession: async () => ({
+      send: async (command: string, options: Record<string, unknown>) => {
+        assert.equal(command, 'Page.captureScreenshot')
+        assert.deepEqual(options, { format: 'png', fromSurface: false, captureBeyondViewport: false })
+        return { data: image.toString('base64') }
+      },
+      detach: async () => {},
+    }) }),
   } as unknown as Page
   const request = async (image: Buffer, count: number) => {
     requests++
