@@ -4,12 +4,24 @@ import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import { clickLiveAction } from './action-locator.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { likePost } from './engagement.js'
-import { matchLeadPostGrid } from './lead-post-decision.js'
-import { revealForClick } from './scroll.js'
+import { decideLeadPost } from './lead-post-decision.js'
+import { captureTopicScreenshot } from './topic-intent.js'
+import { revealForClick, smoothScroll } from './scroll.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { random, type ActionLogger } from './shared.js'
 import { viewVideo } from './viewing.js'
 import { isTemporaryUiError } from './ui-errors.js'
+
+/** Only this profile's on-screen grid tiles; never suggested accounts or unrelated links. */
+export function visibleLeadPosts(links: Element[], username: string): string[] {
+  return [...new Set(links.flatMap(link => {
+    const href = link.getAttribute('href') ?? '', match = href.match(/^\/([\w.]+)\/(?:p|reel)\/[\w-]+\/$/)
+    if (match?.[1].toLowerCase() !== username.toLowerCase() || link.closest('aside')) return []
+    const box = link.getBoundingClientRect(), view = link.ownerDocument.defaultView!
+    return box.width > 100 && box.height > 100 && box.bottom > 0 && box.top < view.innerHeight &&
+      box.right > 0 && box.left < view.innerWidth && view.getComputedStyle(link).visibility !== 'hidden' ? [href] : []
+  }))]
+}
 
 /** Pick loaded main media by visible area, excluding avatars and offscreen carousel slides. */
 export function leadPostMediaIndex(nodes: Element[]): number {
@@ -25,11 +37,11 @@ export function leadPostMediaIndex(nodes: Element[]): number {
   return index
 }
 
-const dependencies = { grid: matchLeadPostGrid, like: likePost,
-  click: clickLiveAction, reveal: revealForClick, video: viewVideo,
+const dependencies = { decide: decideLeadPost, capture: captureTopicScreenshot, like: likePost,
+  click: clickLiveAction, reveal: revealForClick, scroll: smoothScroll, video: viewVideo,
   check: assertInstagramReady, random, wait: (session: BrowseSession, ms: number) => session.wait(ms) }
 
-/** Open and interact with 1–3 grid-approved human posts before following a public lead. */
+/** Browse up to three public lead posts before following, checking each opened post before Like. */
 export async function browseLeadPosts(page: Page, username: string, parent: BrowseSession, log: ActionLogger,
   deps = dependencies): Promise<void> {
   parent.check()
@@ -49,18 +61,24 @@ export async function browseLeadPosts(page: Page, username: string, parent: Brow
     log({ event: 'automation.lead_posts.skipped', reason: await privateNotice.isVisible() ? 'private' : 'no_posts' })
     return
   }
+  const sampled = new Set<string>()
+  const collect = async () => {
+    for (const href of await tiles.evaluateAll(visibleLeadPosts, username)) sampled.add(href)
+  }
   try {
-    if (!await deps.reveal(page, tiles.first(), session)) return
-    await deps.check(page, session)
-    const candidates = [...new Set(await deps.grid(page, username, session, log))]
-    session.check()
-    if (!correctProfile()) throw new errors.TimeoutError('Lead profile navigation changed')
-    if (!candidates.length) {
-      log({ event: 'automation.lead_posts.skipped', reason: 'no_person_posts' })
-      return
+    await collect()
+    const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
+    await page.mouse.move(viewport.width * deps.random(0.45, 0.7), viewport.height * deps.random(0.4, 0.65))
+    for (let i = 0, count = Math.floor(deps.random(1, 3)); i < count; i++) {
+      session.check()
+      if (!correctProfile()) throw new errors.TimeoutError('Lead profile navigation changed')
+      await deps.scroll(page, deps.random(250, 500), session)
+      await deps.wait(session, deps.random(700, 1400))
+      await collect()
     }
+    const candidates = [...sampled]
     const selected: string[] = []
-    for (let i = 0, count = Math.floor(deps.random(1, 4)); i < count && candidates.length; i++) {
+    for (let i = 0; i < 3 && candidates.length; i++) {
       selected.push(candidates.splice(Math.floor(deps.random(0, candidates.length)), 1)[0])
     }
     for (const href of selected) {
@@ -96,11 +114,23 @@ export async function browseLeadPosts(page: Page, username: string, parent: Brow
         log({ event: 'automation.lead_posts.viewed', href })
         const actions = article.locator('section:has(svg[aria-label="Comment"])').first()
         if (!await actions.isVisible() || await actions.locator('svg[aria-label="Unlike"]').count()) continue
-        // Keep the opened media bound to this lead until Like input.
+        // Preserve the media identity across the screenshot/provider wait.
         const source = await media.getAttribute('src')
+        let decision
+        try {
+          // Match Reels capture: screenshot the opened post container, not its image element.
+          decision = await deps.decide(await deps.capture(article, session), session.timeout(5000))
+        } catch (error) {
+          session.check()
+          await deps.check(page, session)
+          log({ event: 'automation.lead_posts.decision_failed', href, error, outcome: 'skipped' })
+          continue
+        }
         session.check()
+        if (!correctPost() || source !== await media.getAttribute('src')) continue
+        log({ event: 'automation.lead_posts.classified', href, ...decision })
         // No interest check, random chance, or daily Like cap for lead outreach.
-        await deps.like(page, actions, undefined, session, log, 100, async () => {
+        if (decision.person) await deps.like(page, actions, undefined, session, log, 100, async () => {
           if (!correctPost() || source !== await media.getAttribute('src') ||
             !await article.locator(`header a[href="/${username}/"]`).count())
             throw new errors.TimeoutError('Lead post changed before Like')

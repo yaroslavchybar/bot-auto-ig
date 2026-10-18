@@ -10,7 +10,7 @@ import {
   type AiSettings,
 } from '../shared/aiSettings.js'
 import { decideTopic, createTopicMatcher } from './actions/topic-intent.js'
-import { decideLeadPostGrid } from './actions/lead-post-decision.js'
+import { decideLeadPost } from './actions/lead-post-decision.js'
 import { decideLead } from './actions/lead-screening.js'
 import { BrowseSession } from './actions/session.js'
 
@@ -40,7 +40,7 @@ test('concurrent automations use their own prompts and models in actual decision
           ).related,
           true,
         )
-        assert.deepEqual(await decideLeadPostGrid(image, 1, 5000, { key: 'test', fetcher }), [1])
+        assert.equal((await decideLeadPost(image, 5000, { key: 'test', fetcher })).person, true)
       },
     )
   await Promise.all([run('liquid/d1-ultra', 'Fishing only'), run('respan/span-02', 'Cooking only')])
