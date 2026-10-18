@@ -6,6 +6,7 @@ import { mount } from './mount'
 const getToken = vi.hoisted(() => vi.fn(async () => 'test-token'))
 vi.mock('@/lib/auth', () => ({ useAppAuth: () => ({ getToken }) }))
 vi.mock('@/lib/sentry', () => ({ addWebSocketBreadcrumb: vi.fn() }))
+vi.mock('@/lib/env', () => ({ env: { apiUrl: 'http://localhost:3001' } }))
 
 class Socket {
   static OPEN = 1

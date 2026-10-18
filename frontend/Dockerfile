@@ -21,28 +21,9 @@ COPY --from=convex_src . /app/convex/
 COPY --from=repo_root tsconfig.json ./tsconfig.json
 COPY --from=repo_root vite.config.ts ./vite.config.ts
 COPY --from=repo_root .node-version ./.node-version
-# Frontend typechecks shared wire types from the server package
-# (frontend/src/hooks/useWebSocket.ts, frontend/src/features/automations/activities/types.ts).
-# Both are `import type`, erased from the bundle. Keep this in sync if the
-# frontend imports more files from outside frontend/ and convex/.
-COPY --from=repo_root server/shared/contracts.ts ./server/shared/contracts.ts
-COPY --from=repo_root server/shared/sessionDecision.ts ./server/shared/sessionDecision.ts
-# Runtime parser shared by the frontend, Convex functions, and browser startup.
-COPY --from=repo_root server/shared/proxy.ts ./server/shared/proxy.ts
-COPY --from=repo_root server/shared/pagination.ts ./server/shared/pagination.ts
-# Convex routine settings share message validation with the outreach worker.
-COPY --from=repo_root server/shared/outreachMessage.ts ./server/shared/outreachMessage.ts
-# Interest tags share validation between the editor, Convex, and the worker.
-COPY --from=repo_root server/shared/interests.ts ./server/shared/interests.ts
-# AI prompts and model settings are shared by the editor, Convex, and the worker.
-COPY --from=repo_root server/shared/aiSettings.ts ./server/shared/aiSettings.ts
-# Convex warm-up mutations share the daily activity plan with the worker.
-COPY --from=repo_root server/shared/warmupPlan.ts ./server/shared/warmupPlan.ts
-# Convex routine recovery shares transient DOM error detection with the worker.
-COPY --from=repo_root server/shared/domErrors.ts ./server/shared/domErrors.ts
-# Convex HTTP routes use the portable logger; frontend typechecking follows it.
-COPY --from=repo_root server/shared/httpLogging.ts \
-  server/shared/loggingSanitize.ts server/shared/loggingTypes.ts ./server/shared/
+# Frontend and Convex import shared modules. Copy the folder so new imports
+# remain available without maintaining a separate file list for this build.
+COPY --from=repo_root server/shared ./server/shared
 
 ARG VITE_CONVEX_URL
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
