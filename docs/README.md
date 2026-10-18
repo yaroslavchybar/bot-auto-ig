@@ -335,6 +335,8 @@ from automations, setup, login queues, scraping, and browser-cookie requests. It
 automated browser work and releases scraper leases while preserving credentials,
 progress, and request usage. The Info button in Profiles Manager opens live profile details,
 including pause/resume, errors, daily outreach, next session, setup progress, and pending-action review.
+The Info icon is red for errors and yellow for pending review. Login status stays visible
+as an icon in the table; its toggle is inside profile details.
 The automation popup's Profiles tab lists profile names only. A real Instagram 429 cools down that account for at least 30 minutes, with
 longer waits after repeated 429s or when Instagram sends `Retry-After`.
 `OPENROUTER_API_KEY` powers screenshot decisions and topic search generation.

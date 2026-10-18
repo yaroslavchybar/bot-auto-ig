@@ -12,6 +12,7 @@ import {
   type CursorPage,
 } from '../../server/shared/pagination'
 import { DomainError } from '../errors'
+import { routineRetryState } from '../routineErrors'
 
 export type ProfileListRow = Pick<
   Doc<'profiles'>,
@@ -28,7 +29,8 @@ export type ProfileListRow = Pick<
   | 'paused'
   | 'unreadChatCount'
   | 'unreadChatsCheckedAt'
->
+  | 'modelIds'
+> & { attention?: 'error' | 'review' }
 
 export const listBatchInternal = internalQuery({
   args: { cursor: v.union(v.string(), v.null()), count: v.number() },
@@ -54,6 +56,7 @@ export const listBatchInternal = internalQuery({
           paused,
           unreadChatCount,
           unreadChatsCheckedAt,
+          modelIds,
         }) => ({
           _id,
           name,
@@ -68,6 +71,7 @@ export const listBatchInternal = internalQuery({
           paused,
           unreadChatCount,
           unreadChatsCheckedAt,
+          modelIds,
         }),
       ),
     }
@@ -83,7 +87,7 @@ export const listPage = query({
   handler: async (ctx, { search, cursor, pageSize }): Promise<CursorPage<ProfileListRow>> => {
     if (!isPageSize(pageSize)) throw new DomainError('VALIDATION', 'Invalid page size')
     const term = search.trim().toLowerCase()
-    return scanPage<ProfileListRow>(
+    const result = await scanPage<ProfileListRow>(
       (next, count) =>
         ctx.runQuery(internal.profiles.queries.listBatchInternal, { cursor: next, count }),
       (row) =>
@@ -98,6 +102,21 @@ export const listPage = query({
       cursor,
       pageSize,
     )
+    return {
+      ...result,
+      page: await Promise.all(result.page.map(async (row) => {
+        const [progress, setups] = await Promise.all([
+          ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', row._id)).unique(),
+          ctx.db.query('modelSetupStates').withIndex('by_profile', q => q.eq('profileId', row._id)).collect(),
+        ])
+        const matchingSetups = setups.filter(state => row.modelIds?.includes(state.modelId))
+        const attention = routineRetryState(progress).issue || ['error', 'failed'].includes(row.status ?? '')
+          ? 'error' as const
+          : matchingSetups.some(state => state.pending) ? 'review' as const
+            : matchingSetups.some(state => state.error) ? 'error' as const : undefined
+        return { ...row, attention }
+      })),
+    }
   },
 })
 

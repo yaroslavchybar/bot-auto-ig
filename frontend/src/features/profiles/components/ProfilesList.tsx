@@ -39,7 +39,7 @@ import {
 import type { Profile } from '../types'
 import { cn } from '@/lib/utils'
 import { useNavigate } from '@/lib/router'
-import { IgStateToggles } from './IgStateToggles'
+import { IgLoginStatus } from './IgStateToggles'
 
 interface ProfilesListProps {
   profiles: Profile[]
@@ -199,7 +199,7 @@ function ProfileMobileCard({
         <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
           <ProfileDetailsButton profile={profile} onDetails={onDetails} />
           <UnreadChatsBadge profile={profile} />
-          <IgStateToggles profile={profile} />
+          <IgLoginStatus profile={profile} />
           <ProfileActionsMenu
             profile={profile}
             onEdit={onEdit}
@@ -313,7 +313,7 @@ function ProfileDesktopRow({
         <div className="flex items-center justify-end gap-2">
           <ProfileDetailsButton profile={profile} onDetails={onDetails} />
           <UnreadChatsBadge profile={profile} />
-          <IgStateToggles profile={profile} />
+          <IgLoginStatus profile={profile} />
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
             <Button
               variant="ghost"
@@ -349,8 +349,13 @@ function ProfileDesktopRow({
 }
 
 function ProfileDetailsButton({ profile, onDetails }: { profile: Profile; onDetails: (profile: Profile) => void }) {
-  return <Button variant="ghost" size="icon" title="Profile details" aria-label={`View ${profile.name} details`}
-    className="text-muted-copy hover:bg-panel-muted hover:text-ink" onClick={() => onDetails(profile)}>
+  const attention = profile.attention === 'error' ? ' — Error'
+    : profile.attention === 'review' ? ' — Action needs review' : ''
+  return <Button variant="ghost" size="icon" title={`Profile details${attention}`} aria-label={`View ${profile.name} details${attention}`}
+    className={cn('hover:bg-panel-muted', profile.attention === 'error'
+      ? 'text-status-danger hover:text-status-danger'
+      : profile.attention === 'review' ? 'text-status-warning hover:text-status-warning'
+        : 'text-muted-copy hover:text-ink')} onClick={() => onDetails(profile)}>
     <Info className="h-4 w-4" />
   </Button>
 }

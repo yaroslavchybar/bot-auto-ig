@@ -21,11 +21,12 @@ export function mapProfileRecord(
     | 'unreadChatCount'
     | 'unreadChatsCheckedAt'
     | 'cookiesJson'
-  >,
+  > & { attention?: Profile['attention'] },
   options?: { includeCookies?: boolean },
 ): Profile {
   return {
     id: record._id,
+    attention: record.attention,
     name: record.name,
     proxy: record.proxy,
     proxyType: record.proxyType,

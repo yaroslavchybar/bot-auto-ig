@@ -1,4 +1,5 @@
 export type Profile = {
+  attention?: 'error' | 'review'
   paused?: boolean
   igLoggedIn?: boolean
   outreachReady?: boolean

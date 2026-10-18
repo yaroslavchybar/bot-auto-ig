@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { IgStateToggles } from './IgStateToggles'
 
 type Details = NonNullable<FunctionReturnType<typeof api.routines.profileDetails>>
 
@@ -145,7 +146,11 @@ function ProfileDetails({ details }: { details: Details }) {
         ].map(([label, value]) => (
           <div key={label}>
             <dt className="text-xs text-subtle-copy">{label}</dt>
-            <dd className="mt-1 font-medium break-words text-ink">{value}</dd>
+            <dd className="mt-1 flex flex-wrap items-center gap-3 font-medium break-words text-ink">
+              {value}
+              {label === 'Instagram' && <IgStateToggles disabled={details.changing}
+                profile={{ id: details.profileId, name: details.name, igLoggedIn: details.igLoggedIn }} />}
+            </dd>
           </div>
         ))}
       </dl>

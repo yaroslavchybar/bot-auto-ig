@@ -8,7 +8,14 @@ import type { Id } from '../../../../../convex/_generated/dataModel'
 import type { Profile } from '../types'
 import { cn } from '@/lib/utils'
 
-export function IgStateToggles({ profile }: { profile: Profile }) {
+export function IgLoginStatus({ profile }: { profile: Profile }) {
+  const label = profile.igLoggedIn ? 'Logged in' : 'Not logged in'
+  return <span role="img" aria-label={label} title={label}>
+    <UserCheck aria-hidden className={cn('h-4 w-4', profile.igLoggedIn ? 'text-status-success' : 'text-muted-copy')} />
+  </span>
+}
+
+export function IgStateToggles({ profile, disabled = false }: { profile: Profile; disabled?: boolean }) {
   const update = useMutation(api.profiles.mutations.setIgState)
   const [busy, setBusy] = useState(false)
   const active = profile.igLoggedIn ?? false
@@ -17,7 +24,7 @@ export function IgStateToggles({ profile }: { profile: Profile }) {
       <Switch
         aria-label={`Logged in: ${profile.name}`}
         checked={active}
-        disabled={busy || profile.status === 'deleting'}
+        disabled={disabled || busy || profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
         onCheckedChange={async checked => {
           setBusy(true)
           try {

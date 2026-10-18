@@ -12,12 +12,14 @@ const mocks = vi.hoisted(() => ({
   details: undefined as unknown,
   pause: vi.fn(),
   account: vi.fn(),
+  login: vi.fn(),
   request: vi.fn(),
 }))
 vi.mock('convex/react', () => ({
   useQuery: () => mocks.details,
   useMutation: (reference: FunctionReference<'mutation'>) =>
-    getFunctionName(reference) === 'routines:setAccount' ? mocks.account : mocks.pause,
+    getFunctionName(reference) === 'routines:setAccount' ? mocks.account
+      : getFunctionName(reference) === 'profiles/mutations:setIgState' ? mocks.login : mocks.pause,
 }))
 vi.mock('@/lib/api', () => ({ apiFetch: mocks.request }))
 const profile = { id: 'profile', name: 'Example' }
@@ -114,6 +116,21 @@ test('profile details handle loading, deleted profiles and unavailable setup', a
   mocks.details = { ...details, model: null, automation: null, setup: null }
   await view.render(<ProfileDetailsDialog profile={profile} onClose={() => {}} />)
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Setup has not started')
+})
+
+test('login can be changed inside profile details and is disabled during profile changes', async () => {
+  mocks.details = details
+  mocks.login.mockResolvedValue(undefined)
+  view = mount()
+  await view.render(<ProfileDetailsDialog profile={profile} onClose={() => {}} />)
+  const toggle = () => document.querySelector<HTMLButtonElement>('[role="dialog"] [role="switch"]')!
+  expect(toggle().getAttribute('aria-checked')).toBe('true')
+  await act(async () => toggle().click())
+  expect(mocks.login).toHaveBeenCalledWith({ profileId: 'profile', igLoggedIn: false })
+  mocks.details = { ...details, igLoggedIn: false, changing: true }
+  await view.render(<ProfileDetailsDialog profile={profile} onClose={() => {}} />)
+  expect(toggle().getAttribute('aria-checked')).toBe('false')
+  expect(toggle().disabled).toBe(true)
 })
 
 test('the automation profile list contains names without operational controls', async () => {

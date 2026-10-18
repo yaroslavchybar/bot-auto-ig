@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({ pause: vi.fn(), mobile: false }))
 vi.mock('convex/react', () => ({ useMutation: () => mocks.pause }))
 vi.mock('@/lib/router', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => mocks.mobile }))
-vi.mock('@/features/profiles/components/IgStateToggles', () => ({ IgStateToggles: () => null }))
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -61,6 +60,28 @@ test.each([false, true])('the profile details icon opens the selected profile on
   expect(icon.closest('[class*="opacity-0"]')).toBeNull()
   await act(async () => icon.click())
   expect(onDetails).toHaveBeenCalledWith(profile)
+})
+
+test.each([false, true])('profile icons show errors, pending review and login status on mobile=%s', async mobile => {
+  mocks.mobile = mobile
+  view = mount()
+  await view.render(<ProfilesList profiles={[
+    { id: 'error', name: 'Error', attention: 'error', igLoggedIn: true },
+    { id: 'review', name: 'Review', attention: 'review' },
+    { id: 'normal', name: 'Normal' },
+  ]} loading={false} onEdit={() => {}} onDelete={() => {}} onToggleStatus={() => {}} onDetails={() => {}} />)
+  const icon = (name: string) => view!.container.querySelector(`[aria-label^="View ${name} details"]`)!
+  expect(icon('Error').classList.contains('text-status-danger')).toBe(true)
+  expect(icon('Error').getAttribute('title')).toContain('Error')
+  expect(icon('Error').getAttribute('aria-label')).toBe('View Error details — Error')
+  expect(icon('Review').classList.contains('text-status-warning')).toBe(true)
+  expect(icon('Review').getAttribute('title')).toContain('needs review')
+  expect(icon('Review').getAttribute('aria-label')).toBe('View Review details — Action needs review')
+  expect(icon('Normal').classList.contains('text-muted-copy')).toBe(true)
+  expect(icon('Normal').getAttribute('aria-label')).toBe('View Normal details')
+  expect(view.container.querySelector('[role="switch"]')).toBeNull()
+  expect(view.container.querySelector('[role="img"][aria-label="Logged in"]')).not.toBeNull()
+  expect(view.container.querySelectorAll('[role="img"][aria-label="Not logged in"]')).toHaveLength(2)
 })
 
 test.each([false, true])(
