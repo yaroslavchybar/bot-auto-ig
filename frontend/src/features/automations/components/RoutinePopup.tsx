@@ -106,8 +106,14 @@ export function RoutinePopup({
   // Plain-English summaries shown at the top of the Warm-up and Outreach tabs.
   const [postsMin, postsMax] = warmupPostRange(policy)
   const warmupSummary = `Browse ${span(num('warmup_min_minutes'), num('warmup_max_minutes'))} min a day in ${span(num('session_min_minutes'), num('session_max_minutes'))} min sessions, resting ${span(num('rest_min_minutes'), num('rest_max_minutes'))} min between them. Outreach starts from day 8 with ${OUTREACH_MIN_POSTS} posts. Posting continues to the ${span(postsMin, postsMax)} post target.`
+  const followingSummary = policy.followingEnabled !== false
+    ? `${policy.initialDms} follows a day, growing up to ${policy.maxDms}.`
+    : 'New follows are off.'
+  const dmSummary = policy.notificationDmsEnabled !== false
+    ? 'Daily notification checks find follow-backs, likes, and comments before sending DMs.'
+    : 'Notification DMs are off.'
   const outreachSummary = policy.outreachEnabled
-    ? `Outreach from day 8 with ${OUTREACH_MIN_POSTS} posts: ${policy.initialDms} follows a day, growing up to ${policy.maxDms}. Daily checks find follow-backs, post likes, and comments before sending DMs.`
+    ? `${followingSummary} ${dmSummary}`
     : 'Off. No outreach follows or DMs.'
 
   // Binds a min/max activity pair. Bounds come from the two settings' definitions.
@@ -371,6 +377,12 @@ export function RoutinePopup({
                   />
                 </label>
                 <div className={cn('space-y-6', !policy.outreachEnabled && 'opacity-60')}>
+                  <SettingsGroup title="Outreach actions">
+                    <ToggleRow label="Follow new leads" checked={policy.followingEnabled !== false}
+                      onChange={(checked) => change('followingEnabled', checked)} wide />
+                    <ToggleRow label="Send DMs from notifications" checked={policy.notificationDmsEnabled !== false}
+                      onChange={(checked) => change('notificationDmsEnabled', checked)} wide />
+                  </SettingsGroup>
                   <SettingsGroup title="Lead categories">
                     <div className="flex flex-wrap gap-5">
                       {(['male', 'female', 'business'] as const).map((category) => (
@@ -401,16 +413,19 @@ export function RoutinePopup({
                       ))}
                     </div>
                   </SettingsGroup>
-                  <SettingsGroup title="Daily outreach">
-                    {routineNumber('initial-follows', 'Initial follows per day', 'initialDms', {
-                      min: 1,
-                      max: 35,
-                    })}
-                    {routineNumber('max-follows', 'Max follows per day', 'maxDms', {
-                      min: 1,
-                      max: 35,
-                    })}
-                  </SettingsGroup>
+                  <fieldset disabled={policy.followingEnabled === false}
+                    className={cn(policy.followingEnabled === false && 'opacity-60')}>
+                    <SettingsGroup title="Daily outreach">
+                      {routineNumber('initial-follows', 'Initial follows per day', 'initialDms', {
+                        min: 1,
+                        max: 35,
+                      })}
+                      {routineNumber('max-follows', 'Max follows per day', 'maxDms', {
+                        min: 1,
+                        max: 35,
+                      })}
+                    </SettingsGroup>
+                  </fieldset>
                   <SettingsGroup title="Unfollow">
                     {routineRange(
                       'unfollow-days',

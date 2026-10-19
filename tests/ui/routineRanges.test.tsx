@@ -304,6 +304,32 @@ test('Outreach settings expose gradual daily follow limits instead of DM limits'
   expect(document.body.textContent).not.toContain('Initial DMs per day')
 })
 
+test.each(['Follow new leads', 'Send DMs from notifications'])(
+  'outreach saves %s independently and existing routines start with both on', async label => {
+    const save = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(useQuery).mockReturnValue([])
+    vi.mocked(useMutation).mockReturnValue(Object.assign(save, { withOptimisticUpdate: () => { throw new Error('Unused') } }))
+    const automation = { _id: 'automation', name: 'Routine', nodes: [], edges: [], modelIds: ['model'],
+      routine: { ...defaultRoutine, outreachEnabled: true, followingEnabled: undefined, notificationDmsEnabled: undefined,
+        outreachRoutes: [{ leadListId: 'list', profileIds: [], allProfiles: true, message: 'Hello' }] },
+    } as unknown as Doc<'automations'>
+    view = mount()
+    await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
+    await click('Outreach')
+    const toggle = (text: string) => [...document.querySelectorAll('label')]
+      .find(element => element.textContent === text)!.querySelector<HTMLButtonElement>('[role="switch"]')!
+    expect(toggle('Follow new leads').getAttribute('aria-checked')).toBe('true')
+    expect(toggle('Send DMs from notifications').getAttribute('aria-checked')).toBe('true')
+    await act(async () => toggle(label).click())
+    expect(document.querySelector<HTMLInputElement>('#initial-follows')?.closest('fieldset')?.disabled).toBe(label === 'Follow new leads')
+    await click('Save changes')
+    expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ routine: expect.objectContaining({
+      outreachEnabled: true, followingEnabled: label !== 'Follow new leads',
+      notificationDmsEnabled: label !== 'Send DMs from notifications',
+    }) }))
+  },
+)
+
 test('interests add separate AI-rewritten tags, retain combinations, and save all descriptions', async () => {
   const save = vi.fn().mockResolvedValue(undefined)
   vi.mocked(useQuery).mockReturnValue([])

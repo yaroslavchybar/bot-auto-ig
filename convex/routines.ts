@@ -123,7 +123,10 @@ export function canOutreach(e: OutreachContext | null): e is OutreachContext {
   return !!e && e.maintenance && e.policy.outreachEnabled && !!e.profile.outreachReady && e.routes.length > 0;
 }
 export function canFollow(e: OutreachContext | null): e is OutreachContext {
-  return canOutreach(e) && !e.followsBlocked;
+  return canOutreach(e) && e.policy.followingEnabled !== false && !e.followsBlocked;
+}
+export function canSendDm(e: OutreachContext | null): e is OutreachContext {
+  return canOutreach(e) && e.policy.notificationDmsEnabled !== false;
 }
 
 export const setAccount = mutation({
@@ -178,7 +181,7 @@ async function accountSummary(ctx: QueryCtx, p: Doc<'profiles'>, a: Doc<'automat
     sent: state?.dmCountDate === date ? (state.sentToday ?? 0) : 0,
     followed: state?.outreachQuotaDate === date ? (state.followedToday ?? 0) : 0,
     budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
-    allowance: a?.routine && a.routine.outreachEnabled && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
+    allowance: a?.routine && a.routine.outreachEnabled && a.routine.followingEnabled !== false && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
       ? dailyOutreachQuota(a.routine, state, date).allowance
       : 0,
     nextRunAt: state?.nextRunAt,
@@ -430,7 +433,7 @@ export const notifications = internalQuery({
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     const date = dayKey(), now = Date.now();
-    if (!canOutreach(e) || e.state?.lastNotificationsDate === date) return null;
+    if (!canSendDm(e) || e.state?.lastNotificationsDate === date) return null;
     const routes = e.routes;
     for await (const lead of ctx.db.query('leads').withIndex('by_follow_due', q =>
       q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lt('followDate', Date.parse(date)))) {
@@ -451,7 +454,7 @@ export const recordNotifications = internalMutation({
   handler: async (ctx, args) => {
     if (args.events.length > 1000) throw new Error('Too many notification rows');
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!canOutreach(e) || args.date !== dayKey()) return false;
+    if (!canSendDm(e) || args.date !== dayKey()) return false;
     const routes = e.routes, now = Date.now();
     let requestLikerScan = false;
     for (const event of args.events) {
@@ -478,7 +481,7 @@ export const dmTasks = internalQuery({
   args: outreachArgs,
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!canOutreach(e)) return [];
+    if (!canSendDm(e)) return [];
     const routes = e.routes;
     const tasks = [];
     for await (const lead of ctx.db.query('leads').withIndex('by_dm_pending', (q) =>
@@ -510,7 +513,7 @@ export const beginSend = internalMutation({
     const now = args.now ?? Date.now();
     const lead = await ctx.db.get(args.leadId);
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!lead || !canOutreach(e) || !lead.classification ||
+    if (!lead || !canSendDm(e) || !lead.classification ||
       !(e.policy.allowedCategories ?? ['male']).includes(lead.classification) ||
       !lead.dmEligible || !hasNotificationEvidence(lead) || !pendingDm(lead, args.profileId, now) ||
       dayKey(now) !== args.date ||

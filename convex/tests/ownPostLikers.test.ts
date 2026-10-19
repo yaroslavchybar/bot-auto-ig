@@ -165,6 +165,22 @@ test('another sender and conflicting Instagram IDs cannot qualify; switching own
   expect(await s.t.query(internal.routines.dmTasks, s.args)).toEqual([])
 })
 
+test('own-post liker work follows the DM switch independently of new following', async () => {
+  const s = await setup();
+  await s.t.run(ctx => ctx.db.patch(s.automation._id, {
+    routine: { ...s.automation.routine!, followingEnabled: false, notificationDmsEnabled: false },
+  }));
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toBeNull();
+  expect((await s.t.mutation(internal.ownPostLikers.reserve, { ...s.args, requestId: 'disabled', runId: 'run' })).allowed).toBe(false);
+  expect(await s.save([{ igId: '2', username: 'new' }])).toEqual({ saved: false, queued: 0 });
+  expect(await s.t.mutation(internal.ownPostLikers.finish, { ...s.args, runId: 'run', date: dayKey() })).toBe(false);
+  expect(await s.t.run(ctx => ctx.db.query('ownPostLikerSnapshots').collect())).toEqual([]);
+  await s.t.run(ctx => ctx.db.patch(s.automation._id, {
+    routine: { ...s.automation.routine!, followingEnabled: false, notificationDmsEnabled: true },
+  }));
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toMatchObject({ runId: 'run' });
+});
+
 test('the owner shares request limits, while other scrapers remain blocked during its browser session', async () => {
   const s = await setup()
   expect(

@@ -30,6 +30,8 @@ export const routineValidator = v.object({
   initialDms: v.number(),
   maxDms: v.number(),
   outreachEnabled: v.boolean(),
+  followingEnabled: v.optional(v.boolean()),
+  notificationDmsEnabled: v.optional(v.boolean()),
   leadListId: v.optional(v.id("leadLists")),
   message: v.string(),
   outreachRoutes: v.optional(v.array(v.object({
@@ -77,6 +79,8 @@ export const defaultRoutine: RoutinePolicy = {
   initialDms: 3,
   maxDms: 30,
   outreachEnabled: false,
+  followingEnabled: true,
+  notificationDmsEnabled: true,
   allowedCategories: ['male'],
   message: "",
   activity: {},
@@ -135,16 +139,20 @@ export function validateRoutine(p: RoutinePolicy) {
     throw new Error("Message must be at most 1,000 characters");
   validateOutreachMessage(p.message);
   const routes = outreachRoutes(p);
+  const actionsEnabled = p.outreachEnabled &&
+    (p.followingEnabled !== false || p.notificationDmsEnabled !== false);
   if (routes.length > 1) throw new Error('Use one scraped list per automation');
   for (const route of routes) {
     if (route.profileIds.length > 1000 || new Set(route.profileIds).size !== route.profileIds.length)
       throw new Error('Invalid profile selection');
     if (route.message.length > 1000) throw new Error('Message must be at most 1,000 characters');
     validateOutreachMessage(route.message);
-    if (p.outreachEnabled && ((!route.allProfiles && !route.profileIds.length) || !route.message.trim()))
-      throw new Error('Select profiles and write a message for each scraped list');
+    if (actionsEnabled && !route.allProfiles && !route.profileIds.length)
+      throw new Error('Select profiles for each scraped list');
+    if (actionsEnabled && p.notificationDmsEnabled !== false && !route.message.trim())
+      throw new Error('Write a message for each scraped list');
   }
-  if (p.outreachEnabled && !routes.length) throw new Error('Add a scraped-list assignment');
+  if (actionsEnabled && !routes.length) throw new Error('Add a scraped-list assignment');
 }
 
 export const dayKey = (now = Date.now()) =>
@@ -153,7 +161,7 @@ export const dayKey = (now = Date.now()) =>
 export function outreachAllowance(
   p: RoutinePolicy,
   accumulatedIncrease: number) {
-  return p.outreachEnabled
+  return p.outreachEnabled && p.followingEnabled !== false
     ? Math.min(p.maxDms, p.initialDms + accumulatedIncrease)
     : 0;
 }

@@ -14,6 +14,8 @@ export function routineDraft(saved?: RoutinePolicy): RoutinePolicy {
   const { warmup_topics, ...activity } = initial.activity
   return {
     ...current,
+    followingEnabled: initial.followingEnabled ?? true,
+    notificationDmsEnabled: initial.notificationDmsEnabled ?? true,
     activity: Object.fromEntries(
       Object.entries(activity).filter(([key]) => isBrowsingSetting(key)),
     ),

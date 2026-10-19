@@ -871,7 +871,7 @@ test('daily notification completion is reset next day; stale completion is ignor
   } finally { vi.useRealTimers(); }
 });
 
-test.each(['expired', 'unfollowed', 'paused', 'route removed', 'automation disabled'])('DM authorization rejects %s recipients', async reason => {
+test.each(['expired', 'unfollowed', 'paused', 'route removed', 'automation disabled', 'DMs disabled'])('DM authorization rejects %s recipients', async reason => {
   vi.useFakeTimers();
   try {
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
@@ -887,9 +887,62 @@ test.each(['expired', 'unfollowed', 'paused', 'route removed', 'automation disab
     if (reason === 'paused') await t.mutation(api.routines.setAccount, { profileId: args.profileId, paused: true });
     if (reason === 'route removed') await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreachRoutes: [] } }));
     if (reason === 'automation disabled') await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });
+    if (reason === 'DMs disabled') await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, notificationDmsEnabled: false } }));
     expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: task.leadId, date: task.date })).toBe(false);
     expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
   } finally { vi.useRealTimers(); }
+});
+
+test.each([
+  { followingEnabled: true, notificationDmsEnabled: true },
+  { followingEnabled: false, notificationDmsEnabled: true },
+  { followingEnabled: true, notificationDmsEnabled: false },
+  { followingEnabled: false, notificationDmsEnabled: false },
+  { followingEnabled: undefined, notificationDmsEnabled: undefined },
+])('following and notification DMs operate independently: %j', async switches => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
+  const { t, args, automation, loggedIn } = await setup();
+  await loggedIn();
+  const followed = (await reserveFollow(t, args))!;
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: followed.leadId, followed: true });
+  const unfinished = (await reserveFollow(t, args))!;
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, ...switches } }));
+  const follows = switches.followingEnabled !== false;
+  const dms = switches.notificationDmsEnabled !== false;
+
+  expect((await t.query(internal.routines.target, args)).target > 0).toBe(follows);
+  expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0].allowance > 0).toBe(follows);
+  expect(!!await t.mutation(internal.routines.reserve, args)).toBe(follows);
+  expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: unfinished.leadId, date: dayKey() })).toBe(follows);
+  expect(!!await t.query(internal.routines.notifications, args)).toBe(dms);
+  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: followed.username, kind: 'like' }] })).toBe(dms);
+  expect((await t.query(internal.routines.dmTasks, args)).length).toBe(dms ? 1 : 0);
+  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: followed.leadId, date: dayKey() })).toBe(dms);
+
+  vi.setSystemTime(new Date('2026-10-20T10:00:00Z'));
+  expect(await t.query(internal.routines.followTasks, args)).toContainEqual({ leadId: followed.leadId, username: followed.username });
+});
+
+test('turning following off rejects a screening result already in progress without consuming quota', async () => {
+  const { t, args, automation, loggedIn } = await setup();
+  await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, followingEnabled: false } }));
+  expect(await t.mutation(internal.leadScreening.finish, {
+    ...args, leadId: claim.leadId, date: claim.date, screeningToken: claim.screeningToken,
+    category: 'male', confidence: 1, model: SCREENED_MODEL, englishTextCheckPassed: true,
+  })).toBe(false);
+  expect((await t.run(ctx => ctx.db.get(claim.leadId)))?.senderId).toBeUndefined();
+  expect((await t.run(ctx => ctx.db.query('accountProgress').unique()))?.outreachUsedToday).toBe(0);
+});
+
+test('follow-only routines accept an empty message, while notification DMs require one', () => {
+  const policy = { ...defaultRoutine, outreachEnabled: true, followingEnabled: true,
+    notificationDmsEnabled: false, leadListId: 'list' as Id<'leadLists'>, message: '' };
+  expect(() => validateRoutine(policy)).not.toThrow();
+  expect(() => validateRoutine({ ...policy, followingEnabled: false, notificationDmsEnabled: true })).toThrow('Write a message');
 });
 
 test('notification events for other senders and non-followed leads do not enable DMs', async () => {
