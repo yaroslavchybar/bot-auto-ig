@@ -1,10 +1,14 @@
-import { expect, test } from 'vite-plus/test'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../_generated/api'
 import { defaultRoutine, dayKey } from '../routinePolicy'
 import { leadAvailable, addMembership } from '../leadMemberships'
 import { createConvexTest, seedModel, seedProfile } from '../../tests/convex/helpers'
 
+afterEach(() => vi.useRealTimers())
+
 async function setup() {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-20T12:00:00Z'))
   const t = createConvexTest()
   const list = (await seedModel(t))!, profile = (await seedProfile(t))!
   await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: list._id })
@@ -33,6 +37,9 @@ async function setup() {
 
 test.each([false, true])('a first refusal permanently excludes every membership, preserves prior decisions and consumes no quota (saved=%s)', async saved => {
   const { t, args, claim, failure } = await setup()
+  const quotaBefore = await t.query(internal.routines.target, args)
+  expect(quotaBefore.remaining).toBe(quotaBefore.target)
+  expect(quotaBefore.target).toBeGreaterThan(0)
   const prior = { classification: 'business' as const, screenedAt: 123 }
   await t.run(async ctx => {
     if (saved) await ctx.db.patch(claim.leadId, prior)
@@ -50,7 +57,7 @@ test.each([false, true])('a first refusal permanently excludes every membership,
   expect(memberships).toHaveLength(2)
   expect(memberships.every(row => !row.available)).toBe(true)
   expect(await t.mutation(internal.routines.reserve, args)).toBeNull()
-  expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
+  expect(await t.query(internal.routines.target, args)).toEqual(quotaBefore)
   expect(await t.mutation(internal.leadScreening.finish, { ...failure, category: 'male', confidence: 1 })).toBe(false)
   expect(await t.mutation(api.scraper.retryEnrichment, {})).toBe(0)
   await t.run(async ctx => {
