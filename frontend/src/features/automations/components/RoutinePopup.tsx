@@ -107,7 +107,7 @@ export function RoutinePopup({
   const [postsMin, postsMax] = warmupPostRange(policy)
   const warmupSummary = `Browse ${span(num('warmup_min_minutes'), num('warmup_max_minutes'))} min a day in ${span(num('session_min_minutes'), num('session_max_minutes'))} min sessions, resting ${span(num('rest_min_minutes'), num('rest_max_minutes'))} min between them. Outreach starts from day 8 with ${OUTREACH_MIN_POSTS} posts. Posting continues to the ${span(postsMin, postsMax)} post target.`
   const followingSummary = policy.followingEnabled !== false
-    ? `${policy.initialDms} follows a day, growing up to ${policy.maxDms}.`
+    ? `Follow cap starts at ${policy.initialDms}, growing up to ${policy.maxDms}. Each day's target varies from up to 3 below the current cap to the full cap (minimum 1).`
     : 'New follows are off.'
   const dmSummary = policy.notificationDmsEnabled !== false
     ? 'Daily notification checks find follow-backs, likes, and comments before sending DMs.'

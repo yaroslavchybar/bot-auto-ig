@@ -14,6 +14,17 @@ export const followButton = (page: Page) => button(page, profileButtons, ['follo
 export const followingButton = (page: Page) => button(page, profileButtons, ['following', 'requested', 'following down chevron icon', 'requested down chevron icon']);
 export const messageButton = (page: Page) => button(page, profileButtons, ['message']);
 
+/** Wait for either relationship controls or Instagram's unavailable-profile notice. */
+export async function profileAvailable(page: Page, timeout = 15_000): Promise<boolean> {
+  const controls = followingButton(page).or(followButton(page)).filter({ visible: true }).first();
+  const unavailable = page.getByText(/^(?:Sorry, this page isn['’]t available|This page isn['’]t available|Page not found)\.?$/i)
+    .filter({ visible: true }).first();
+  await controls.or(unavailable).first().waitFor({ state: 'visible', timeout });
+  if (await controls.isVisible()) return true;
+  if (await unavailable.isVisible()) return false;
+  throw new errors.TimeoutError('Profile content changed while loading');
+}
+
 /** Wait for loaded profile content before deciding whether a follow request is needed. */
 export async function outreachProfileState(page: Page, username: string, timeout = 10_000) {
   const deadline = Date.now() + timeout;

@@ -75,7 +75,7 @@ Returning from the inbox chooses 50/50 between the recipient link in the chat he
 
 Before following a public lead, scroll its post list and randomly pick up to three of that account's posts. Open and view each post, then use the automation's Person detection model and prompt to check its main media before liking. Only direct photos or video frames of real people qualify; collages, graphics and toys do not. Failed or rejected decisions skip the Like. Close each viewer with X and return to the profile's Follow controls. Private and empty profiles skip post interaction. This runs only for new lead following; DM tasks and ordinary feed/Reel profile visits do not use it. Screenshots use the shared view capture and in-memory crop without changing the page layout.
 
-`accountProgress.outreachIncrease` and `outreachQuotaDate` track the daily follow ramp and quota day. Notification- and snapshot-triggered DMs do not consume another follow slot. Per-route outreach messages stay in the automation settings.
+`accountProgress.outreachIncrease` and `outreachQuotaDate` track the daily follow ramp and quota day. Each profile's daily target varies between the current ramp cap minus three and the cap itself, with a minimum of one: a cap of 10 gives 7–10, and a cap of 20 gives 17–20. Selection is stable for the profile and UTC date even before the first reservation; the first approved reservation saves it as `outreachAllowanceToday`. Later sessions and concurrent claims reuse it. Lowering the configured maximum clamps the saved target immediately; raising it applies when the next UTC day's target is selected. Notification- and snapshot-triggered DMs do not consume another follow slot. Per-route outreach messages stay in the automation settings.
 
 Each recipient has its own `automation.recipient_session` event with navigation, screening, and follow timings, so later browsing cannot overwrite the lead's diagnostic notes. Recipient following has no separate post-like path.
 
@@ -90,6 +90,8 @@ From day 8, a completed notification scan triggers the own-post liker check only
 Notification-backed DMs do not require reading the signed-in username and can proceed without it. Own-post liker discovery still requires that lookup; if it fails, the optional scan remains retryable on a later qualifying notification scan while notification DMs and new follows continue. A stopped session never resumes actions after a failed lookup.
 
 Confirmed follows or requests are removed after the configured unfollow delay. Cleanup runs in the same automation sessions and preserves sender history. Browsing, screening, follows, DMs, pauses, and cleanup share the session deadline. Rest releases the browser slot.
+
+If a lead shows Instagram's “Sorry, this page isn't available” notice, continue the session. During scheduled unfollow cleanup, mark the lead as unfollowed and remove it from the cleanup queue while retaining sender, follow-date and delivery history. New-follow and DM visits skip the lead without changing its follow state. Each result logs the username and action. A missing control without that notice still raises an error; login challenges and stop requests remain session boundaries.
 
 Deploy matching Convex, server, and frontend changes together. No new manual login or API key is needed.
 

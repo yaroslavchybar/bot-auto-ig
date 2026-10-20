@@ -4,6 +4,52 @@ import test from 'node:test';
 import { Window } from 'happy-dom';
 import { type Page } from 'playwright-core';
 
+test('profile loading distinguishes unavailable pages from valid, hidden and still-loading content', async () => {
+  const { profileAvailable } = await import('./follow.js');
+  for (const [content, expected] of [
+    ['<h2>Sorry, this page isn\'t available.</h2>', false],
+    ['<h2>Sorry, this page isn’t available.</h2>', false],
+    ['<h2>This page isn\'t available.</h2>', false],
+    ['<h2>Page not found</h2>', false],
+    ['<main><header><button>Following</button></header><h2>Sorry, this page isn\'t available.</h2></main>', true],
+    ['<main><header><button>Follow</button></header></main><h2 hidden>Page not found</h2>', true],
+    ['<main><header><button>Requested</button></header></main>', true],
+    ['<h2 hidden>Sorry, this page isn\'t available.</h2>', undefined],
+    ['<h2>Something went wrong</h2>', undefined],
+  ] as const) {
+    const window = new Window();
+    try {
+      const document = window.document;
+      let waited = false;
+      const visible = (node: Element) => !node.closest('[hidden]');
+      class Fields {
+        constructor(readonly find: () => Element[]) {}
+        filter() { return new Fields(() => this.find().filter(visible)); }
+        first() { return new Fields(() => this.find().slice(0, 1)); }
+        or(other: Fields) { return new Fields(() => [...new Set([...this.find(), ...other.find()])]); }
+        async isVisible() { return this.find().some(visible); }
+        async waitFor({ timeout }: { timeout: number }) {
+          assert.equal(timeout, 1234);
+          waited = true;
+          // The notice may arrive only after DOMContentLoaded.
+          document.body.innerHTML = content;
+          if (!await this.isVisible()) throw new Error('Profile loading timed out');
+        }
+      }
+      const page = {
+        getByText: (pattern: RegExp) => new Fields(() => Array.from(document.querySelectorAll('h2'))
+          .filter(node => pattern.test(node.textContent ?? '')) as unknown as Element[]),
+        locator: (selector: string) => new Fields(() => Array.from(document.querySelectorAll('main header button'))
+          .filter(node => selector.includes('="following"')
+            ? /^(Following|Requested)$/.test(node.textContent ?? '') : node.textContent === 'Follow') as unknown as Element[]),
+      } as unknown as Page;
+      if (expected === undefined) await assert.rejects(profileAvailable(page, 1234), /timed out/);
+      else assert.equal(await profileAvailable(page, 1234), expected);
+      assert.equal(waited, true);
+    } finally { await window.happyDOM.close(); }
+  }
+});
+
 test('private request cleanup prefers visible dialog confirmations without blocking the fallback', async () => {
   const { unfollow } = await import('./follow.js');
   for (const layout of ['immediate', 'dialog', 'no-dialog', 'unrelated-dialog', 'hidden-dialog', 'hidden-dialog-button']) {

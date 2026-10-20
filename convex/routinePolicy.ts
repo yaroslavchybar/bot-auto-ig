@@ -166,18 +166,32 @@ export function outreachAllowance(
     : 0;
 }
 
-/** All follow reservations use the same UTC rollover and allowance cap. */
+/** Stable per-profile daily variation, including before the first quota write. */
+function dailyFollowAllowance(policy: RoutinePolicy, increase: number, profileId: string, date: string) {
+  const cap = outreachAllowance(policy, increase);
+  if (cap <= 0) return 0;
+  let seed = 2166136261;
+  for (const character of `${profileId}:${date}`)
+    seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
+  // Mix the high bits too so consecutive dates do not form a short repeating cycle.
+  seed = Math.imul(seed ^ (seed >>> 16), 0x85ebca6b);
+  seed = Math.imul(seed ^ (seed >>> 13), 0xc2b2ae35);
+  seed ^= seed >>> 16;
+  return cap - (seed >>> 0) % Math.min(4, cap);
+}
+
+/** Queries and atomic reservations share one daily target; saved targets never reroll. */
 export function dailyOutreachQuota(policy: RoutinePolicy, state: {
   outreachQuotaDate?: string
   outreachUsedToday: number
   outreachAllowanceToday: number
   outreachIncrease?: number
   followedToday?: number
-} | null, date: string) {
+} | null, date: string, profileId: string) {
   const today = state?.outreachQuotaDate === date
   return {
     used: today ? state.outreachUsedToday : 0,
-    allowance: Math.min(policy.maxDms, today ? state.outreachAllowanceToday : outreachAllowance(policy, state?.outreachIncrease ?? 0)),
+    allowance: Math.min(policy.maxDms, today ? state.outreachAllowanceToday : dailyFollowAllowance(policy, state?.outreachIncrease ?? 0, profileId, date)),
     followed: today ? state.followedToday ?? 0 : 0,
   }
 }

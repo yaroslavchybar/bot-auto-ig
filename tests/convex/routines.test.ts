@@ -122,14 +122,19 @@ test.each([0, 0.999])('daily growth is saved once and applies next day (random=%
   expect(await read()).toMatchObject({ outreachAllowanceToday: 2, outreachIncrease: increase });
   expect(await reserveFollow(t, args)).toBeNull();
   vi.setSystemTime(new Date('2026-09-22T10:00:00Z'));
-  expect((await t.query(api.routines.accounts, { automationId: automation._id }))[0].allowance).toBe(2 + increase);
+  const allowance = (await t.query(api.routines.accounts, { automationId: automation._id }))[0].allowance;
+  expect(allowance).toBeGreaterThanOrEqual(Math.max(1, 2 + increase - 3));
+  expect(allowance).toBeLessThanOrEqual(2 + increase);
   await reserveFollow(t, args);
-  expect(await read()).toMatchObject({ outreachAllowanceToday: 2 + increase, outreachUsedToday: 1 });
+  expect(await read()).toMatchObject({ outreachAllowanceToday: allowance, outreachUsedToday: 1 });
   // An unsuccessful day does not increase the limit, even across missed days.
   vi.setSystemTime(new Date('2026-09-25T10:00:00Z'));
   await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, maxDms: 3 } }));
   await reserveFollow(t, args);
-  expect(await read()).toMatchObject({ outreachAllowanceToday: 3, outreachIncrease: increase });
+  const later = await read();
+  expect(later.outreachAllowanceToday).toBeGreaterThanOrEqual(1);
+  expect(later.outreachAllowanceToday).toBeLessThanOrEqual(3);
+  expect(later.outreachIncrease).toBe(increase);
 });
 
 const readLeads = (t: ReturnType<typeof createConvexTest>) =>
@@ -295,7 +300,7 @@ async function authorizeDm(t: ReturnType<typeof createConvexTest>, args: { autom
   expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: claim.leadId, date: claim.date })).toBe(true);
 }
 
-async function setup() {
+async function setup(randomizeQuota = false) {
   const t = createConvexTest();
   const list = (await seedModel(t))!,
     profile = (await seedProfile(t))!;
@@ -324,6 +329,12 @@ async function setup() {
     todayMinutes: 30, minutesUsedToday: 0, }));
   // These fixtures represent accounts already classified by the scraper.
   await t.run(async ctx => {
+    // Most cases exercise a previously selected two-follow day, independently of randomization.
+    if (!randomizeQuota) await ctx.db.insert('accountProgress', {
+      profileId: profile._id, paused: false, activeDays: 0, outreachUsedToday: 0,
+      outreachAllowanceToday: 2, outreachQuotaDate: dayKey(), followedToday: 0,
+      nextRunAt: 0, updatedAt: Date.now(),
+    });
     for (const username of ['alice', 'bob', 'carol', 'dave']) {
       const createdAt = Date.now();
       const leadId = await ctx.db.insert('leads', {
@@ -559,14 +570,17 @@ test('DM and follow flags independently exclude unassigned leads', async () => {
   expect([leads[0]._id, leads[1]._id]).not.toContain(claim.leadId);
 });
 
-test('daily allowance grows only after confirmed outreach days', async () => {
+test('the ramp grows after confirmed outreach days while the daily target stays within its cap', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
   const { t, args, loggedIn } = await setup(); await loggedIn();
   const claim = (await reserveFollow(t, args))!;
   await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
   vi.setSystemTime(new Date('2026-09-26T10:00:00Z'));
   await reserveFollow(t, args);
-  expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]).toMatchObject({ used: 1, allowance: 3 });
+  const summary = (await t.query(api.routines.accounts, { automationId: args.automationId }))[0];
+  expect(summary.used).toBe(1);
+  expect(summary.allowance).toBeGreaterThanOrEqual(1);
+  expect(summary.allowance).toBeLessThanOrEqual(3);
 });
 test("one automation owns each model; moving a profile changes its automation", async () => {
   const { t, list, profile } = await setup();
@@ -997,6 +1011,43 @@ test('follow confirmation is idempotent and retains the deadline saved before th
   } finally { vi.useRealTimers(); }
 });
 
+test.each([10, 20])('a randomized cap of %s stays fixed across reads and concurrent follow reservations', async maximum => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
+  const { t, args, automation, profile, leadListId, loggedIn } = await setup(true);
+  await loggedIn();
+  await t.run(async ctx => {
+    await ctx.db.patch(automation._id, { routine: { ...automation.routine!, initialDms: 5, maxDms: maximum } });
+    await ctx.db.insert('accountProgress', { profileId: profile._id, paused: false, activeDays: 20,
+      outreachIncrease: 100, outreachUsedToday: 0, outreachAllowanceToday: 0, nextRunAt: 0, updatedAt: Date.now() });
+    for (let i = 0; i < maximum; i++) {
+      const leadId = await ctx.db.insert('leads', { username: `extra_${i}`, isPrivate: true,
+        dmSent: false, followed: false, screeningStatus: 'pending', createdAt: Date.now() });
+      await ctx.db.insert('leadMemberships', { leadId, listId: leadListId, available: true, leadCreatedAt: Date.now() });
+    }
+  });
+  const before = await t.query(internal.routines.target, args);
+  expect(before.target).toBeGreaterThanOrEqual(maximum - 3);
+  expect(before.target).toBeLessThanOrEqual(maximum);
+  expect(before.remaining).toBe(before.target);
+  expect(await t.query(internal.routines.target, args)).toEqual(before);
+  expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0].allowance).toBe(before.target);
+  const first = (await reserveFollow(t, args))!;
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: first.leadId, followed: true });
+  expect((await t.query(internal.routines.target, args)).target).toBe(before.target);
+  const claims = await Promise.all(Array.from({ length: before.target + 2 }, () => reserveFollow(t, args)));
+  expect(claims.filter(Boolean)).toHaveLength(before.target - 1);
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: before.target, remaining: 0, sent: 1 });
+  const saved = (await t.run(ctx => ctx.db.query('accountProgress').unique()))!;
+  expect(saved).toMatchObject({ outreachQuotaDate: dayKey(), outreachAllowanceToday: before.target, outreachUsedToday: before.target });
+  expect(await reserveFollow(t, args)).toBeNull();
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
+  const next = await t.query(internal.routines.target, args);
+  expect(next.target).toBeGreaterThanOrEqual(maximum - 3);
+  expect(next.target).toBeLessThanOrEqual(maximum);
+  expect(next.remaining).toBe(next.target);
+});
+
 test('outreach ramp starts small independently of stale daily claims', async () => {
   const { t, args, loggedIn } = await setup(); await loggedIn();
   await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false });
@@ -1004,14 +1055,17 @@ test('outreach ramp starts small independently of stale daily claims', async () 
     const state = (await ctx.db.query('accountProgress').collect())[0];
     await ctx.db.patch(state._id, { outreachQuotaDate: '2000-01-01', outreachUsedToday: 30, outreachAllowanceToday: 30 });
   });
-  expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 2, sent: 0 });
+  const target = await t.query(internal.routines.target, args);
+  expect(target.target).toBeGreaterThanOrEqual(1);
+  expect(target.target).toBeLessThanOrEqual(2);
+  expect(target.remaining).toBe(target.target);
   const claim = (await reserveFollow(t, args))!;
   expect(claim).not.toBeNull();
   await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
   const state = await t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0]);
   expect(state.outreachIncrease).toBeGreaterThanOrEqual(1);
   expect(state.outreachIncrease).toBeLessThanOrEqual(4);
-  expect(state.outreachAllowanceToday).toBe(2);
+  expect(state.outreachAllowanceToday).toBe(target.target);
 });
 
 // Existing follow/DM tests include the now-required browser-screening approval step.

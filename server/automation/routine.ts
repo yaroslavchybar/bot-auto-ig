@@ -15,7 +15,7 @@ import {
 } from "../shared/convexClient.js";
 import { runBrowsingSession } from "./sessions.js";
 import { browseUntilEnd, scheduleRoutine } from './routine-schedule.js';
-import { followButton, isFollowing, messageWasBlocked, unfollow, outreachProfileState,
+import { followButton, isFollowing, messageWasBlocked, unfollow, outreachProfileState, profileAvailable,
 } from './follow.js';
 import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage } from './outreach-message.js';
 import { renderOutreachMessage } from '../shared/outreachMessage.js';
@@ -58,6 +58,7 @@ const dependencies = {
   dismissDm: routineDismissDm,
   checkNotifications,
   inspectProfile: outreachProfileState,
+  profileAvailable,
   openMessage: openOutreachMessage,
   typeMessage: typeOutreachMessage,
   sendMessage: sendOutreachMessage,
@@ -140,6 +141,17 @@ export async function runRoutineSession(
         if (shouldStop()) return;
         await page.goto(`https://www.instagram.com/${task.username}/`, { waitUntil: 'domcontentloaded', timeout: timeout(30_000),
         });
+        await check();
+        if (shouldStop()) return;
+        const available = await deps.profileAvailable(page, timeout(15_000));
+        if (shouldStop()) return;
+        if (!available) {
+          await deps.recordFollow(profileId, task.leadId, false);
+          log({ event: 'automation.routine.unfollowed', leadId: task.leadId,
+            targetUsername: task.username, kind: 'unfollow', reason: 'profile_unavailable',
+            message: `Marked @${task.username} as unfollowed because the profile is unavailable` });
+          continue;
+        }
         const removed = await unfollow(page, async () => { await check(); return !shouldStop(); });
         if (!removed) return;
         await deps.recordFollow(profileId, task.leadId, false);
@@ -229,6 +241,19 @@ export async function runRoutineSession(
                 scope.add({ route: searched ? 'search' : 'direct' });
                 if (!isDm) log({ event: 'automation.routine.profile_navigation', targetUsername: attempt.username,
                   route: searched ? 'search' : 'direct', outcome: searched ? 'opened' : useSearch ? 'fallback' : 'opened' });
+                const available = await timed('profileLoad', () => deps.profileAvailable(page, timeout(15_000)));
+                if (shouldStop()) return 'unavailable';
+                if (!available) {
+                  if (!isDm && typeof token === 'string' && token) {
+                    await deps.finishScreening(automation._id, profileId, attempt.leadId, token, attempt.date);
+                    screeningFinished = true;
+                  }
+                  scope.add({ result: 'profile_unavailable' });
+                  log({ event: 'automation.routine.recipient_skipped', leadId: attempt.leadId,
+                    targetUsername: attempt.username, kind: isDm ? 'dm' : 'outreach',
+                    reason: 'profile_unavailable', outcome: 'skipped' });
+                  return 'blocked';
+                }
                 if (!isDm) {
                   if (typeof token !== 'string' || !token) return 'blocked'
                   let decision

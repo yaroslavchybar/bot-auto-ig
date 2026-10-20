@@ -55,7 +55,7 @@ export const finish = internalMutation({
     const e = await eligibility(ctx, args.automationId, args.profileId)
     const state = e ? await ensureProgress(ctx, args.profileId) : null
     const { used, allowance, followed } = e
-      ? dailyOutreachQuota(e.policy, state, args.date)
+      ? dailyOutreachQuota(e.policy, state, args.date, args.profileId)
       : { used: 0, allowance: 0, followed: 0 }
     const classification = args.category
     const membership = lead.screeningListId

@@ -19,6 +19,9 @@ async function setup() {
   await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: true })
   await t.mutation(api.profiles.mutations.setIgState, { profileId: profile._id, igLoggedIn: true })
   await t.run(async ctx => {
+    await ctx.db.insert('accountProgress', { profileId: profile._id, paused: false, activeDays: 0,
+      outreachQuotaDate: dayKey(), outreachUsedToday: 0, outreachAllowanceToday: 3,
+      followedToday: 0, nextRunAt: 0, updatedAt: Date.now() });
     await ctx.db.patch(profile._id, { outreachReady: true })
     await ctx.db.insert('warmupStates', { profileId: profile._id, day: 8, date: dayKey(),
       runsToday: 1, todayMinutes: 30, minutesUsedToday: 0, })

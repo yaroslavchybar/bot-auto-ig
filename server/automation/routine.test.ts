@@ -11,6 +11,7 @@ import { DecisionRefusedError } from './actions/openrouter-decision.js';
 function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following' | 'Requested' = mode === 'dm' ? 'Following' : 'Follow',
 ) {
   const calls: string[] = [];
+  const events: Record<string, unknown>[] = [];
   let now = 0, sent = false, issue: string | undefined;
   let privateProfile = relationship === 'Requested';
   const attempt = { leadId: 'lead', date: '2026-09-21', username: 'alice', message: 'Hello alice',
@@ -45,6 +46,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
           } : locator,
   } as unknown as Page;
   const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
+    profileAvailable: async () => true,
     browseLeadPosts: async () => {},
     searchProfile: async () => true,
     screenLead: async () => {
@@ -92,10 +94,68 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
   };
   const automation = { _id: 'automation', name: 'Daily', nodes: [], edges: [], routine: { headless: true, activity: {} },
   };
-  const run = (stopped = () => false) => runRoutineSession(automation, 'profile', page, () => {}, stopped, deps);
-  return { calls, deps, page, locator, attempt, run, setPrivate: (value: boolean) => { privateProfile = value; },
+  const run = (stopped = () => false) => runRoutineSession(automation, 'profile', page, event => { events.push(event); }, stopped, deps);
+  return { calls, events, deps, page, locator, attempt, run, setPrivate: (value: boolean) => { privateProfile = value; },
     setRelationship: (value: typeof relationship) => { relationship = value; }, result: () => ({ sent, issue }) };
 }
+
+test('unavailable cleanup leads are marked unfollowed while the next cleanup and new outreach continue', async () => {
+  const s = setup('follow');
+  s.deps.followTasks = async () => [{ leadId: 'missing', username: 'cal74_grand' }, { leadId: 'known', username: 'bob' }];
+  let checks = 0;
+  s.deps.profileAvailable = async () => checks++ !== 0;
+  const recorded: { leadId: string; followed: boolean }[] = [];
+  s.deps.recordFollow = async (_profile, leadId, followed) => { recorded.push({ leadId, followed }); };
+  await s.run();
+  assert.deepEqual(recorded, [{ leadId: 'missing', followed: false }, { leadId: 'known', followed: false }, { leadId: 'lead', followed: true }]);
+  assert.ok(s.calls.includes('browse'));
+  assert.equal(s.result().issue, undefined);
+  assert.ok(s.events.some(event => event.targetUsername === 'cal74_grand' &&
+    event.event === 'automation.routine.unfollowed' && event.kind === 'unfollow' && event.reason === 'profile_unavailable'));
+});
+
+for (const mode of ['follow', 'dm'] as const) test(`unavailable ${mode} recipients skip screening and interaction without stopping browsing`, async () => {
+  const s = setup(mode);
+  s.deps.profileAvailable = async () => false;
+  let claimed = false;
+  s.deps.reserve = async () => {
+    s.calls.push('reserve');
+    if (claimed) return null;
+    claimed = true;
+    return s.attempt;
+  };
+  await s.run();
+  for (const action of ['screen', 'check-message', 'authorize-follow', 'follow', 'authorize', 'message-button', 'compose', 'send', 'record-unfollow', 'dismiss-dm'])
+    assert.ok(!s.calls.includes(action), action);
+  assert.equal(s.calls.filter(call => call === 'screen-saved').length, mode === 'follow' ? 1 : 0);
+  assert.ok(s.calls.includes('browse'));
+  assert.deepEqual(s.result(), { sent: false, issue: undefined });
+  assert.ok(s.events.some(event => event.targetUsername === 'alice' && event.reason === 'profile_unavailable'));
+});
+
+test('stopping while an unavailable profile loads prevents subsequent cleanup and outreach', async () => {
+  const s = setup('follow');
+  let stopped = false;
+  s.deps.followTasks = async () => [{ leadId: 'missing', username: 'alice' }, { leadId: 'next', username: 'bob' }];
+  s.deps.profileAvailable = async () => { stopped = true; return false; };
+  await s.run(() => stopped);
+  assert.equal(s.calls.filter(call => call === 'navigate').length, 1);
+  assert.ok(!s.calls.includes('record-unfollow'));
+  assert.ok(!s.calls.includes('reserve'));
+  assert.equal(s.result().issue, undefined);
+});
+
+test('a cleanup navigation to a login challenge still stops the session', async () => {
+  const s = setup();
+  s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice' }];
+  s.page.goto = async () => { s.page.url = () => 'https://www.instagram.com/challenge/'; };
+  s.deps.instagram = async () => { if (s.page.url().includes('/challenge/')) throw new Error('Instagram login challenge'); };
+  s.deps.profileAvailable = async () => { throw new Error('Must check login before loading a profile'); };
+  await s.run();
+  assert.match(s.result().issue ?? '', /login challenge/);
+  assert.ok(!s.calls.includes('record-unfollow'));
+  assert.ok(!s.calls.includes('message-button'));
+});
 
 test('a new public lead is followed without sending a DM', async () => {
   const s = setup('follow'); await s.run();

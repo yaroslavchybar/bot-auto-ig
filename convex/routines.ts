@@ -182,7 +182,7 @@ async function accountSummary(ctx: QueryCtx, p: Doc<'profiles'>, a: Doc<'automat
     followed: state?.outreachQuotaDate === date ? (state.followedToday ?? 0) : 0,
     budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
     allowance: a?.routine && a.routine.outreachEnabled && a.routine.followingEnabled !== false && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
-      ? dailyOutreachQuota(a.routine, state, date).allowance
+      ? dailyOutreachQuota(a.routine, state, date, p._id).allowance
       : 0,
     nextRunAt: state?.nextRunAt,
   };
@@ -236,7 +236,7 @@ export const target = internalQuery({
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!canFollow(e)) return { target: 0, remaining: 0, sent: 0 };
     const today = dayKey();
-    const { allowance, used, followed } = dailyOutreachQuota(e.policy, e.state, today);
+    const { allowance, used, followed } = dailyOutreachQuota(e.policy, e.state, today, args.profileId);
     return { target: allowance, remaining: Math.max(0, allowance - used), sent: followed };
   },
 });
@@ -321,7 +321,7 @@ export const reserve = internalMutation({
     if (!routes.length) return null;
     const date = dayKey();
     const state = await ensureProgress(ctx, args.profileId);
-    const { used, allowance } = dailyOutreachQuota(e.policy, state, date);
+    const { used, allowance } = dailyOutreachQuota(e.policy, state, date, args.profileId);
     if (used >= allowance) return null;
     let lead: Doc<'leads'> | undefined;
     let selected: (typeof routes)[number] | undefined;
@@ -399,7 +399,7 @@ export const beginFollow = internalMutation({
     // must reserve today's slot in the same transaction as its follow intent.
     if (dayKey(lead.screenedAt!) !== today) {
       const state = await ensureProgress(ctx, args.profileId);
-      const { used, allowance, followed } = dailyOutreachQuota(e.policy, state, today);
+      const { used, allowance, followed } = dailyOutreachQuota(e.policy, state, today, args.profileId);
       if (used >= allowance) return false;
       await ctx.db.patch(state._id, { outreachQuotaDate: today, outreachUsedToday: used + 1, outreachAllowanceToday: allowance,
         followedToday: followed, updatedAt: now });
