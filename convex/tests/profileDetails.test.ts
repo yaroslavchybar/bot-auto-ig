@@ -73,6 +73,7 @@ test('profile details expose the same outreach state with setup and assignment i
   const [summary] = await t.query(api.routines.accounts, { automationId })
   expect(details).toMatchObject({
     ...summary,
+    dailyBudget: { date: dayKey(), total: 10, remaining: 0, running: false },
     model: { name: 'Example model' },
     automation: { name: 'Example automation', enabled: true },
     setup: { postsDone: 3, postTarget: 3, error: 'Check this post', pending: { kind: 'post' } },
@@ -98,6 +99,7 @@ test('unassigned profiles and profiles without progress can still be inspected a
     activeDays: 0,
     allowance: 0,
     stage: 'Not logged in',
+    dailyBudget: null,
   })
   await t.mutation(api.profiles.mutations.setPaused, { profileId: profile._id, paused: true })
   expect((await t.query(api.routines.profileDetails, { profileId: profile._id }))?.paused).toBe(
@@ -105,6 +107,75 @@ test('unassigned profiles and profiles without progress can still be inspected a
   )
   await t.run((ctx) => ctx.db.delete(profile._id))
   expect(await t.query(api.routines.profileDetails, { profileId: profile._id })).toBeNull()
+})
+
+test.each([
+  { total: 30, used: undefined, remaining: 30, running: false },
+  { total: 30, used: 17.5, remaining: 12.5, running: true },
+  { total: 30, used: 40, remaining: 0, running: false },
+  { total: 0, used: 0, remaining: 0, running: false },
+])(
+  'daily minutes reflect completed sessions: $total total, $used used',
+  async ({ total, used, remaining, running }) => {
+    const t = createConvexTest()
+    const profile = (await seedProfile(t))!
+    const nextRunAt = Date.now() + 60_000
+    await t.run(async (ctx) => {
+      await ctx.db.insert('warmupStates', {
+        profileId: profile._id,
+        day: 8,
+        date: dayKey(),
+        runsToday: 1,
+        todayMinutes: total,
+        minutesUsedToday: used,
+        nextRunAt,
+        activeRun: running ? { id: 'active', minutes: 5, restMinutes: 10 } : undefined,
+      })
+      await ctx.db.insert('accountProgress', {
+        profileId: profile._id,
+        paused: false,
+        activeDays: 8,
+        outreachUsedToday: 0,
+        outreachAllowanceToday: 0,
+        nextRunAt: nextRunAt - 30_000,
+        updatedAt: Date.now(),
+      })
+    })
+    expect(await t.query(api.routines.profileDetails, { profileId: profile._id })).toMatchObject({
+      dailyBudget: { date: dayKey(), total, remaining, running },
+      nextRunAt,
+    })
+  },
+)
+
+test('yesterday budgets are hidden and next runs respect the later retry delay', async () => {
+  const t = createConvexTest()
+  const profile = (await seedProfile(t))!
+  const nextRunAt = Date.now() + 120_000
+  await t.run(async (ctx) => {
+    await ctx.db.insert('warmupStates', {
+      profileId: profile._id,
+      day: 8,
+      date: dayKey(Date.now() - 86_400_000),
+      runsToday: 1,
+      todayMinutes: 30,
+      minutesUsedToday: 10,
+      nextRunAt: nextRunAt - 60_000,
+    })
+    await ctx.db.insert('accountProgress', {
+      profileId: profile._id,
+      paused: false,
+      activeDays: 8,
+      outreachUsedToday: 0,
+      outreachAllowanceToday: 0,
+      nextRunAt,
+      updatedAt: Date.now(),
+    })
+  })
+  expect(await t.query(api.routines.profileDetails, { profileId: profile._id })).toMatchObject({
+    dailyBudget: null,
+    nextRunAt,
+  })
 })
 
 test('details prefer the enabled automation and ignore setup belonging to an old model', async () => {

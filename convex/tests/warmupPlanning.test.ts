@@ -20,11 +20,11 @@ async function setup() {
 test('prelaunch planning saves a rest day once without creating a session reservation', async () => {
   const s = await setup()
   await s.t.run(ctx => ctx.db.insert('warmupStates', { profileId: s.profile._id, day: 8,
-    date: '2026-10-16', runsToday: 1, todayMinutes: 40, minutesUsedToday: 10, }))
+    date: '2026-10-16', nextRestDate: '2026-10-17', runsToday: 1, todayMinutes: 40, minutesUsedToday: 10, }))
   const rng = vi.spyOn(Math, 'random').mockReturnValue(0)
   expect(await s.prepare()).toBe(false)
   const saved = await s.state()
-  expect(saved).toMatchObject({ date: '2026-10-17', day: 9, todayMinutes: 0, runsToday: 0, minutesUsedToday: 0 })
+  expect(saved).toMatchObject({ date: '2026-10-17', nextRestDate: '2026-10-22', day: 9, todayMinutes: 0, runsToday: 0, minutesUsedToday: 0 })
   expect(saved?.activeRun).toBeUndefined()
   rng.mockReturnValue(0.99)
   expect(await s.prepare()).toBe(false)
@@ -33,6 +33,76 @@ test('prelaunch planning saves a rest day once without creating a session reserv
   vi.setSystemTime(new Date('2026-10-18T12:00:00Z'))
   expect(await s.prepare()).toBe(true)
   expect((await s.state())?.todayMinutes).toBe(40)
+  expect((await s.state())?.nextRestDate).toBe('2026-10-22')
+})
+
+test.each([
+  [0, 5], [0.5, 6], [0.999, 7],
+])('rest intervals stay fixed at %s RNG / %i days and never repeat the next day', async (random, interval) => {
+  const s = await setup()
+  await s.t.run(ctx => ctx.db.insert('warmupStates', {
+    profileId: s.profile._id, day: 8, date: '2026-10-16', runsToday: 1,
+    todayMinutes: 40, minutesUsedToday: 10,
+  }))
+  const rng = vi.spyOn(Math, 'random').mockReturnValue(random)
+  const restDate = `2026-10-${17 + interval}`
+  expect(await s.prepare()).toBe(true)
+  expect((await s.state())?.nextRestDate).toBe(restDate)
+  // Changing randomness must not move a rest day that has already been scheduled.
+  rng.mockReturnValue(0)
+  for (let elapsed = 1; elapsed <= interval; elapsed++) {
+    vi.setSystemTime(new Date(`2026-10-${17 + elapsed}T12:00:00Z`))
+    expect(await s.prepare()).toBe(elapsed < interval)
+    expect((await s.state())?.todayMinutes).toBe(elapsed < interval ? 40 : 0)
+    expect((await s.state())?.nextRestDate).toBe(elapsed < interval ? restDate : `2026-10-${22 + interval}`)
+  }
+  for (let elapsed = 1; elapsed < 5; elapsed++) {
+    vi.setSystemTime(new Date(`2026-10-${17 + interval + elapsed}T12:00:00Z`))
+    expect(await s.prepare()).toBe(true)
+  }
+  vi.setSystemTime(new Date(`2026-10-${22 + interval}T12:00:00Z`))
+  expect(await s.prepare()).toBe(false)
+})
+
+test('an existing rest day anchors the schedule instead of allowing another rest tomorrow', async () => {
+  const s = await setup()
+  await s.t.run(ctx => ctx.db.insert('warmupStates', {
+    profileId: s.profile._id, day: 8, date: '2026-10-16', runsToday: 0,
+    todayMinutes: 0, minutesUsedToday: 0,
+  }))
+  vi.spyOn(Math, 'random').mockReturnValue(0)
+  expect(await s.prepare()).toBe(true)
+  expect(await s.state()).toMatchObject({ todayMinutes: 40, nextRestDate: '2026-10-21' })
+})
+
+test('the first week has no rest days or maintenance schedule', async () => {
+  const s = await setup()
+  vi.spyOn(Math, 'random').mockReturnValue(0)
+  for (let day = 1; day <= 7; day++) {
+    vi.setSystemTime(new Date(`2026-10-${16 + day}T12:00:00Z`))
+    expect(await s.prepare()).toBe(true)
+    expect((await s.state())?.nextRestDate).toBeUndefined()
+    const session = await s.begin()
+    await s.t.mutation(internal.warmup.mutations.finishRunInternal, {
+      profileId: s.profile._id, runId: 'session', date: session.date, minutes: session.minutes,
+    })
+  }
+  vi.setSystemTime(new Date('2026-10-24T12:00:00Z'))
+  expect(await s.prepare()).toBe(true)
+  expect(await s.state()).toMatchObject({ day: 8, nextRestDate: '2026-10-29' })
+})
+
+test('returning after a long pause takes one rest day without catching up missed rest days', async () => {
+  const s = await setup()
+  await s.t.run(ctx => ctx.db.insert('warmupStates', {
+    profileId: s.profile._id, day: 8, date: '2026-09-01', nextRestDate: '2026-09-06',
+    runsToday: 1, todayMinutes: 40, minutesUsedToday: 10,
+  }))
+  vi.spyOn(Math, 'random').mockReturnValue(0)
+  expect(await s.prepare()).toBe(false)
+  expect(await s.state()).toMatchObject({ todayMinutes: 0, nextRestDate: '2026-10-22' })
+  vi.setSystemTime(new Date('2026-10-18T12:00:00Z'))
+  expect(await s.prepare()).toBe(true)
 })
 
 test('an active day is planned without reserving time; the later session reuses that budget', async () => {

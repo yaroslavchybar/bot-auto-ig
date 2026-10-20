@@ -49,15 +49,28 @@ export function randomMinutes(plan: WarmupPlan): number {
 	return plan.minMinutes + Math.random() * Math.max(0, plan.maxMinutes - plan.minMinutes);
 }
 
+function scheduleRestDay(date: string): string {
+  const days = 5 + Math.floor(Math.random() * 3);
+  return todayDate(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000);
+}
+
 /** Draw today's budget once, before a browser is needed; do not reserve session time. */
 export async function ensureDailyPlan(ctx: MutationCtx, profileId: Id<'profiles'>, plan: WarmupPlan, now: number) {
   const date = todayDate(now);
   const state = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', profileId)).unique();
   if (state?.date === date) return state;
   const day = state ? state.day + (state.runsToday > 0 || state.activeRun ? 1 : 0) : 1;
+  let nextRestDate = state?.nextRestDate;
+  let restDay = false;
+  if (day > 7) {
+    // A saved zero-minute day is already a rest; keep the next one at least five days away.
+    nextRestDate ??= scheduleRestDay(state?.todayMinutes === 0 ? state.date : date);
+    restDay = date >= nextRestDate;
+    if (restDay) nextRestDate = scheduleRestDay(date);
+  }
   const daily = {
     profileId, day, activityPlan: warmupActivityPlan(day), activityUsed: emptyWarmupActivity(), followAttempts: [],
-    date, runsToday: 0, todayMinutes: day > 7 && Math.random() < 0.1 ? 0 : randomMinutes(plan), minutesUsedToday: 0,
+    date, nextRestDate, runsToday: 0, todayMinutes: restDay ? 0 : randomMinutes(plan), minutesUsedToday: 0,
     recentRunIds: [] as string[],
   };
   if (state) {

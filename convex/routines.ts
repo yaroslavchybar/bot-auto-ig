@@ -181,10 +181,16 @@ async function accountSummary(ctx: QueryCtx, p: Doc<'profiles'>, a: Doc<'automat
     sent: state?.dmCountDate === date ? (state.sentToday ?? 0) : 0,
     followed: state?.outreachQuotaDate === date ? (state.followedToday ?? 0) : 0,
     budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
+    dailyBudget: warmup?.date === date ? {
+      date,
+      total: warmup.todayMinutes,
+      remaining: Math.max(0, warmup.todayMinutes - (warmup.minutesUsedToday ?? 0)),
+      running: Boolean(warmup.activeRun),
+    } : null,
     allowance: a?.routine && a.routine.outreachEnabled && a.routine.followingEnabled !== false && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
       ? dailyOutreachQuota(a.routine, state, date, p._id).allowance
       : 0,
-    nextRunAt: state?.nextRunAt,
+    nextRunAt: Math.max(state?.nextRunAt ?? 0, warmup?.nextRunAt ?? 0),
   };
 }
 

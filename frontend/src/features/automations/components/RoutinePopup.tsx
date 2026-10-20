@@ -69,6 +69,8 @@ export function RoutinePopup({
   const automations = useQuery(api.automations.queries.list, {})
   const leadLists = useQuery(api.leads.lists, {})
   const profiles = useQuery(api.profiles.queries.modelOptions, {})
+  const accountProfiles = useQuery(api.routines.accounts,
+    tab === 'profiles' && automation ? { automationId: automation._id } : 'skip')
   const create = useMutation(api.automations.mutations.create)
   const update = useMutation(api.automations.mutations.update)
 
@@ -461,7 +463,7 @@ export function RoutinePopup({
 
             {tab === 'profiles' &&
               (automation ? (
-                <RoutineProfiles profiles={profiles?.filter(profile => profile.modelIds?.some(id => modelIds.includes(id)))} />
+                <RoutineProfiles profiles={accountProfiles} enabled={automation.isActive !== false} />
               ) : (
                 <p className="text-sm text-subtle-copy">Save the automation to see its profiles.</p>
               ))}

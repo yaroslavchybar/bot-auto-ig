@@ -18,8 +18,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('convex/react', () => ({
   useQuery: () => mocks.details,
   useMutation: (reference: FunctionReference<'mutation'>) =>
-    getFunctionName(reference) === 'routines:setAccount' ? mocks.account
-      : getFunctionName(reference) === 'profiles/mutations:setIgState' ? mocks.login : mocks.pause,
+    getFunctionName(reference) === 'routines:setAccount'
+      ? mocks.account
+      : getFunctionName(reference) === 'profiles/mutations:setIgState'
+        ? mocks.login
+        : mocks.pause,
 }))
 vi.mock('@/lib/api', () => ({ apiFetch: mocks.request }))
 const profile = { id: 'profile', name: 'Example' }
@@ -35,6 +38,7 @@ const details: NonNullable<FunctionReturnType<typeof api.routines.profileDetails
   sent: 1,
   followed: 1,
   budgetExhausted: false,
+  dailyBudget: null,
   nextRunAt: 0,
   browserStatus: 'idle',
   igLoggedIn: true,
@@ -133,16 +137,78 @@ test('login can be changed inside profile details and is disabled during profile
   expect(toggle().disabled).toBe(true)
 })
 
-test('the automation profile list contains names without operational controls', async () => {
+test('the automation profile list shows daily minutes and next runs without operational controls', async () => {
+  const now = Date.UTC(2026, 9, 20, 12)
+  vi.spyOn(Date, 'now').mockReturnValue(now)
+  const budget = { date: '2026-10-20', total: 30, remaining: 12.5, running: false }
   view = mount()
   await view.render(
     <RoutineProfiles
+      enabled
       profiles={[
-        { _id: 'one', name: 'First' },
-        { _id: 'two', name: 'Second' },
+        {
+          ...details,
+          name: 'First',
+          issue: undefined,
+          dailyBudget: budget,
+          nextRunAt: now + 60_000,
+        },
+        {
+          ...details,
+          profileId: 'two' as Id<'profiles'>,
+          name: 'Second',
+          dailyBudget: { ...budget, remaining: 0 },
+        },
+        {
+          ...details,
+          profileId: 'three' as Id<'profiles'>,
+          name: 'Third',
+          dailyBudget: { ...budget, date: '2026-10-19' },
+        },
+        {
+          ...details,
+          profileId: 'four' as Id<'profiles'>,
+          name: 'Fourth',
+          dailyBudget: { ...budget, running: true },
+        },
       ]}
     />,
   )
-  expect(view.container.textContent).toBe('FirstSecond')
+  const rows = view.container.querySelectorAll('li')
+  expect(rows[0].textContent).toContain('30 min budget · 12.5 min left')
+  expect(rows[0].textContent).toContain(
+    `Next run: ${new Date(now + 60_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+  )
+  expect(rows[1].textContent).toContain('0 min left')
+  expect(rows[1].textContent).not.toContain('Next run:')
+  expect(rows[2].textContent).toContain("Today's budget not planned yet")
+  expect(rows[2].textContent).not.toContain('Next run:')
+  expect(rows[3].textContent).toContain('Session running')
+  expect(rows[3].textContent).not.toContain('Next run:')
+  expect(view.container.textContent).not.toContain('DM')
+  expect(view.container.textContent).not.toContain('follow')
   expect(view.container.querySelector('button')).toBeNull()
+})
+
+test('next runs respect disabled, paused, attention and tomorrow schedules', async () => {
+  const now = Date.UTC(2026, 9, 20, 12)
+  vi.spyOn(Date, 'now').mockReturnValue(now)
+  const profile = {
+    ...details,
+    issue: undefined,
+    dailyBudget: { date: '2026-10-20', total: 30, remaining: 20, running: false },
+  }
+  view = mount()
+  for (const [overrides, expected] of [
+    [{}, 'Due now'],
+    [{ paused: true }, 'Paused'],
+    [{ issue: 'Review' }, 'Needs attention'],
+    [{ stage: 'Not logged in' }, 'Not logged in'],
+    [{ nextRunAt: Date.UTC(2026, 9, 21) }, 'Not scheduled today'],
+  ] as const) {
+    await view.render(<RoutineProfiles enabled profiles={[{ ...profile, ...overrides }]} />)
+    expect(view.container.textContent).toContain(`Next run: ${expected}`)
+  }
+  await view.render(<RoutineProfiles enabled={false} profiles={[profile]} />)
+  expect(view.container.textContent).toContain('Next run: Automation off')
 })

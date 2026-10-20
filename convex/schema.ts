@@ -329,6 +329,8 @@ export default defineSchema({
     day: v.number(),
     // UTC date (YYYY-MM-DD) the counters below belong to.
     date: v.string(),
+    // Next maintenance rest day, spaced 5–7 UTC calendar days apart.
+    nextRestDate: v.optional(v.string()),
     // How many times warm-up ran for this profile today.
     runsToday: v.number(),
     // Minutes assigned for today's warm-up runs.

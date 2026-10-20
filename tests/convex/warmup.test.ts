@@ -222,11 +222,11 @@ test('a crashed worker cannot grant extra time, but its reservation expires next
   expect((await begin('tomorrow')).minutes).toBe(40)
 })
 
-test('maintenance rest days are drawn once and skip all sessions until the next UTC day', async () => {
+test('scheduled maintenance rest days skip all sessions until the next UTC day', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-12T12:00:00Z'))
   const s = await setup()
   await s.begin(); await s.finish('2026-10-12', 5)
-  await s.t.run(async ctx => { const state = await ctx.db.query('warmupStates').unique(); await ctx.db.patch(state!._id, { day: 7 }) })
+  await s.t.run(async ctx => { const state = await ctx.db.query('warmupStates').unique(); await ctx.db.patch(state!._id, { day: 7, nextRestDate: '2026-10-13' }) })
   vi.setSystemTime(new Date('2026-10-13T12:00:00Z'))
   const rng = vi.spyOn(Math, 'random').mockReturnValue(0)
   try {
