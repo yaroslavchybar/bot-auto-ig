@@ -4,6 +4,7 @@ import { BrowseSession, SessionEnded } from './session.js'
 import { viewVideo } from './viewing.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { assertInstagramReady } from './instagram-state.js'
+import { dismissPopups } from './navigation.js'
 import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/warmupTopics.js'
 import { createTopicMatcher, decideTopic, captureTopicScreenshot, topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { engagePost } from './engagement.js'
@@ -51,6 +52,8 @@ export async function openReels(page: Page, log: ActionLogger, session = new Bro
   const onReels = () => /\/reels\//.test(page.url())
   let stage = 'sidebar'
   try {
+    // Reels-only sessions can reach here directly from an inbox notification prompt.
+    await dismissPopups(page, opening)
     const alreadyOpen = onReels()
     if (!alreadyOpen) {
       const btn = page.locator('a:has(svg[aria-label="Reels"])').filter({ visible: true }).first()

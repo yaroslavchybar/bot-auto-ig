@@ -196,6 +196,8 @@ function reelAdvanceFixture(width: number, height: number, options: { nextVisibl
   const page = { url: () => url, viewportSize: () => options.fixedViewport !== false ? { width, height } : null,
     evaluate: async (fn: () => unknown) => window.eval(`(${fn.toString()})()`),
     locator: (selector: string) => selector === 'video' ? { count: async () => videos.length, nth: (i: number) => videos[i] }
+      : selector.includes('Not Now') ? { count: async () => 0 }
+      : selector.includes('Your Meta Account is here') ? { filter() { return this }, first() { return this }, isVisible: async () => false }
       : { filter: () => ({ evaluateAll: async () => options.warningAfterFailure && contextFailed ? 'limit' : null }) },
     getByRole: (role: string, options: { name: string; exact: boolean }) => {
       assert.equal(role, 'button'); assert.deepEqual(options, { name: 'Navigate to next Reel', exact: true })
@@ -215,7 +217,8 @@ test('an already-open Reels viewer uses its visible frame without clicking the s
   const f = reelAdvanceFixture(1024, 600)
   const locator = f.page.locator.bind(f.page)
   f.page.locator = ((selector: string) => {
-    assert.equal(selector, 'video', 'opening the current viewer must not select the sidebar')
+    assert.ok(selector === 'video' || selector.includes('Not Now') || selector.includes('Your Meta Account is here'),
+      'opening the current viewer must not select the sidebar')
     return locator(selector)
   }) as Page['locator']
   try {
@@ -228,7 +231,7 @@ test('a failed Reels sidebar click does not wait for navigation or retry the cli
   let clicks = 0, waits = 0
   const button = { filter() { return this }, first() { return this }, isVisible: async () => true,
     elementHandle: async () => { clicks++; return null } }
-  const page = { url: () => 'https://www.instagram.com/alice/', locator: () => button,
+  const page = { url: () => 'https://www.instagram.com/alice/', locator: (selector: string) => selector.includes('Not Now') ? { count: async () => 0 } : button,
     waitForURL: async () => { waits++ } } as unknown as Page
   const notes: Record<string, unknown>[] = []
   assert.equal(await openReels(page, note => notes.push(note)), false)
@@ -245,7 +248,8 @@ test('Reels opening shares a 15-second budget across navigation and settling', a
   const button = { ...visibleActionGeometry, filter() { return this }, first() { return this }, isVisible: async () => true,
     elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => {}, dispose: async () => {} }) }
   f.page.url = () => onReels ? 'https://www.instagram.com/reels/current/' : 'https://www.instagram.com/alice/'
-  f.page.locator = ((selector: string) => selector === 'video' ? locator(selector) : button) as Page['locator']
+  f.page.locator = ((selector: string) => selector === 'video' || selector.includes('Not Now') || selector.includes('Your Meta Account is here')
+    ? locator(selector) : button) as Page['locator']
   f.page.waitForURL = async (_url, options) => { now += options!.timeout!; onReels = true }
   f.boxes[1].y = 330 // Navigation succeeds, but the frame never settles.
   f.session.wait = async ms => { now += ms; f.session.check() }
@@ -255,6 +259,38 @@ test('Reels opening shares a 15-second budget across navigation and settling', a
     assert.equal(now - start, 15_000)
     assert.equal(notes[0].stage, 'settling')
   } finally { Date.now = originalNow; await f.window.happyDOM.close() }
+})
+
+test('Reels opening dismisses the inbox notification prompt before clicking the sidebar', async () => {
+  const f = reelAdvanceFixture(1024, 600)
+  f.navigate('https://www.instagram.com/direct/inbox/')
+  let popupOpen = true
+  const clicks: string[] = []
+  const locator = f.page.locator.bind(f.page)
+  const popup = { dispose: async () => {}, waitForElementState: async () => {
+    assert.equal(popupOpen, false, 'the notification dialog must actually close')
+  } }
+  const notNow = {
+    isVisible: async () => popupOpen,
+    locator: () => ({ elementHandle: async () => popup }),
+    elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {}, hover: async () => {},
+      click: async () => { popupOpen = false; clicks.push('not-now') } }),
+  }
+  const reels = { filter() { return this }, first() { return this }, isVisible: async () => true,
+    elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {}, hover: async () => {},
+      click: async () => {
+        assert.equal(popupOpen, false, 'Reels must not be clicked underneath a notification prompt')
+        clicks.push('reels'); f.navigate('https://www.instagram.com/reels/current/')
+      } }),
+  }
+  f.page.locator = ((selector: string) => selector.includes('Not Now')
+    ? { count: async () => Number(popupOpen), nth: () => notNow }
+    : selector.includes('aria-label="Reels"') ? reels : locator(selector)) as Page['locator']
+  f.page.waitForURL = async () => { assert.match(f.page.url(), /\/reels\//) }
+  try {
+    assert.equal(await openReels(f.page, () => {}, f.session), true)
+    assert.deepEqual(clicks, ['not-now', 'reels'])
+  } finally { await f.window.happyDOM.close() }
 })
 
 for (const moved of [true, false]) test(`skipping a changing reel counts browsing progress only after verified advancement (${moved})`, async () => {
