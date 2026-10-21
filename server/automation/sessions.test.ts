@@ -6,6 +6,7 @@ import { SessionEnded } from './actions/session.js'
 import { browsingNumbers, browsingFlags } from '../shared/browsingSettings.js'
 import { browseFeed } from '../../frontend/src/features/automations/activities/browsing/browse-feed.js'
 import { defaultRoutine, validateRoutine } from '../../convex/routinePolicy.js'
+import { logOperation } from '../shared/logger.js'
 
 test('editor defaults, routine limits, and session defaults share one browsing policy', () => {
   const config = sessionConfig({})
@@ -154,6 +155,18 @@ test('a stopped session releases its reservation without navigating', async () =
   const s = setup()
   assert.deepEqual(await s.run({}, () => true), { minutes: 0, reason: 'stopped' })
   assert.deepEqual(s.calls, []); assert.equal(s.finishes.length, 1)
+})
+
+for (const elapsed of [30_000, 600_000]) test(`stalled sessions preserve their result and charge elapsed time (${elapsed}ms)`, async () => {
+  const s = setup()
+  s.deps.browse = async () => { s.advance(elapsed); return 'stalled' }
+  await logOperation('automation.profile_session', {}, async scope => {
+    assert.deepEqual(await s.run(), { minutes: elapsed / 60_000, reason: 'stalled' })
+    assert.equal(scope.fields.outcome, 'error')
+    assert.equal(scope.fields.sessionReason, 'stalled')
+  })
+  assert.equal(s.finishes.length, 1)
+  assert.equal(s.finishes[0].minutes, elapsed / 60_000)
 })
 
 for (const phase of ['explore', 'browse'] as const) test(phase + ' failures preserve elapsed time and propagate', async () => {

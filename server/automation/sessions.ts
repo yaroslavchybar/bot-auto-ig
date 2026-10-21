@@ -12,6 +12,7 @@ import { hasUnseenStories } from './actions/stories.js'
 import { isInstagramHome } from './actions/navigation.js'
 import type { ActionLogger, StopCheck } from './actions/shared.js'
 import { setSessionAppearance } from './actions/appearance.js'
+import { addLogContext } from '../shared/logger.js'
 
 export type SessionConfig = typeof defaults & {
   watch_stories: boolean; warmup_topics: string[]; browse_home_feed: boolean; scroll_reels: boolean; warmup_day?: number
@@ -102,7 +103,7 @@ export async function runBrowsingSession(profileId: string, automationId: string
         remainingMinutes: Math.max(0, Math.min(plan.remainingMinutes ?? plan.minutes, (midnight - started) / 60_000) - (deps.now() - started) / 60_000),
       }, log, shouldStop, activity, startupNotifications)
     }
-    if (!shouldStop() && deps.now() >= deadline) reason = 'finished'
+    if (!shouldStop() && deps.now() >= deadline && reason !== 'stalled') reason = 'finished'
   } catch (error) {
     if (!(error instanceof SessionEnded)) throw error
     reason = shouldStop() ? 'stopped' : 'finished'
@@ -110,6 +111,7 @@ export async function runBrowsingSession(profileId: string, automationId: string
     minutes = Math.min(plan.minutes, Math.max(0, deps.now() - started) / 60_000)
     await deps.finish({ profileId, runId, date: plan.date, minutes, activity: budget.delta() })
   }
+  if (reason === 'stalled') addLogContext({ outcome: 'error', sessionReason: reason })
   log({ event: 'automation.session.finished', reason, minutes, activityAttempts: budget.delta() })
   return { minutes, reason }
 }

@@ -13,19 +13,30 @@ type Controls = {
 };
 
 type BrowseControls = Pick<Controls, 'now' | 'stopped' | 'random' | 'sleep' | 'log'>;
-const pauseBeforeBrowsing = async (deadline: number, reason: string, controls: BrowseControls) => {
-  if (reason === 'stalled') controls.log({ event: 'automation.routine.browsing_retry', reason, remainingSeconds: Math.max(0, deadline - controls.now()) / 1000 });
-  await controls.sleep(Math.min(controls.random(1000, 3000), Math.max(0, deadline - controls.now())));
+const MAX_BROWSING_STALLS = 3;
+const pauseBeforeBrowsing = async (deadline: number, reason: string, controls: BrowseControls, stalls: number) => {
+  if (reason === 'stalled') {
+    if (stalls >= MAX_BROWSING_STALLS || controls.now() >= deadline) {
+      controls.log({ event: 'automation.routine.browsing_unavailable', reason, attempts: stalls, outcome: 'error' });
+      return false;
+    }
+    controls.log({ event: 'automation.routine.browsing_retry', reason, attempts: stalls,
+      remainingSeconds: Math.max(0, deadline - controls.now()) / 1000 });
+  }
+  const delay = Math.min(controls.random(1000, 3000), Math.max(0, deadline - controls.now()));
+  if (delay > 0) await controls.sleep(delay);
+  return reason !== 'stalled' || controls.now() < deadline;
 };
 
 /** All browsing-only paths share retries, surface limits, and one reservation deadline. */
 export async function browseUntilEnd(
-  session: Pick<Parameters<SessionActivity>[0], 'deadline' | 'browse'>, controls: BrowseControls,
+  session: Pick<Parameters<SessionActivity>[0], 'deadline' | 'browse'>, controls: BrowseControls, stalls = 0,
 ): ReturnType<SessionActivity> {
   while (!controls.stopped() && controls.now() < session.deadline) {
     const reason = await session.browse((session.deadline - controls.now()) / 60_000);
     if (reason === 'skipped' || reason === 'stopped' || controls.stopped()) return reason;
-    await pauseBeforeBrowsing(session.deadline, reason, controls);
+    stalls = reason === 'stalled' ? stalls + 1 : 0;
+    if (!await pauseBeforeBrowsing(session.deadline, reason, controls, stalls)) return 'stalled';
   }
   return controls.stopped() ? 'stopped' : 'finished';
 }
@@ -45,6 +56,7 @@ export async function scheduleRoutine(
   let nextSendAt = 0;
   let available = true;
   let retryBrowsing = false;
+  let stalls = 0;
   const browse = async (ms: number) => {
     if (ms <= 0 || stopped()) return 'stopped' as const;
     return session.browse(ms / 60_000);
@@ -52,7 +64,7 @@ export async function scheduleRoutine(
   while (!stopped() && now() < session.deadline) {
     const remainingMs = session.deadline - now();
     const browsingOnly = !available || sent >= quota || remainingMs < 20_000;
-    if (browsingOnly) return browseUntilEnd(session, controls);
+    if (browsingOnly) return browseUntilEnd(session, controls, stalls);
     // Keep the initial browse flexible, then browse for 3–5 minutes between batches.
     const spareMs = remainingMs - (quota - sent) * 90_000;
     const browsingMs = sent > 0 ? Math.min(remainingMs, random(180_000, 300_000))
@@ -62,10 +74,11 @@ export async function scheduleRoutine(
     if (reason === 'skipped' || reason === 'stopped' || stopped()) return reason;
     if (reason === 'stalled') {
       retryBrowsing = true;
-      await pauseBeforeBrowsing(session.deadline, reason, controls);
+      if (!await pauseBeforeBrowsing(session.deadline, reason, controls, ++stalls)) return 'stalled';
       continue;
     }
     retryBrowsing = false;
+    stalls = 0;
     // Finish the browsing transition before opening the first recipient profile.
     nextSendAt = Math.max(nextSendAt, now() + random(10_000, 20_000));
     if (session.visitDuringPause && session.deadline - now() >= 20_000 && random(0, 1) < 0.2)

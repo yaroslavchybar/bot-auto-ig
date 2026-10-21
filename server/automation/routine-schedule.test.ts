@@ -203,12 +203,78 @@ test('an incomplete browsing chunk retries with more time before outreach', asyn
   assert.equal(s.controls.now(), session.deadline);
 });
 
-test('repeated immediate stalls use a bounded pause and never permit outreach', async () => {
-  const s = setup(4);
-  const session = { ...s.session(1, 1), browse: async () => 'stalled' as const };
-  assert.equal(await scheduleRoutine(session, s.controls), 'finished');
+for (const target of [0, 4]) test(`three consecutive stalls end the session early without outreach (target=${target})`, async () => {
+  const s = setup(target);
+  let attempts = 0;
+  const session = { ...s.session(10, 10), browse: async () => { attempts++; return 'stalled' as const; } };
+  assert.equal(await scheduleRoutine(session, s.controls), 'stalled');
+  assert.equal(attempts, 3);
   assert.equal(s.sent(), 0);
+  assert.ok(s.controls.now() < session.deadline);
+});
+
+test('a stall at the deadline is not reported as finished', async () => {
+  const s = setup(0), session = s.session(1, 1);
+  session.browse = async minutes => { await s.controls.sleep(minutes * 60_000); return 'stalled'; };
+  assert.equal(await scheduleRoutine(session, s.controls), 'stalled');
   assert.equal(s.controls.now(), session.deadline);
+});
+
+test('a retry pause expiring the deadline preserves the stall while a real stop stays stopped', async () => {
+  const s = setup(0), session = s.session(1, 1);
+  session.browse = async () => { await s.controls.sleep(59_900); return 'stalled'; };
+  assert.equal(await scheduleRoutine(session, s.controls), 'stalled');
+  let stopped = false;
+  const next = { ...s.session(1, 1), browse: async () => 'stalled' as const };
+  assert.equal(await scheduleRoutine(next, { ...s.controls, stopped: () => stopped,
+    sleep: async ms => { await s.controls.sleep(ms); stopped = true; },
+  }), 'stopped');
+});
+
+for (const target of [0, 4]) for (const reason of ['stalled', 'finished'] as const)
+  test(`a stop during a deadline-ending pause does not change retry eligibility (${target}, ${reason})`, async () => {
+    const s = setup(target), session = s.session(1, 1);
+    let stopped = false, attempts = 0;
+    session.browse = async () => {
+      attempts++;
+      await s.controls.sleep(59_900);
+      return reason;
+    };
+    const result = await scheduleRoutine(session, { ...s.controls, stopped: () => stopped,
+      sleep: async ms => { await s.controls.sleep(ms); stopped = true; },
+    });
+    assert.equal(result, reason === 'stalled' ? 'stalled' : 'stopped');
+    assert.equal(attempts, 1);
+    assert.equal(s.sent(), 0);
+    assert.equal(s.controls.now(), session.deadline);
+  });
+
+test('successful browsing resets the consecutive stall limit', async () => {
+  const s = setup(0), session = s.session(1, 1);
+  const browse = session.browse;
+  let attempts = 0;
+  session.browse = async minutes => {
+    attempts++;
+    if ([1, 2, 4, 5].includes(attempts)) return 'stalled';
+    return browse(attempts === 3 ? 0.1 : minutes);
+  };
+  assert.equal(await scheduleRoutine(session, s.controls), 'finished');
+  assert.equal(attempts, 6);
+});
+
+test('switching to browsing-only mode preserves the consecutive stalls from outreach', async () => {
+  const s = setup(4), session = s.session(1, 1);
+  let attempts = 0;
+  session.browse = async minutes => {
+    attempts++;
+    if (attempts <= 2) await s.controls.sleep(minutes * 60_000);
+    else assert.ok(session.deadline - s.controls.now() < 20_000, 'the next attempt uses browsing-only mode');
+    return 'stalled';
+  };
+  assert.equal(await scheduleRoutine(session, s.controls), 'stalled');
+  assert.equal(attempts, 3, 'changing modes must not grant more stall attempts');
+  assert.equal(s.sent(), 0);
+  assert.ok(s.controls.now() < session.deadline);
 });
 
 test('browsing-only sessions retry stalls but respect a real stop', async () => {

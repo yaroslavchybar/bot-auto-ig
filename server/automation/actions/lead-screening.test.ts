@@ -93,7 +93,7 @@ test('a transient failure stays retryable rather than skipping the lead', async 
   )
 })
 
-test('the whole screening budget covers one request even from a hanging provider', async () => {
+test('the whole screening budget covers both attempts even from a hanging provider', async () => {
   let calls = 0
   const started = Date.now()
   const fetcher = (async (_url: unknown, init: RequestInit) => {
@@ -103,8 +103,8 @@ test('the whole screening budget covers one request even from a hanging provider
       init.signal!.addEventListener('abort', () => fail(new Error('aborted')))
     })
   }) as typeof fetch
-  await assert.rejects(decideLead(Buffer.from('jpeg'), 400, { key: 'fixture', fetcher }))
-  assert.equal(calls, 1)
+  await assert.rejects(decideLead(Buffer.from('jpeg'), 1000, { key: 'fixture', fetcher }))
+  assert.equal(calls, 2)
   assert.ok(Date.now() - started < 2_000)
 })
 

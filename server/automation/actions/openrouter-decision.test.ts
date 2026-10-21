@@ -11,7 +11,7 @@ const input = { kind: 'topic' as const, model: 'fixture-model', screenshot: jpeg
 
 function fixture(response: Response) {
   let scope: LogScope | undefined
-  const fetcher = (async () => { scope = currentLogScope(); return response }) as typeof fetch
+  const fetcher = (async () => { scope = currentLogScope(); return response.clone() }) as typeof fetch
   return { fetcher, scope: () => { assert.ok(scope?.completed); return scope } }
 }
 
@@ -79,13 +79,12 @@ test('successful HTTP responses with invalid JSON are identified separately', as
   assert.equal(f.scope().fields.failureKind, 'response')
 })
 
-test('provider errors inside HTTP 200 are logged as errors for downstream validation', async () => {
+test('provider errors inside HTTP 200 are rejected after a bounded retry', async () => {
   const f = fixture(Response.json({ error: { code: 502, message: 'Provider unavailable' } }))
-  const data = await requestOpenRouterDecision({ ...input, fetcher: f.fetcher })
-  assert.deepEqual(data, { error: { code: 502, message: 'Provider unavailable' } })
+  await assert.rejects(requestOpenRouterDecision({ ...input, fetcher: f.fetcher }), /provider error/)
   assert.equal(f.scope().fields.outcome, 'error')
   assert.equal(f.scope().fields.failureKind, 'provider')
-  assert.deepEqual(f.scope().fields.answerTypes, { matches_topic: 'missing' })
+  assert.equal(f.scope().fields.attemptCount, 2)
 })
 
 test('network failures retain the transport code without inventing an HTTP status', async () => {
@@ -108,4 +107,74 @@ test('the existing request deadline is retained and distinguishes an abort from 
   assert.ok(scope?.completed)
   assert.equal(scope.fields.timeoutMs, 5)
   assert.equal(scope.fields.failureKind, 'timeout')
+})
+
+for (const failure of ['network', 'body-network', 'timeout', 'gateway', 'rate-limit', 'provider'] as const)
+  test(`one retry recovers a transient ${failure} failure with the same payload and model`, async () => {
+    let calls = 0, scope: LogScope | undefined
+    const signals: AbortSignal[] = []
+    const bodies: unknown[] = []
+    const fetcher = (async (_url: unknown, options: RequestInit) => {
+      calls++; scope = currentLogScope(); signals.push(options.signal!); bodies.push(options.body)
+      if (calls === 1) {
+        if (failure === 'network') throw new Error('Fetch failed')
+        if (failure === 'body-network') return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"answers":'))
+            controller.error(new Error('Connection reset', { cause: { code: 'ECONNRESET' } }))
+          },
+        }), { status: 200 })
+        if (failure === 'timeout') return new Promise<Response>((_resolve, reject) => {
+          options.signal!.addEventListener('abort', () => reject(options.signal!.reason), { once: true })
+        })
+        if (failure === 'provider') return Response.json({ error: { code: 502, message: 'Provider unavailable' } })
+        return Response.json({ error: { message: 'Temporary failure' } }, {
+          status: failure === 'rate-limit' ? 429 : 502,
+          headers: failure === 'rate-limit' ? { 'retry-after': '0' } : {},
+        })
+      }
+      return Response.json({ answers: { matches_topic: { type: 'noul', noul: 0.9 } } })
+    }) as typeof fetch
+    const result = await requestOpenRouterDecision({ ...input, fetcher })
+    assert.deepEqual(result, { answers: { matches_topic: { type: 'noul', noul: 0.9 } } })
+    assert.equal(calls, 2)
+    assert.equal(bodies[0], bodies[1])
+    assert.equal(JSON.parse(String(bodies[1])).image, input.payload.image)
+    assert.notEqual(signals[0], signals[1])
+    assert.equal(scope?.fields.httpStatus, 200)
+    assert.equal(scope?.fields.failureKind, undefined, 'a recovered request must not retain its old error')
+    assert.equal(scope?.fields.providerErrorMessage, undefined)
+    assert.equal(scope?.fields.attemptCount, 2)
+    assert.equal(scope?.fields.retryCount, 1)
+    assert.equal(scope?.fields.model, input.model)
+    assert.ok(scope)
+    assert.equal((scope.fields.retryFailures as unknown[]).length, 1)
+    if (failure === 'body-network') assert.deepEqual(scope.fields.retryFailures,
+      [{ attempt: 1, failureKind: 'network', httpStatus: 200 }])
+  })
+
+for (const response of [
+  Response.json({ error: { message: 'Invalid request' } }, { status: 400 }),
+  Response.json({ error: { message: 'Unauthorized' } }, { status: 401 }),
+  Response.json({ error: { message: 'Refused to answer question "account_type"' } }, { status: 502 }),
+  Response.json({ error: { message: 'Rate limited' } }, { status: 429, headers: { 'retry-after': '60' } }),
+  Response.json({ error: { message: 'Rate limited' } }, { status: 429, headers: { 'retry-after': new Date(Date.now() + 60_000).toUTCString() } }),
+  new Response('invalid JSON'),
+]) test(`permanent errors and retry delays beyond the deadline are not retried (${response.status})`, async () => {
+  let calls = 0
+  await assert.rejects(requestOpenRouterDecision({ ...input, fetcher: (async () => { calls++; return response.clone() }) as typeof fetch }))
+  assert.equal(calls, 1)
+})
+
+test('repeated timeouts share the original total deadline and stop after two attempts', async () => {
+  let calls = 0
+  const started = performance.now()
+  await assert.rejects(requestOpenRouterDecision({ ...input, timeout: 1000,
+    fetcher: (async (_url: unknown, options: RequestInit) => {
+      calls++
+      return new Promise<Response>((_resolve, reject) => options.signal!.addEventListener('abort', () => reject(options.signal!.reason), { once: true }))
+    }) as typeof fetch,
+  }))
+  assert.equal(calls, 2)
+  assert.ok(performance.now() - started < 1500, 'retry must not receive a fresh full request budget')
 })

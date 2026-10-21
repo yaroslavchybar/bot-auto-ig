@@ -519,15 +519,16 @@ impl Processes {
                 let _ = owner.api.events.send(json!({"type": "automation_status", "automationId": job.id, "status": if due_at.is_some() { "pending" } else { "idle" }}));
                 let _ = owner.closed.send((job.id.clone(), due_at));
             }
+            let result = output::completion(&final_status, diagnostic_error);
             let completion = json!({
                 "id": uuid::Uuid::new_v4().to_string(), "ts": api::now_ms(),
                 "requestId": request_id,
                 "event": if automation { "automation.process" } else { "browser.process" },
                 "message": "Browser worker finished", "source": "runtime",
-                "level": if stopped || (success && diagnostic_error.is_none()) { "info" } else { "error" },
-                "outcome": if stopped { "cancelled" } else if success && diagnostic_error.is_none() { "success" } else { "error" },
+                "level": result["level"],
+                "outcome": result["outcome"],
                 "durationMs": started.elapsed().as_millis() as u64,
-                "error": diagnostic_error.map(|note| json!({"type":"WorkerOutput", "message":note["message"]})),
+                "error": result["error"],
                 "context": {"workerId": job.id, "pid": pid,
                     "exitCode": status.ok().and_then(|s| s.code()),
                     "notes": diagnostics, "noteCount": diagnostic_count},

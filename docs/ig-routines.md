@@ -4,6 +4,8 @@ The live browser header shows the current content's Interest match confidence an
 
 A session has one reservation, deadline, and shared activity budget. On days 1–4, Explore warm-up uses up to 30% of the available time to seed the selected interests, then returns to the common browsing flow. Brief unread-notification checks, inbox, unseen Stories, follow/DM batches, daily recipient-profile checks, and unfollow cleanup belong to that flow. Home feed and Reels are sibling actions; when both are enabled, the flow alternates them in time slices. Seen post/Reel identities persist across slices. Content actions do not navigate into other activities. Likes, saves, comment reading, and brief matched-author visits share the engagement module. Random profile wandering, unrelated liker/commenter visits, separate outreach likes, standalone Story nodes, and carousel probability/count settings are removed.
 
+Three consecutive stalled browsing attempts end the session as stalled, preserving unused daily minutes for a later session. Successful browsing resets this limit. AI decisions may retry one temporary network, timeout, rate-limit, or gateway failure using the same model and screenshot. Both attempts share the original deadline, including the five-second interest-check limit; refusals, invalid responses, and authentication errors are not retried.
+
 ```mermaid
 flowchart TD
   Sessions --> Warmup[Explore warm-up]

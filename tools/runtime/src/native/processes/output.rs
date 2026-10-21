@@ -30,6 +30,22 @@ pub(super) fn diagnostic(text: &str, stderr: bool, secrets: &[String]) -> Value 
         "level":if stderr && !benign_stderr(text) { "error" } else { "info" }})
 }
 
+/// Stderr is diagnostic context, not evidence that a successfully completed worker failed.
+pub(super) fn completion(status: &str, diagnostic_error: Option<Value>) -> Value {
+    let outcome = match status {
+        "cancelled" => "cancelled",
+        "failed" => "error",
+        _ => "success",
+    };
+    json!({
+        "level": if outcome == "error" { "error" } else { "info" },
+        "outcome": outcome,
+        "error": if outcome == "error" {
+            diagnostic_error.map(|note| json!({"type":"WorkerOutput", "message":note["message"]}))
+        } else { None },
+    })
+}
+
 fn benign_stderr(text: &str) -> bool {
     static BENIGN: LazyLock<Vec<Regex>> =
         LazyLock::new(|| {
@@ -54,6 +70,32 @@ fn benign_stderr(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completion_uses_worker_status_and_retains_diagnostics_only_for_failures() {
+        let warning = diagnostic(
+            "TimeoutNegativeWarning: -0.1 is a negative number.",
+            true,
+            &[],
+        );
+        for status in ["completed", "pending", "cancelled"] {
+            let result = completion(status, Some(warning.clone()));
+            assert_eq!(result["level"], "info");
+            assert!(result["error"].is_null());
+            assert_eq!(
+                result["outcome"],
+                if status == "cancelled" {
+                    "cancelled"
+                } else {
+                    "success"
+                }
+            );
+        }
+        let result = completion("failed", Some(diagnostic("Import failed", true, &[])));
+        assert_eq!(result["outcome"], "error");
+        assert_eq!(result["error"]["message"], "Import failed");
+        assert_eq!(completion("failed", None)["outcome"], "error");
+    }
 
     #[test]
     fn diagnostics_preserve_errors_but_redact_credentials_and_bound_unicode() {

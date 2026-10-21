@@ -176,8 +176,8 @@ test('a refused screening skips the lead and any other failure stays retryable',
     DecisionRefusedError,
   )
   await assert.rejects(run(() => new Response('', { status: 503 })), /HTTP 503/)
-  // One model, one attempt: no other model is tried.
-  assert.deepEqual(attempts, ['typesafe/jev-1.14', 'typesafe/jev-1.14'])
+  // A refusal stops immediately; the temporary failure retries the same configured model once.
+  assert.deepEqual(attempts, ['typesafe/jev-1.14', 'typesafe/jev-1.14', 'typesafe/jev-1.14'])
 })
 
 test('screening settings reject unsupported models and blank prompts', () => {
