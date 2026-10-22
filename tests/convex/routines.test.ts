@@ -666,6 +666,8 @@ test.each([
   'Element "<ElementHandle>" failed visible check: element is not visible',
   'Element "<ElementHandle>" failed attached check: element not found in DOM',
   'Element "<ElementHandle>" failed pointer_events check: element is covered by <div>',
+  'elementHandle.click: Element is not attached to the DOM',
+  'locator.click: <div id="overlay"> intercepts pointer events',
   'Element is not attached to the DOM',
   'Action target is detached or missing',
 ])('transient session failure retries after a cooldown: %s', async issue => {
@@ -714,7 +716,11 @@ test('retry cooldown preserves a longer rest and resets after another failure', 
   }
 });
 
-test.each(['goto: Timeout 45000ms exceeded.', 'Element "<ElementHandle>" failed visible check: element is not visible', 'Browser worker stopped'])(
+test.each(['goto: Timeout 45000ms exceeded.',
+  'Element "<ElementHandle>" failed visible check: element is not visible',
+  'Element "<ElementHandle>" failed attached check: element not found in DOM',
+  'Element "<ElementHandle>" failed pointer_events check: element is covered by <div>',
+  'Browser worker stopped'])(
   'saved navigation failures recover through HTTP readiness and runtime snapshots: %s', async issue => {
   vi.useFakeTimers();
   try {
