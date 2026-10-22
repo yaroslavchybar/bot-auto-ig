@@ -66,7 +66,7 @@ const dependencies = { content: browseContent, stories: watchStories, check: ass
 
 /** One browsing flow owns startup checks, Stories, content, follows/DMs, and scheduled cleanup. */
 export async function runBrowseFeedSession(page: Page, context: FeedSessionContext, log: ActionLogger, shouldStop: StopCheck,
-  activity?: SessionActivity, startupNotifications?: (session: BrowseSession, day: number) => Promise<void>, deps = dependencies
+  activity?: SessionActivity, startupNotifications?: (session: BrowseSession, day: number, unread?: boolean) => Promise<void>, deps = dependencies
 ): Promise<SessionResult['reason']> {
   const started = deps.now()
   const { deadline, config, budget, day } = context
@@ -88,12 +88,12 @@ export async function runBrowseFeedSession(page: Page, context: FeedSessionConte
   } catch (error) {
     session.check()
     if (!isTemporaryUiError(error)) throw error
-    await deps.notifications(page, log, session)
-  }
-  if (unreadNotifications) {
-    if (startupNotifications) await startupNotifications(session, day)
+    if (startupNotifications) unreadNotifications = true
     else await deps.notifications(page, log, session)
   }
+  // Daily conversion tracking must also see follow-backs from an already-read notification panel.
+  if (startupNotifications) await startupNotifications(session, day, unreadNotifications)
+  else if (unreadNotifications) await deps.notifications(page, log, session)
   if (stopped()) return 'stopped'
   await deps.inbox(page, log, session)
   if (stopped()) return 'stopped'

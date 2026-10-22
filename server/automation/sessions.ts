@@ -64,7 +64,7 @@ const dependencies = { begin: warmupBeginRun, finish: warmupFinishRun, explore: 
 /** One reservation owns both phases: optional Explore warm-up, then the shared browsing flow. */
 export async function runBrowsingSession(profileId: string, automationId: string, input: Record<string, unknown>, page: Page,
   log: ActionLogger, shouldStop: StopCheck, deps = dependencies, activity?: SessionActivity,
-  startupNotifications?: (session: BrowseSession, day: number) => Promise<void>): Promise<SessionResult> {
+  startupNotifications?: (session: BrowseSession, day: number, unread?: boolean) => Promise<void>): Promise<SessionResult> {
   const config = sessionConfig(input), runId = randomUUID()
   const plan = await deps.begin({ profileId, automationId, runId,
     minMinutes: config.warmup_min_minutes, maxMinutes: config.warmup_max_minutes,

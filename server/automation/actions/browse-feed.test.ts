@@ -64,21 +64,33 @@ test('due follow-back scanning replaces the single startup notification visit', 
   assert.deepEqual(s.calls.filter(call => call !== 'check'), ['follow-back', 'inbox', 'home', 'stories', 'content'])
 })
 
-test('no unread notification badge skips both startup visits but still checks the inbox', async () => {
+test('daily follow-back tracking runs without an unread badge while brief notification visits stay skipped', async () => {
   for (const followBack of [false, true]) {
     const s = setup()
     s.deps.unreadNotifications = async () => false
     s.deps.notifications = async () => { throw new Error('No unread notifications') }
-    await s.run(undefined, followBack ? async () => { throw new Error('No unread follow-back scan') } : undefined)
-    assert.deepEqual(s.calls, ['check', 'inbox', 'home', 'stories', 'check', 'content'])
+    await s.run(undefined, followBack ? async (_session, _day, unread) => {
+      assert.equal(unread, false); s.calls.push('follow-back')
+    } : undefined)
+    assert.deepEqual(s.calls, ['check', ...(followBack ? ['follow-back'] : []), 'inbox', 'home', 'stories', 'check', 'content'])
   }
 })
 
 test('temporary unread detection errors recover through one brief notification check', async () => {
   const s = setup()
   s.deps.unreadNotifications = async () => { throw new Error('locator.evaluateAll: Execution context was destroyed, most likely because of a navigation') }
-  assert.equal(await s.run(undefined, async () => { throw new Error('Recovery must not open a second notification visit') }), 'finished')
+  assert.equal(await s.run(), 'finished')
   assert.deepEqual(s.calls, ['check', 'notifications', 'inbox', 'home', 'stories', 'check', 'content'])
+})
+
+test('badge detection failures use one full tracking scan instead of reading notifications twice', async () => {
+  const s = setup()
+  s.deps.unreadNotifications = async () => { throw new errors.TimeoutError('Navigation still settling') }
+  await s.run(undefined, async (_session, _day, unread) => {
+    assert.equal(unread, true); s.calls.push('follow-back')
+  })
+  assert.equal(s.calls.filter(call => call === 'follow-back').length, 1)
+  assert.ok(!s.calls.includes('notifications'))
 })
 
 test('an unavailable notification panel after detection recovery still allows browsing', async () => {

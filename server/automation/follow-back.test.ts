@@ -61,7 +61,9 @@ const row = (name: string, text: string) => `<div data-pressable-container="true
 
 test('notifications identify follow, like and comment actors without duplicate avatars', async () => {
   const { result, wheels } = await notifications(row('alice', 'started following you. 1d') + row('bob', 'liked your post. 1h') + row('carol', 'commented: started following someone else.') + row('alice', 'started following you. 2d'));
-  assert.deepEqual(result, [{ username: 'alice', kind: 'follow' }, { username: 'bob', kind: 'like' }, { username: 'carol', kind: 'comment' }]);
+  assert.deepEqual(result?.map(({ username, kind }) => ({ username, kind })), [{ username: 'alice', kind: 'follow' }, { username: 'bob', kind: 'like' }, { username: 'carol', kind: 'comment' }]);
+  assert.ok(result![0].timeUpperBound! > Date.now() - 1000, 'keep the newest follow event when an older duplicate appears later');
+  assert.equal(result![2].timeUpperBound, undefined, 'unknown dates must not serialize Infinity into the API');
   assert.ok(wheels > 1, 'notification scanning uses smooth wheel input');
 });
 
@@ -69,7 +71,7 @@ test('grouped likes include only named actors and comments exclude mentioned use
   const grouped = `<div data-pressable-container="true"><button>Avatars</button><div><span dir="auto"><a href="/alice/">alice</a>, <a href="/bob/">bob</a> and 7 others liked your photo. <span>Oct 05</span></span></div><a href="/p/own/">Media thumbnail</a></div>`;
   const comment = row('carol', 'commented: Hi <a href="/someone_else/">someone_else</a> started following you. <span>Oct 04</span>');
   const { result } = await notifications(grouped + comment);
-  assert.deepEqual(result, [
+  assert.deepEqual(result?.map(({ username, kind }) => ({ username, kind })), [
     { username: 'alice', kind: 'like' }, { username: 'bob', kind: 'like' }, { username: 'carol', kind: 'comment' },
   ]);
 });

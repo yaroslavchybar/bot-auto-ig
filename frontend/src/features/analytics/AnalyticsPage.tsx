@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select'
 import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 import { Link } from '@/lib/router'
+import { FollowBackAnalytics } from './FollowBackAnalytics'
 
 type Overview = FunctionReturnType<typeof api.analytics.overview>
 type Period = Overview['period']
@@ -248,6 +249,7 @@ export function AnalyticsPage() {
                 </p>
               </Panel>
             </div>
+            <FollowBackAnalytics data={data.outreach} />
           </>
         )}
       </div>

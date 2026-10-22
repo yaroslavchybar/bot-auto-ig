@@ -430,13 +430,13 @@ export async function runRoutineSession(
           },
         });
       },
-      async (session, day) => {
+      async (session, day, unread = true) => {
         deadline = session.end;
         if (shouldStop()) return;
         const scan = day >= 8 ? await deps.notifications(automation._id, profileId) : null;
         if (shouldStop()) return;
         if (!scan) {
-          await deps.checkNotifications(page, log, session);
+          if (unread) await deps.checkNotifications(page, log, session);
           return;
         }
         let events: OutreachNotification[] | null = null;

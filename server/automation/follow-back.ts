@@ -55,8 +55,13 @@ export async function readOutreachNotifications(page: Page, stopped: () => boole
     for (let step = 0; step < 60 && !stopped() && !session.stopped(); step++) {
       const state = await heading.evaluate(notificationState);
       for (const row of state.rows) {
-        if (notificationTimeUpperBound(row.date) < since) continue;
-        for (const event of row.events) events.set(`${event.kind}:${event.username}`, event);
+        const timeUpperBound = notificationTimeUpperBound(row.date);
+        if (timeUpperBound < since) continue;
+        for (const event of row.events) {
+          const key = `${event.kind}:${event.username}`, previous = events.get(key);
+          if (!previous || timeUpperBound > (previous.timeUpperBound ?? Infinity))
+            events.set(key, { ...event, ...(Number.isFinite(timeUpperBound) ? { timeUpperBound } : {}) });
+        }
       }
       // Let the filter/load settle before treating cached rows as the end of the scan.
       const old = state.rows.some(row => notificationTimeUpperBound(row.date) < since);

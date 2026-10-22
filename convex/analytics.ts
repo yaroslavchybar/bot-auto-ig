@@ -3,6 +3,7 @@ import { mutation, query, type QueryCtx } from './_generated/server'
 import { scraperRequestState } from './scraperRequests'
 import { SCRAPER_REQUEST_LIMIT } from './scraperRequestPolicy'
 import { addActivity, emptyActivity, type ActivityCounts } from './analyticsActivity'
+import { outreachSummary } from './outreachAnalytics'
 
 const periodValidator = v.union(
   v.literal('today'),
@@ -80,10 +81,10 @@ export const overview = query({
       ctx.db.query('analyticsHistory').unique(),
     ])
     if (!history) throw new Error('Activity history is initializing. Please refresh shortly.')
+    const days = period === 'all' ? null : period === '7days' ? 7 : period === '30days' ? 30 : 1
+    const start = days === null ? undefined : new Date(timestamp - (days - 1) * 86_400_000).toISOString().slice(0, 10)
     let counts = history.totals
-    if (period !== 'all') {
-      const days = period === '7days' ? 7 : period === '30days' ? 30 : 1
-      const start = new Date(timestamp - (days - 1) * 86_400_000).toISOString().slice(0, 10)
+    if (start !== undefined && days !== null) {
       const rows = await ctx.db
         .query('analyticsDays')
         .withIndex('by_date', (q) => q.gte('date', start).lte('date', date))
@@ -96,6 +97,7 @@ export const overview = query({
     return {
       period,
       historySince: new Date(history.startedAt).toISOString().slice(0, 10),
+      outreach: await outreachSummary(ctx, start, date, accounts),
       leads: leadStats?.backfillComplete ? leadStats.counts : null,
       totals: {
         follows: counts.follows,

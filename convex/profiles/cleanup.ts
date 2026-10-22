@@ -4,6 +4,7 @@ import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx } from '../_generated/server'
 import { leadAvailable, setLeadAvailability } from '../leadMemberships'
 import { LeadStatsChanges } from '../leadStats'
+import { recordOutreachUnfollow } from '../outreachAnalytics'
 
 /** Profile-owned rows have no meaning after the browser profile is deleted. */
 export async function deleteProfileData(ctx: MutationCtx, profileId: Id<'profiles'>) {
@@ -79,6 +80,7 @@ export async function cleanupProfileReferences(
     .take(batchSize)
   const stats = new LeadStatsChanges()
   for (const lead of senders) {
+    await recordOutreachUnfollow(ctx, lead)
     const patch = {
       senderId: undefined,
       outreachListId: undefined,

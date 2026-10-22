@@ -195,3 +195,88 @@ test.each(['follow', 'like', 'comment'] as const)('%s notifications cannot messa
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
   expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.dmStartedAt).toBeUndefined()
 })
+
+test.each(['DMs disabled', 'sent', 'blocked', 'uncertain'] as const)('follow-back analytics count once when %s without authorizing DMs', async condition => {
+  const { t, args, claim } = await setup()
+  const lead = await claim()
+  await t.mutation(api.analytics.initialize, {})
+  const follow = { profileId: args.profileId, leadId: lead.leadId, followed: true }
+  await t.mutation(internal.routines.recordFollow, follow)
+  await t.mutation(internal.routines.recordFollow, follow)
+  await t.run(async ctx => {
+    if (condition === 'DMs disabled') {
+      const automation = (await ctx.db.get(args.automationId))!
+      await ctx.db.patch(automation._id, { routine: { ...automation.routine!, notificationDmsEnabled: false } })
+    } else await ctx.db.patch(lead.leadId,
+      condition === 'sent' ? { dmSent: true } : condition === 'blocked' ? { dmBlocked: true } : { dmStartedAt: Date.now() })
+  })
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
+  expect(await t.query(internal.routines.notifications, args)).toMatchObject({ date: dayKey() })
+  const notification = { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'follow' as const }] }
+  await t.mutation(internal.routines.recordNotifications, notification)
+  const firstAt = (await t.run(ctx => ctx.db.get(lead.leadId)))!.followBackAt
+  vi.setSystemTime(Date.now() + 60_000)
+  await t.mutation(internal.routines.recordNotifications, { ...notification, events: [...notification.events, ...notification.events] })
+  expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.followBackAt).toBe(firstAt)
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  const result = await t.query(api.analytics.overview, { date: dayKey(), period: '7days' })
+  expect(result.outreach.totals).toEqual({ followed: 1, followedBack: 1, pending: 0, rate: 100 })
+  expect((await t.query(api.analytics.overview, { date: dayKey(), period: 'today' })).outreach.totals.followed).toBe(0)
+  if (condition === 'DMs disabled') {
+    await t.run(async ctx => {
+      const automation = (await ctx.db.get(args.automationId))!
+      await ctx.db.patch(automation._id, { routine: { ...automation.routine!, notificationDmsEnabled: true } })
+    })
+    expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
+  }
+})
+
+test('conversion history survives unfollow and a late follow-back does not consume another lead pending count', async () => {
+  const { t, args, claim } = await setup()
+  await t.mutation(api.analytics.initialize, {})
+  const first = await claim(), second = await claim()
+  for (const lead of [first, second]) await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
+  await t.run(ctx => ctx.db.patch(first.leadId, { unfollowAt: Date.now() }))
+  const unfollow = { profileId: args.profileId, leadId: first.leadId, followed: false }
+  await t.mutation(internal.routines.recordFollow, unfollow)
+  await t.mutation(internal.routines.recordFollow, unfollow)
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: first.username, kind: 'follow' }] })
+  expect((await t.query(api.analytics.overview, { date: dayKey(), period: '7days' })).outreach.totals)
+    .toEqual({ followed: 2, followedBack: 1, pending: 1, rate: 50 })
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+})
+
+test('a notification older than this lead follow cannot inflate conversions or enable a DM', async () => {
+  const { t, args, claim } = await setup()
+  const lead = await claim()
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
+  const followDate = (await t.run(ctx => ctx.db.get(lead.leadId)))!.followDate!
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
+  const notification = { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'follow' as const, timeUpperBound: followDate - 1 }] }
+  await t.mutation(internal.routines.recordNotifications, notification)
+  expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.followBackAt).toBeUndefined()
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await t.run(ctx => ctx.db.query('outreachDays').unique())).toMatchObject({ followedBack: 0, pending: 1 })
+  await t.mutation(internal.routines.recordNotifications, { ...notification, events: [{ ...notification.events[0], timeUpperBound: Date.now() }] })
+  expect(await t.run(ctx => ctx.db.query('outreachDays').unique())).toMatchObject({ followedBack: 1, pending: 0 })
+})
+
+test('follow-back history stays with the original automation after the profile changes automations', async () => {
+  const { t, args, claim } = await setup()
+  const lead = await claim()
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
+  const automationId = await t.run(async ctx => {
+    const previous = (await ctx.db.get(args.automationId))!
+    await ctx.db.patch(previous._id, { isActive: false })
+    return ctx.db.insert('automations', { name: 'Replacement', nodes: [], edges: [],
+      modelIds: previous.modelIds, routine: previous.routine, isActive: true, createdAt: Date.now(), updatedAt: Date.now() })
+  })
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
+  const current = { ...args, automationId }
+  expect(await t.query(internal.routines.notifications, current)).toMatchObject({ date: dayKey() })
+  await t.mutation(internal.routines.recordNotifications, { ...current, date: dayKey(), events: [{ username: lead.username, kind: 'follow' }] })
+  const history = await t.run(ctx => ctx.db.query('outreachDays').unique())
+  expect(history).toMatchObject({ automationId: args.automationId, followed: 1, followedBack: 1, pending: 0 })
+  expect(await t.query(internal.routines.dmTasks, current)).toEqual([])
+})

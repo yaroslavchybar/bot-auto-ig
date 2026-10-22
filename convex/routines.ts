@@ -2,6 +2,7 @@ import { connectionStatus } from './accountConnection'
 import { patchProfile } from './workerMetadata'
 import { setProfilePaused } from './profilePause'
 import { recordActivity } from './analyticsActivity'
+import { recordOutreachFollow, recordOutreachFollowBack, recordOutreachUnfollow } from './outreachAnalytics'
 import { v } from "convex/values";
 import {
   internalMutation,
@@ -439,7 +440,12 @@ export const notifications = internalQuery({
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     const date = dayKey(), now = Date.now();
-    if (!canSendDm(e) || e.state?.lastNotificationsDate === date) return null;
+    if (!e?.maintenance || e.state?.lastNotificationsDate === date) return null;
+    for await (const lead of ctx.db.query('leads').withIndex('by_follow_back', q =>
+      q.eq('senderId', args.profileId).eq('followBackAt', undefined).gt('followDate', undefined).lt('followDate', Date.parse(date)))) {
+      return { date, since: Math.max(lead.followDate!, (e.state?.lastNotificationsAt ?? 0) - 86_400_000) };
+    }
+    if (!canSendDm(e)) return null;
     const routes = e.routes;
     for await (const lead of ctx.db.query('leads').withIndex('by_follow_due', q =>
       q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lt('followDate', Date.parse(date)))) {
@@ -456,24 +462,31 @@ export const notifications = internalQuery({
 /** Queue followed leads with a follow-back, a like on our post, or a comment on our post. */
 export const recordNotifications = internalMutation({
   args: { ...outreachArgs, date: v.string(), events: v.array(v.object({ username: v.string(),
-    kind: v.union(v.literal('follow'), v.literal('like'), v.literal('comment')) })) },
+    kind: v.union(v.literal('follow'), v.literal('like'), v.literal('comment')), timeUpperBound: v.optional(v.number()) })) },
   handler: async (ctx, args) => {
     if (args.events.length > 1000) throw new Error('Too many notification rows');
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!canSendDm(e) || args.date !== dayKey()) return false;
+    if (!e?.maintenance || args.date !== dayKey()) return false;
     const routes = e.routes, now = Date.now();
     let requestLikerScan = false;
     for (const event of args.events) {
       const username = event.username.trim().toLowerCase();
       const leads = await ctx.db.query('leads').withIndex('by_username', q => q.eq('username', username)).collect();
       for (const lead of leads) {
-        if (pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
+        if (event.timeUpperBound !== undefined && event.timeUpperBound < (lead.followDate ?? Infinity)) continue;
+        if (event.kind === 'follow' && lead.senderId === args.profileId &&
+          lead.followDate !== undefined && lead.followDate <= now && lead.followBackAt === undefined) {
+          await recordOutreachFollowBack(ctx, lead);
+          await ctx.db.patch(lead._id, { followBackAt: now });
+        }
+        // Preserve follow-back eligibility while delivery is off; sending still rechecks canSendDm.
+        if ((event.kind === 'follow' || canSendDm(e)) && pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
           lead.classification && (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
           routes.some(route => route.leadListId === lead.outreachListId) &&
           lead.outreachListId && await ctx.db.get(lead.outreachListId)) {
           if (event.kind === 'like') requestLikerScan = true;
           await ctx.db.patch(lead._id, { dmEligible: true, ...(event.kind === 'follow'
-            ? { followBackAt: now } : { postEngagement: { kind: event.kind, at: now } }) });
+            ? {} : { postEngagement: { kind: event.kind, at: now } }) });
         }
       }
     }
@@ -614,8 +627,11 @@ export const recordFollow = internalMutation({
     if (args.followed === lead.followed && (args.followed || lead.followStartedAt === undefined)) return;
     const now = Date.now();
     if (!args.followed && (lead.unfollowAt ?? (lead.followDate ?? Infinity) + followDelay) > now) throw new Error('Follow is not due for removal');
+    const followedAt = lead.followStartedAt ?? now;
+    const outreachDayId = args.followed ? await recordOutreachFollow(ctx, lead, followedAt) : lead.outreachDayId;
+    if (!args.followed) await recordOutreachUnfollow(ctx, lead);
     await ctx.db.patch(lead._id, { followed: args.followed, ...(args.followed ? {
-      followDate: lead.followStartedAt ?? now, unfollowAt: lead.unfollowAt ?? now + (lead.unfollowDays ?? 7) * 86_400_000,
+      followDate: followedAt, outreachDayId, unfollowAt: lead.unfollowAt ?? now + (lead.unfollowDays ?? 7) * 86_400_000,
       dmEligible: false,
     } : { dmEligible: false, followStartedAt: undefined }),
     });

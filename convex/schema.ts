@@ -15,6 +15,17 @@ export default defineSchema({
     'date',
   ]),
   analyticsHistory: defineTable({ startedAt: v.number(), totals: activityCounts }),
+  outreachDays: defineTable({
+    profileId: v.id('profiles'),
+    profileName: v.string(),
+    automationId: v.optional(v.id('automations')),
+    date: v.string(),
+    followed: v.number(),
+    followedBack: v.number(),
+    pending: v.number(),
+  })
+    .index('by_profile_automation_date', ['profileId', 'automationId', 'date'])
+    .index('by_date', ['date']),
   leadStats: defineTable({
     counts: v.object({
       total: v.number(),
@@ -74,6 +85,7 @@ export default defineSchema({
     dmBlocked: v.optional(v.boolean()),
     dmEligible: v.optional(v.boolean()),
     followBackAt: v.optional(v.number()),
+    outreachDayId: v.optional(v.id('outreachDays')),
     postEngagement: v.optional(v.object({ kind: v.union(v.literal('like'), v.literal('comment')), at: v.number() })),
     lastDmCheckDate: v.optional(v.string()),
     dmStartedAt: v.optional(v.number()),
@@ -86,6 +98,7 @@ export default defineSchema({
     .index('by_screening', ['screeningStatus', 'screeningRefused'])
     .index('by_screening_profile', ['screeningProfileId'])
     .index('by_follow_due', ['senderId', 'followed', 'followDate'])
+    .index('by_follow_back', ['senderId', 'followBackAt', 'followDate'])
     .index('by_unfollow_due', ['senderId', 'followed', 'unfollowAt']),
   leadMemberships: defineTable({
     leadId: v.id('leads'),
