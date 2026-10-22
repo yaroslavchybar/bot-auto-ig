@@ -532,13 +532,9 @@ impl Processes {
                 "context": {"workerId": job.id, "pid": pid,
                     "exitCode": status.ok().and_then(|s| s.code()),
                     "notes": diagnostics, "noteCount": diagnostic_count},
-                "environment": {"service": "runtime", "runtime": "rust",
-                    "commitHash": api::env("COMMIT_SHA", "unknown"),
-                    "version": api::env("SERVICE_VERSION", "1.0.0"),
-                    "region": api::env("REGION", "unknown"),
-                    "instanceId": api::env("INSTANCE_ID", "runtime")}
+                "environment": ig_service_common::log_environment("runtime")
             });
-            println!("{completion}");
+            ig_service_common::write_log_entry(completion);
             let _ = done.send(true);
         });
         if !input_ready.await.unwrap_or(false) {

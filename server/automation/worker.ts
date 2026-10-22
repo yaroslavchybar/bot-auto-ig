@@ -124,7 +124,7 @@ async function expandedRuntimeSnapshot(
   try {
     return await loadFullRuntimeSnapshot(automationId, lists, snapshot)
   } catch (error) {
-    log({ event: 'automation.worker.full_runtime_sweep_failed', message: `full runtime sweep failed: ${error instanceof Error ? error.message : String(error)}`, outcome: 'error' })
+    log({ event: 'automation.worker.full_runtime_sweep_failed', automationId, error, outcome: 'error' })
     return snapshot
   }
 }
@@ -196,7 +196,7 @@ class RuntimeMonitor {
       snapshot => this.onSnapshot(snapshot),
       error => {
         this.error = error
-        log({ event: 'automation.worker.runtime_subscription_failed', message: `runtime subscription failed: ${error.message}`, outcome: 'error' })
+        log({ event: 'automation.worker.runtime_subscription_failed', automationId, error, outcome: 'error' })
         this.updates.notify()
       },
     )
@@ -311,7 +311,7 @@ async function withProfile(
       })
       if (markedRunning)
         await profilesSyncStatus(profile.name, 'idle', false).catch(
-          () => undefined,
+          error => log({ event: 'automation.profile_idle_save_failed', error, outcome: 'error' }),
         )
     }
 
@@ -342,7 +342,7 @@ async function runRoutineProfile(options: {
     value => { access = value },
     error => {
       access = false
-      log({ event: 'automation.worker.routine_access_subscription_failed', message: `routine access subscription failed: ${error.message}`, outcome: 'error' })
+      log({ event: 'automation.worker.routine_access_subscription_failed', automationId, profileId: profile.id, error, outcome: 'error' })
     },
   )
   try {

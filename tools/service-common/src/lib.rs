@@ -5,6 +5,8 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
+mod logging;
+pub use logging::{log_environment, sanitize_log_text, write_log_entry};
 
 pub fn now_ms() -> u64 {
     SystemTime::now()
@@ -37,14 +39,9 @@ fn service_log(event: &str, message: &str, level: &str, outcome: &str, context: 
     let entry = json!({ "id": Uuid::new_v4().to_string(), "ts": now_ms(),
         "event": event, "message": message, "level": level, "source": service,
         "requestId": Uuid::new_v4().to_string(), "outcome": outcome, "context": context,
-        "environment": { "service": service, "runtime": "rust",
-            "commitHash": std::env::var("COMMIT_SHA").unwrap_or_else(|_| "unknown".into()) }
+        "environment": log_environment(&service)
     });
-    if level == "error" {
-        eprintln!("{entry}");
-    } else {
-        println!("{entry}");
-    }
+    write_log_entry(entry);
 }
 
 /// Log one completion event. Payloads, headers, paths on disk and credentials stay out.
@@ -83,19 +80,13 @@ pub async fn request_log(mut request: Request, next: Next) -> Response {
         .unwrap_or(false)
         || status >= 500;
     let service = std::env::var("LOG_SERVICE").unwrap_or_else(|_| "runtime".into());
-    let env = |key, fallback: &str| std::env::var(key).unwrap_or_else(|_| fallback.into());
-    println!(
-        "{}",
-        json!({
-            "id": Uuid::new_v4().to_string(), "ts": now_ms(), "event": "http.request",
-            "message": "http request", "source": service, "requestId": request_id,
-            "level": if failed { "error" } else { "info" },
-            "outcome": if failed { "error" } else if status >= 400 { "rejected" } else { "success" },
-            "durationMs": started.elapsed().as_millis() as u64, "context": &*fields,
-            "environment": { "service": service, "runtime": "rust", "version": env("SERVICE_VERSION", "1.0.0"),
-                "commitHash": env("COMMIT_SHA", "unknown"), "region": env("REGION", "unknown"),
-                "instanceId": env("INSTANCE_ID", &service), "nodeEnv": env("NODE_ENV", "production") }
-        })
-    );
+    write_log_entry(json!({
+        "id": Uuid::new_v4().to_string(), "ts": now_ms(), "event": "http.request",
+        "message": "http request", "source": service, "requestId": request_id,
+        "level": if failed { "error" } else { "info" },
+        "outcome": if failed { "error" } else if status >= 400 { "rejected" } else { "success" },
+        "durationMs": started.elapsed().as_millis() as u64, "context": &*fields,
+        "environment": log_environment(&service)
+    }));
     response
 }

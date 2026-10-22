@@ -35,7 +35,11 @@ for (const [cleanupFails, launchTimesOut] of [
         runtimeRequest: async () => { assert.equal(closed, 2); runtimeShutdown = true },
         stopRuntime: async () => { assert.equal(closed, 2); runtimeStopped = true },
       }))
-      mock.module('./server/shared/logger.ts', () => ({ logOperation: async (_event, _fields, fn) => fn() }))
+      mock.module('./server/shared/logger.ts', () => ({
+        logOperation: async (_event, _fields, fn) => fn(),
+        addLogContext() {},
+        redactLogValues() {},
+      }))
       const { runBrowserLogin } = await import('./server/ig-accounts/login.ts')
       const { registerShutdownHandlers } = await import('./server/automation/shutdown.ts')
       const credentials = {username:'fixture',password:'fixture',authenticatorKey:''}

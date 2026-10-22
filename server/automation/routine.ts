@@ -249,13 +249,17 @@ export async function runRoutineSession(
                     screeningFinished = true;
                   }
                   scope.add({ result: 'profile_unavailable' });
+                  scope.add({ outcome: 'skipped' });
                   log({ event: 'automation.routine.recipient_skipped', leadId: attempt.leadId,
                     targetUsername: attempt.username, kind: isDm ? 'dm' : 'outreach',
                     reason: 'profile_unavailable', outcome: 'skipped' });
                   return 'blocked';
                 }
                 if (!isDm) {
-                  if (typeof token !== 'string' || !token) return 'blocked'
+                  if (typeof token !== 'string' || !token) {
+                    scope.add({ outcome: 'skipped', result: 'screening_unavailable' })
+                    return 'blocked'
+                  }
                   let decision
                   const reportScreening = beginSessionDecision(page, { kind: 'profile', status: 'checking', username: attempt.username })
                   try {
@@ -283,7 +287,8 @@ export async function runRoutineSession(
                       refused ? 'refused' : undefined,
                     )
                     screeningFinished = true
-                    scope.add({ result: refused ? 'screening_refused' : 'screening_failed' })
+                    scope.add({ result: refused ? 'screening_refused' : 'screening_failed',
+                      outcome: shouldStop() ? 'cancelled' : refused ? 'rejected' : 'error', error })
                     return shouldStop() ? 'unavailable' : 'blocked'
                   }
                   reportScreening({ kind: 'profile', status: 'complete', username: attempt.username,
@@ -306,7 +311,10 @@ export async function runRoutineSession(
                     confidence: decision.confidence,
                     accepted,
                   })
-                  if (!accepted || shouldStop()) return shouldStop() ? 'unavailable' : 'blocked'
+                  if (!accepted || shouldStop()) {
+                    scope.add({ outcome: shouldStop() ? 'cancelled' : 'rejected', result: 'screening_not_accepted' })
+                    return shouldStop() ? 'unavailable' : 'blocked'
+                  }
                   outreachRemaining = Math.max(0, outreachRemaining - 1)
                 }
                 if (shouldStop()) return 'unavailable';
@@ -339,6 +347,7 @@ export async function runRoutineSession(
                   const followed = await timed('follow', () => followIfNeeded(attempt.leadId, attempt.date, () => { followAttempted = true; }));
                   followedNow = followed;
                   scope.add({ followed });
+                  if (!followed) scope.add({ outcome: 'skipped', result: 'follow_not_performed' });
                   log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
                   return followed ? 'followed' : 'blocked';
                 }
@@ -347,6 +356,7 @@ export async function runRoutineSession(
                 if (!(await isFollowing(page)) || (!engagement &&
                   (!profileState.canMessage || profileState.isPrivate))) {
                   await deps.dismissDm(profileId, attempt.leadId);
+                  scope.add({ outcome: 'skipped', result: 'dm_not_eligible' });
                   return 'blocked';
                 }
                 await check();
@@ -358,6 +368,7 @@ export async function runRoutineSession(
                   log({ event: 'automation.routine.invalid_message', leadId: attempt.leadId, targetUsername: attempt.username, error, outcome: 'blocked',
                   });
                   await deps.dismissDm(profileId, attempt.leadId);
+                  scope.add({ outcome: 'rejected', result: 'invalid_message', error });
                   return 'blocked';
                 }
                 const messaging = new BrowseSession(deadline, shouldStop);
@@ -366,7 +377,10 @@ export async function runRoutineSession(
                 await timed('dmType', () => deps.typeMessage(composer, message, messaging));
                 await check(true);
                 if (shouldStop()) return 'unavailable';
-                if (!(await deps.begin(automation._id, profileId, attempt.leadId, attempt.date))) return 'unavailable';
+                if (!(await deps.begin(automation._id, profileId, attempt.leadId, attempt.date))) {
+                  scope.add({ outcome: 'rejected', result: 'send_not_authorized' });
+                  return 'unavailable';
+                }
                 if (shouldStop()) return 'unavailable';
                 let sent = false;
                 let blocked = false;
@@ -390,7 +404,7 @@ export async function runRoutineSession(
                   ? `Message blocked for @${attempt.username}`
                   : `Message sent to @${attempt.username}`,
                 });
-                scope.add({ sent, blocked });
+                scope.add({ sent, blocked, ...(blocked ? { outcome: 'rejected', result: 'dm_blocked' } : {}) });
                 deliveryConfirmed = sent;
                 return sent ? 'sent' : 'blocked';
               } catch (error) {
@@ -403,6 +417,7 @@ export async function runRoutineSession(
                     if (!isDm && typeof token === 'string' && token && !screeningFinished)
                       await deps.finishScreening(automation._id, profileId, attempt.leadId, token, attempt.date);
                     log({ event: 'automation.routine.recipient_skipped', targetUsername: attempt.username, error });
+                    scope.add({ outcome: shouldStop() ? 'cancelled' : 'skipped', result: 'temporary_ui_error', error });
                     return followedNow ? 'followed' : 'blocked';
                   }
                   throw error;
@@ -411,12 +426,15 @@ export async function runRoutineSession(
                   `Delivery needs review: ${error instanceof Error ? error.message : String(error)}`,
                 );
               } finally {
+                if (shouldStop() && !sendAttempted && !deliveryConfirmed && !followedNow && !scope.fields.outcome)
+                  scope.add({ outcome: 'cancelled', result: 'session_stopped' });
                 if (messageOpened && !shouldStop()) {
                   try {
                     await timed('dmClose', () => deps.closeMessage(page, attempt.username, new BrowseSession(deadline, shouldStop)));
                     scope.add({ dmPopupClosed: true });
                   } catch (error) {
                     log({ event: 'automation.routine.dm_close_failed', targetUsername: attempt.username, error });
+                    scope.add({ outcome: 'error', error, result: 'dm_close_failed' });
                     // Stop before another recipient can browse underneath the surviving popup.
                     // Preserve any delivery error already propagating from the main operation.
                     if (!shouldStop()) {

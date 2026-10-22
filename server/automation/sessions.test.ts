@@ -73,6 +73,20 @@ test('session reserves once, runs Explore before browsing, and accounts for both
   assert.equal(s.finishes[0].activity.stories, 7)
 })
 
+test('failed reservation persistence keeps completed browsing metrics', async () => {
+  const s = setup(3)
+  s.deps.finish = async () => { throw new Error('Reservation save failed') }
+  await assert.rejects(logOperation('automation.profile_session', {}, async scope => {
+    try { await s.run({ warmup_topics: ['Fishing'] }) }
+    finally {
+      assert.equal(scope.fields.browsingMinutes, 10)
+      assert.equal((scope.fields.activityAttempts as Record<string, number>).likes, 1)
+      assert.equal(typeof scope.fields.runId, 'string')
+      assert.equal(scope.fields.warmupDay, 3)
+    }
+  }), /Reservation save failed/)
+})
+
 test('startup receives the reserved proxy timezone and sets appearance before Stories or browsing', async () => {
   const s = setup(8), begin = s.deps.begin
   s.deps.begin = async (...args) => ({ ...await begin(...args), timezone: 'America/New_York' })

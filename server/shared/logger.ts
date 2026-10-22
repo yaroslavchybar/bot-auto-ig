@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
 import pino from 'pino'
 import { sanitizeLogValue } from './loggingSanitize.js'
+import { REQUEST_ID_PATTERN } from './loggingTypes.js'
 import type { LogEntry, LogError, LogFields, LogLevel, LogOutcome } from './loggingTypes.js'
 
 export type { LogEntry, LogFields, LogLevel } from './loggingTypes.js'
@@ -33,17 +34,19 @@ export class LogScope {
   readonly fields: Record<string, unknown>
   private notes: Record<string, unknown>[] = []
   private noteCount = 0
-  private stepCounts: Record<string, number> = {}
+  private stepCounts: Record<string, number> = Object.create(null)
   private hasErrors = false
   private lastError: unknown
   private redactions: string[] = []
+  private cookieRedactions: string[] = []
   completed = false
 
   constructor(readonly event: string, fields: Record<string, unknown>, parent = scopes.getStore()) {
     // Timers/subscriptions can outlive the request or startup that registered them.
     if (parent?.completed) parent = undefined
     this.redactions = [...(parent?.redactions || [])]
-    this.requestId = String(fields.requestId || parent?.requestId || process.env.LOG_REQUEST_ID || randomUUID())
+    this.cookieRedactions = [...(parent?.cookieRedactions || [])]
+    this.requestId = validRequestId(fields.requestId) || parent?.requestId || validRequestId(process.env.LOG_REQUEST_ID) || randomUUID()
     this.parentOperationId = parent?.operationId
     this.fields = { profileId: parent?.fields.profileId, profileName: parent?.fields.profileName,
       automationId: parent?.fields.automationId || process.env.LOG_AUTOMATION_ID, ...fields }
@@ -56,8 +59,13 @@ export class LogScope {
     this.redactions = [...new Set([...this.redactions, ...values.filter(value => value.length >= 4)])].slice(-20)
   }
 
+  /** Stored cookie jars must not evict account credentials from the shared request scope. */
+  redactCookies(values: string[]): void {
+    this.cookieRedactions = [...new Set([...this.cookieRedactions, ...values.filter(value => value.length >= 4)])].slice(-20)
+  }
+
   safeFields(fields: Record<string, unknown>): Record<string, unknown> {
-    return sanitizeLogValue(fields, [...secrets, ...this.redactions]) as Record<string, unknown>
+    return sanitizeLogValue(fields, [...secrets, ...this.redactions, ...this.cookieRedactions]) as Record<string, unknown>
   }
 
   note(level: LogLevel, fields: LogFields): void {
@@ -88,10 +96,12 @@ export class LogScope {
 }
 
 const scopes = new AsyncLocalStorage<LogScope>()
+const validRequestId = (value: unknown): string | undefined =>
+  typeof value === 'string' && REQUEST_ID_PATTERN.test(value) ? value : undefined
 export const currentLogScope = () => scopes.getStore()
 export const currentRequestId = () => {
   const scope = scopes.getStore()
-  return (!scope?.completed ? scope?.requestId : undefined) || process.env.LOG_REQUEST_ID
+  return (!scope?.completed ? scope?.requestId : undefined) || validRequestId(process.env.LOG_REQUEST_ID)
 }
 export const runInLogScope = <T>(scope: LogScope, action: () => T): T => scopes.run(scope, action)
 export function addLogContext(fields: Record<string, unknown>): void {
@@ -99,6 +109,7 @@ export function addLogContext(fields: Record<string, unknown>): void {
   if (scope && !scope.completed) scope.add(fields)
 }
 export function redactLogValues(...values: string[]): void { scopes.getStore()?.redact(values) }
+export function redactCookieLogValues(...values: string[]): void { scopes.getStore()?.redactCookies(values) }
 
 /** Emit once when a request/job finishes; nested operations keep the same request ID. */
 export async function logOperation<T>(event: string, fields: Record<string, unknown>, action: (scope: LogScope) => Promise<T>): Promise<T> {
@@ -124,7 +135,7 @@ function emit(level: LogLevel, fields: LogFields): void {
     ...Object.fromEntries(Object.entries(rest).filter(([key]) => STANDARD_FIELDS.has(key))),
     id: randomUUID(), ts: Date.now(), event, message: message || event.replace(/[._]/g, ' '), level,
     source: typeof clean.source === 'string' ? clean.source : source,
-    requestId: typeof clean.requestId === 'string' ? clean.requestId : currentRequestId() || randomUUID(),
+    requestId: validRequestId(clean.requestId) || currentRequestId() || randomUUID(),
     outcome: (clean.outcome || (level === 'error' ? 'error' : 'success')) as LogOutcome,
     error: typeof clean.error === 'string' ? { type: 'Error', message: clean.error } : clean.error as LogError | undefined,
     environment, context,

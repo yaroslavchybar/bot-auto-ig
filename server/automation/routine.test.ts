@@ -358,6 +358,7 @@ test('a screenshot/provider failure releases its lease without following or stop
 
 test('a provider refusal marks the lead terminal without approving, following or stopping browsing', async () => {
   const s = setup('follow')
+  let scope: LogScope | undefined
   const reserve = s.deps.reserve
   let reserved = false
   s.deps.reserve = async (...args) => {
@@ -365,7 +366,10 @@ test('a provider refusal marks the lead terminal without approving, following or
     reserved = true
     return reserve(...args)
   }
-  s.deps.screenLead = async () => { throw new DecisionRefusedError('Provider refused to answer') }
+  s.deps.screenLead = async () => {
+    scope = currentLogScope()
+    throw new DecisionRefusedError('Provider refused to answer')
+  }
   s.deps.finishScreening = async (_a, _p, _lead, _token, _date, decision, failureReason) => {
     assert.equal(decision, undefined)
     assert.equal(failureReason, 'refused')
@@ -378,6 +382,8 @@ test('a provider refusal marks the lead terminal without approving, following or
   assert.ok(!s.calls.includes('authorize-follow') && !s.calls.includes('follow') && !s.calls.includes('optional-like'))
   assert.equal(s.result().issue, undefined)
   assert.ok(s.calls.filter(call => call === 'browse').length > 1)
+  assert.equal(scope?.fields.outcome, 'rejected')
+  assert.equal(scope?.fields.result, 'screening_refused')
 })
 
 test('before maintenance the routine only browses, even when ready lead and DM mocks are available', async () => {
@@ -749,6 +755,9 @@ test('an unconfirmed delivery is recorded once and surfaces an issue', async () 
 
 test('blocked messages are recorded and closed without Unsend or retry', async () => {
   const s = setup();
+  let scope: LogScope | undefined;
+  const send = s.deps.sendMessage;
+  s.deps.sendMessage = async (...args) => { scope = currentLogScope(); await send(...args); };
   s.page.getByText = (() => s.locator) as Page['getByText'];
   s.page.getByRole = () => { throw new Error('Blocked messages must not open message actions'); };
   await s.run();
@@ -759,6 +768,8 @@ test('blocked messages are recorded and closed without Unsend or retry', async (
   assert.equal(s.result().sent, false);
   assert.equal(s.result().issue, undefined);
   assert.equal(s.calls.at(-1), 'record-completed');
+  assert.equal(scope?.fields.outcome, 'rejected');
+  assert.equal(scope?.fields.result, 'dm_blocked');
 });
 
 test('delivery confirmation can finish after the deadline', async () => {
@@ -794,6 +805,37 @@ test('stopping the worker never hides an uncertain delivery issue', async () => 
   s.deps.session = async () => { stopped = true; throw new Error('Delivery needs review: Browser worker stopped'); };
   await s.run(() => stopped);
   assert.equal(s.result().issue, 'Delivery needs review: Browser worker stopped');
+});
+
+test('stopping during Send keeps an uncertain delivery classified as an error', async () => {
+  const s = setup();
+  let stopped = false;
+  let scope: LogScope | undefined;
+  s.deps.sendMessage = async () => {
+    scope = currentLogScope();
+    s.calls.push('send');
+    stopped = true;
+    throw new Error('Send transport failed');
+  };
+  await s.run(() => stopped);
+  assert.equal(s.calls.filter(call => call === 'send').length, 1);
+  assert.equal(s.calls.filter(call => call === 'uncertain').length, 1);
+  assert.match(s.result().issue ?? '', /Delivery needs review: Send transport failed/);
+  assert.equal(scope?.fields.outcome, 'error');
+});
+
+test('stopping before Send keeps the cancelled outcome', async () => {
+  const s = setup();
+  let stopped = false;
+  let scope: LogScope | undefined;
+  s.deps.typeMessage = async () => {
+    scope = currentLogScope();
+    stopped = true;
+  };
+  await s.run(() => stopped);
+  assert.ok(!s.calls.includes('send') && !s.calls.includes('uncertain'));
+  assert.equal(s.result().issue, undefined);
+  assert.equal(scope?.fields.outcome, 'cancelled');
 });
 
 test('pending DMs do not need a daily DM allowance', async () => {

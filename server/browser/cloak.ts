@@ -1,4 +1,4 @@
-import logger, { addLogContext } from '../shared/logger.js'
+import logger, { addLogContext, redactCookieLogValues } from '../shared/logger.js'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -268,6 +268,9 @@ export async function openBrowserSession(
     // Check under the deletion lock, before creating any directories.
     profile = (await profilesGetByName(profileName)) ?? undefined
     if (!profile) throw new Error(`Profile not found: ${profileName}`)
+    redactCookieLogValues(...storedCookies(profile)
+      .filter(cookie => typeof cookie?.value === 'string' && /session|csrf|auth|token/i.test(cookie.name))
+      .map(cookie => cookie.value))
     if (profile.status === 'deleting' || profile.pendingRenameFrom)
       throw new Error('Profile maintenance is in progress')
     if (profileLockLost) throw new Error('Profile lock disconnected')
@@ -433,8 +436,8 @@ export async function openBrowserSession(
         const inspector = await startDomInspector(context, profileDir)
         if (closing) await inspector.close()
         else stopDomInspector = inspector.close
-      } catch {
-        logger.error({ event: 'browser.inspector_start', outcome: 'error' })
+      } catch (error) {
+        logger.error({ event: 'browser.inspector_start', outcome: 'error', error })
       }
     }
     checkStartup()

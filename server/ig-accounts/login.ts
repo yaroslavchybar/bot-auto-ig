@@ -1,6 +1,7 @@
 import { BrowserLaunchTimeout, openBrowserSession } from '../browser/cloak.js'
 import { freshAuthenticatorCode, type IgCredentials } from './totp.js'
 import type { Page } from 'playwright-core'
+import { addLogContext, redactLogValues } from '../shared/logger.js'
 
 class LoginRejected extends Error {}
 
@@ -83,6 +84,7 @@ async function browserLogin(
       .first()
     if (!twoFactorSubmitted && (await code.isVisible().catch(() => false))) {
       const authenticatorCode = await freshAuthenticatorCode(account.authenticatorKey)
+      redactLogValues(authenticatorCode)
       signal.throwIfAborted()
       await code.fill(authenticatorCode)
       signal.throwIfAborted()
@@ -103,6 +105,9 @@ export async function runBrowserLogin(
   proxy: string,
   account: IgCredentials,
 ): Promise<{ ok: true } | { rejected: true }> {
+  // Playwright failures can quote values passed to fill(), including account credentials.
+  redactLogValues(account.password, account.authenticatorKey, proxy)
+  addLogContext({ loginAttemptId: attemptId, profileName })
   if (stopping) throw new Error('Browser login worker is stopping')
   if (active.has(attemptId) || (retired.get(attemptId)?.expires ?? 0) > Date.now())
     throw new Error('Browser login attempt already ended or started')
@@ -133,7 +138,10 @@ export async function runBrowserLogin(
       return { ok: true }
     } catch (error) {
       controller.signal.throwIfAborted()
-      if (error instanceof LoginRejected) return { rejected: true }
+      if (error instanceof LoginRejected) {
+        addLogContext({ outcome: 'rejected', loginResult: 'credentials_rejected' })
+        return { rejected: true }
+      }
       throw error
     } finally {
       await session.close().catch((error) => {

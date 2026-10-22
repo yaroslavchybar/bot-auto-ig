@@ -41,7 +41,10 @@ export function postModelUpdateInSession(
       resolve(result)
     }
     socket.on('open', () => socket.send(JSON.stringify({ profileId, modelId })))
-    socket.on('error', () => finish(false))
+    socket.on('error', error => {
+      logger.error({ event: 'model.post', profileId, modelId, stage: 'lease', error })
+      finish(false)
+    })
     socket.on('close', () => finish(false))
     socket.on('message', (data) => {
       void (async () => {
@@ -96,12 +99,13 @@ export function postModelUpdateInSession(
             : steps.some((step) => step.includes('share did not confirm'))
               ? 'uncertain'
               : 'failed'
-        } catch {
+        } catch (error) {
           logger.error({
             event: 'model.post',
             profileId,
             outcome: 'error',
             message: 'Browser post failed',
+            error,
           })
         } finally {
           running = false
@@ -109,7 +113,10 @@ export function postModelUpdateInSession(
         if (!cancelled && socket.readyState === WebSocket.OPEN)
           socket.send(JSON.stringify({ result }))
         else finish(false)
-      })().catch(() => finish(false))
+      })().catch(error => {
+        logger.error({ event: 'model.post', profileId, modelId, stage: 'lease_message', error })
+        finish(false)
+      })
     })
   })
 }

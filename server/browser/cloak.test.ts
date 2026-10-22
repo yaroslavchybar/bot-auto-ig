@@ -2,6 +2,45 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 
+for (const wrapped of [false, true]) test(`stored cookie redactions preserve login credentials (wrapped jar: ${wrapped})`, () => {
+  const output = execFileSync('bun', ['--eval', `
+    import { mock } from 'bun:test'
+    import assert from 'node:assert/strict'
+    import { logOperation } from './server/shared/logger.ts'
+    const password = 'protected-login-password'
+    const authenticatorKey = 'protected-authenticator-key'
+    const proxy = 'socks5://private-proxy.fixture:5432'
+    const cookies = Array.from({length:30}, (_, i) => ({name:'auth-' + i, value:'opaque-cookie-' + i + '-end'}))
+    cookies.push({name:'theme', value:'ordinary-cookie-value'})
+    mock.module('./server/profiles/paths.ts', () => ({
+      profileDirectory: () => 'unused-profile-directory',
+      acquireProfileLock: async () => () => {},
+    }))
+    mock.module('./server/shared/convexClient.ts', () => ({
+      profilesGetByName: async () => ({name:'fixture', status:'deleting',
+        cookiesJson:JSON.stringify(${wrapped} ? {cookies} : cookies)}),
+      profilesUpdateByName: async () => {}, profilesSaveUnreadChats: async () => {},
+    }))
+    mock.module('cloakbrowser', () => ({ binaryInfo: () => ({}),
+      launchPersistentContext: async () => { throw new Error('Must not launch') },
+    }))
+    const { runBrowserLogin } = await import('./server/ig-accounts/login.ts')
+    await logOperation('worker.command', {}, async () => {
+      await assert.rejects(runBrowserLogin('cookie-registration', 'fixture', proxy,
+        {username:'alice', password, authenticatorKey}), /maintenance/)
+      throw new Error([password, authenticatorKey, proxy, ...cookies.slice(10).map(cookie => cookie.value)].join(' '))
+    }).catch(() => {})
+  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
+  const entry = JSON.parse(output.trim())
+  assert.equal(entry.event, 'worker.command')
+  assert.equal(entry.outcome, 'error')
+  for (const value of ['protected-login-password', 'protected-authenticator-key', 'private-proxy.fixture'])
+    assert.ok(!entry.error.message.includes(value), `credential leaked: ${value}`)
+  for (let i = 10; i < 30; i++)
+    assert.ok(!entry.error.message.includes(`opaque-cookie-${i}-end`))
+  assert.ok(entry.error.message.includes('ordinary-cookie-value'), 'preserve the cookie-name filter')
+})
+
 test('missing and pending profiles cannot recreate folders and always release their lock', () => {
   execFileSync(
     'bun',

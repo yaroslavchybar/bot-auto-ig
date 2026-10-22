@@ -1,5 +1,27 @@
 import { test } from 'node:test'
 import { execFileSync } from 'node:child_process'
+import assert from 'node:assert/strict'
+
+test('browser login redacts runtime credentials from its completion error', () => {
+  const output = execFileSync('bun', ['--eval', `
+    import { mock } from 'bun:test'
+    import { logOperation } from './server/shared/logger.ts'
+    class BrowserLaunchTimeout extends Error {}
+    mock.module('./server/browser/cloak.ts', () => ({ BrowserLaunchTimeout,
+      openBrowserSession: async () => { throw new Error('launch private-password private-authenticator http://user:proxy-password@proxy.test') }
+    }))
+    const { runBrowserLogin } = await import('./server/ig-accounts/login.ts')
+    await logOperation('worker.command', {}, () => runBrowserLogin('attempt-123', 'profile',
+      'http://user:proxy-password@proxy.test', {username:'alice', password:'private-password', authenticatorKey:'private-authenticator'})).catch(() => {})
+  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
+  assert.ok(!output.includes('private-password'))
+  assert.ok(!output.includes('private-authenticator'))
+  assert.ok(!output.includes('proxy-password'))
+  const entry = JSON.parse(output.trim())
+  assert.equal(entry.outcome, 'error')
+  assert.equal(entry.context.loginAttemptId, 'attempt-123')
+  assert.equal(entry.profileName, 'profile')
+})
 
 for (const scenario of [
   'pending',

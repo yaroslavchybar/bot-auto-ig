@@ -197,11 +197,16 @@ impl Scraper {
             body["newIds"] = json!(activity.new_ids);
             body["likeCount"] = json!(activity.like_count);
         }
-        self.request("finish", body).await?;
-        println!(
-            "{}",
-            json!({"id":uuid::Uuid::new_v4().to_string(),"ts":api::now_ms(),"event":"scraper.source","message":"scraper source check finished","source":"runtime","requestId":job.run_id,"level":if status=="failed"{"error"}else{"info"},"outcome":if status=="completed"{"success"}else if status=="paused"{"paused"}else{"error"},"durationMs":start.elapsed().as_millis() as u64,"context":{"sourceId":job.id,"profileId":job.profile_id,"listId":job.list_id,"runKind":job.run_kind,"postId":job.post.as_ref().map(|p| &p["id"]),"status":status,"reason":message},"environment":{"service":"runtime","runtime":"rust","commitHash":api::env("COMMIT_SHA","unknown")}})
-        );
+        let finish = self.request("finish", body).await;
+        ig_service_common::write_log_entry(source_completion(
+            &job,
+            status,
+            message.as_deref(),
+            activity.as_ref(),
+            start,
+            finish.as_ref().err().map(|error| error.message.as_str()),
+        ));
+        finish?;
         Ok(())
     }
     async fn run_task(&self, job: &Task) -> Result<Option<Activity>> {
@@ -361,6 +366,32 @@ impl Scraper {
             .likers(post, &|| self.check_available(&job.profile_id))
             .await
     }
+}
+
+fn source_completion(
+    job: &Task,
+    status: &str,
+    reason: Option<&str>,
+    activity: Option<&Activity>,
+    start: Instant,
+    finish_error: Option<&str>,
+) -> Value {
+    let failed = status == "failed" || finish_error.is_some();
+    let error_message = if status == "failed" {
+        reason.or(finish_error)
+    } else {
+        finish_error
+    };
+    json!({"id":uuid::Uuid::new_v4().to_string(),"ts":api::now_ms(),"event":"scraper.source",
+        "message":"scraper source check finished","source":"runtime","requestId":job.run_id,"profileId":job.profile_id,
+        "level":if failed {"error"} else {"info"},
+        "outcome":if failed {"error"} else if status=="paused" {"paused"} else {"success"},
+        "durationMs":start.elapsed().as_millis() as u64,
+        "error":if failed {Some(json!({"type":"ScraperError","message":error_message.unwrap_or("Scraper task failed")}))} else {None},
+        "context":{"sourceId":job.id,"profileId":job.profile_id,"listId":job.list_id,"runKind":job.run_kind,
+            "postId":job.post.as_ref().map(|p| &p["id"]),"status":status,"reason":reason,"finishError":finish_error,
+            "newIds":activity.map(|activity| activity.new_ids),"likeCount":activity.and_then(|activity| activity.like_count)},
+        "environment":ig_service_common::log_environment("runtime")})
 }
 pub fn router(service: Arc<Scraper>) -> Router {
     Router::new()

@@ -39,7 +39,10 @@ function setupStep(
     }
     const timer = setTimeout(() => finish(), 610_000)
     socket.on('open', () => socket.send(JSON.stringify({ profileId, automationId })))
-    socket.on('error', () => finish())
+    socket.on('error', error => {
+      log({ event: 'model.setup', profileId, automationId, stage: 'lease', error, outcome: 'error' })
+      finish()
+    })
     socket.on('close', () => finish())
     socket.on('message', (raw) => {
       void (async () => {
@@ -73,7 +76,10 @@ function setupStep(
         if (!cancelled && socket.readyState === WebSocket.OPEN)
           socket.send(JSON.stringify({ result }))
         else finish()
-      })().catch(() => finish())
+      })().catch(error => {
+        log({ event: 'model.setup', profileId, automationId, stage: 'lease_message', error, outcome: 'error' })
+        finish()
+      })
     })
   })
 }

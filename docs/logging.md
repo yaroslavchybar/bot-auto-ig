@@ -18,6 +18,30 @@ lose unread events. Sink retries can create duplicates; use `id` to deduplicate
 when counting exact operations. Vector's own diagnostics remain in its Docker
 logs and are excluded from ingestion to avoid feedback loops.
 
+## Application events
+
+Use the shared `logOperation` helper for each request or background job. Add
+business counts and decisions with `addLogContext`; log steps inside the scope
+only when they help explain the result. The helper emits one completion event
+in `finally`, including duration, outcome, deployment details, and correlation.
+It keeps the latest 20 notes and total counts per step, so add important totals
+directly to the completion context instead of relying on the note history.
+
+Request IDs must contain 8–128 ASCII letters, digits, underscores, or hyphens.
+Invalid IDs are replaced; nested operations retain a valid parent ID. Propagate
+`currentRequestId()` to service and worker boundaries rather than starting a
+new correlation at each hop. Register credentials with `redactLogValues` before
+calling libraries that may include their arguments in errors. Redaction is a
+last safeguard: prefer counts and IDs over response bodies or account content.
+
+Rust startup, HTTP, browser-process, account-login, and scraper completions use
+the common log writer too. It redacts credential fields and configured secrets,
+limits detail strings to 4,000 characters, arrays to 30 items, object fields to
+100, and nesting to six levels. Bun child events use the existing relay path,
+which preserves their original identity and deployment context. Account login
+attempts and their cleanup requests share the login completion's request ID. Scraper completion
+events include a failed final save without hiding the original task result.
+
 ## Dataset schema
 
 Configure `context` as an Axiom **map field** in `ig-bot-prod`. This is a

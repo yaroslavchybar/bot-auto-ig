@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import test from 'node:test'
 import { sanitizeLogValue } from './loggingSanitize.js'
+import { isLogEntry } from './loggingTypes.js'
 
 test('inline image data is redacted even when a provider echoes a truncated image URL', () => {
   const clean = sanitizeLogValue({ detail: 'Rejected data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ', count: 1 })
@@ -62,6 +63,28 @@ test('nested failures keep correlation, serialize safe errors and still emit on 
   }
 })
 
+test('bounded cookie redactions preserve credentials and remain inherited by child operations', () => {
+  const logs = events(`
+    import { logOperation, redactLogValues, redactCookieLogValues } from './server/shared/logger.ts';
+    await logOperation('parent', {}, async () => {
+      redactLogValues('protected-password', 'protected-authenticator', 'protected-proxy');
+      redactCookieLogValues(...Array.from({length:25}, (_, i) => 'cookie-value-' + i + '-end'));
+      // Repeated cookie registrations use the same bounded pool, independently of credentials.
+      redactCookieLogValues('cookie-value-25-end');
+      await logOperation('child', {}, async () => {
+        throw new Error('protected-password protected-authenticator protected-proxy cookie-value-25-end cookie-value-6-end cookie-value-5-end');
+      });
+    }).catch(() => {});
+  `)
+  assert.equal(logs.length, 2)
+  for (const log of logs) {
+    assert.equal(log.outcome, 'error')
+    for (const value of ['protected-password', 'protected-authenticator', 'protected-proxy', 'cookie-value-25-end', 'cookie-value-6-end'])
+      assert.ok(!log.error.message.includes(value))
+    assert.ok(log.error.message.includes('cookie-value-5-end'), 'only cookie values use the cookie pool limit')
+  }
+})
+
 test('completion is idempotent and notes are bounded while retaining total counts', () => {
   const logs = events(`
     import logger, { LogScope, runInLogScope } from './server/shared/logger.ts';
@@ -75,6 +98,33 @@ test('completion is idempotent and notes are bounded while retaining total count
   assert.equal(logs[0].context.notes.length, 20)
   assert.equal(logs[0].context.noteCount, 100)
   assert.equal(logs[0].context.stepCounts['job.step'], 100)
+})
+
+test('invalid request IDs cannot break worker event recognition or parent correlation', () => {
+  const logs = events(`
+    import logger, { logOperation, currentRequestId } from './server/shared/logger.ts';
+    process.env.LOG_REQUEST_ID = 'invalid id';
+    if (currentRequestId() !== undefined) throw new Error('invalid inherited request ID');
+    logger.info({ event: 'standalone', requestId: 'invalid id' });
+    await logOperation('parent', { requestId: 'parent-request-123' }, async () => {
+      await logOperation('child', { requestId: 'invalid id' }, async () => {});
+    });
+    await logOperation('fresh', { requestId: 123 }, async () => {});
+  `)
+  assert.ok(logs.every(isLogEntry))
+  assert.equal(logs[1].requestId, 'parent-request-123')
+  assert.equal(logs[2].requestId, 'parent-request-123')
+  assert.notEqual(logs[0].requestId, logs[3].requestId)
+})
+
+test('step counts treat object prototype names as ordinary event names', () => {
+  const [log] = events(`
+    import logger, { logOperation } from './server/shared/logger.ts';
+    await logOperation('test.job', {}, async () => {
+      for (const event of ['constructor', 'toString', '__proto__', '__proto__']) logger.info({ event });
+    });
+  `)
+  assert.deepEqual(log.context.stepCounts, { constructor: 1, toString: 1, ['__proto__']: 2 })
 })
 
 test('sanitizer handles cycles, SDK errors and nested credentials without dropping useful counts', () => {

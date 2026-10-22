@@ -1082,6 +1082,7 @@ name = "ig-service-common"
 version = "1.0.0"
 dependencies = [
  "axum",
+ "regex",
  "serde_json",
  "uuid",
 ]

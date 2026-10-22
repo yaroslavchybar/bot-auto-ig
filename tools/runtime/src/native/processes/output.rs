@@ -10,22 +10,8 @@ pub(super) fn control_event(text: &str) -> Option<Value> {
 }
 
 pub(super) fn diagnostic(text: &str, stderr: bool, secrets: &[String]) -> Value {
-    static REDACTIONS: LazyLock<Vec<(Regex, &str)>> = LazyLock::new(|| {
-        [
-            (r"(?i)(https?://|socks5h?://)[^\s/@]+:[^\s/@]+@", "${1}[redacted]@"),
-            (r#"(?i)\bBearer\s+[^\s,;"']+"#, "Bearer [redacted]"),
-            (r#"(?i)\b(sessionid|instagramSessionId|csrftoken|password|passwd|secret|token|api_key|access_token|authenticatorKey)=([^\s&;,"']+)"#, "${1}=[redacted]"),
-            (r#"(?i)(["'](?:password|passwd|secret|token|api_key|access_token|sessionid|instagramSessionId|csrftoken|authorization|cookie|authenticatorKey)["']\s*:\s*)["'][^"']*["']"#, "${1}\"[redacted]\""),
-        ].into_iter().map(|(pattern, replacement)| (Regex::new(pattern).unwrap(), replacement)).collect()
-    });
-    let mut message = text.to_owned();
-    for (pattern, replacement) in REDACTIONS.iter() {
-        message = pattern.replace_all(&message, *replacement).into_owned();
-    }
-    for secret in secrets.iter().filter(|secret| secret.len() >= 4) {
-        message = message.replace(secret, "[redacted]");
-    }
-    json!({"event":"worker.output", "message":message.chars().take(4000).collect::<String>(),
+    let message = ig_service_common::sanitize_log_text(text, secrets);
+    json!({"event":"worker.output", "message":message,
         "stream":if stderr { "stderr" } else { "stdout" },
         "level":if stderr && !benign_stderr(text) { "error" } else { "info" }})
 }

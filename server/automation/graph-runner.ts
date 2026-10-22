@@ -146,6 +146,7 @@ export async function executeGraphProfile(context: GraphProfileContext): Promise
       }
     } catch (error) {
       if (stopped()) return
+      log({ event: 'automation.node_failed', nodeId: current.id, activity, error, outcome: 'error' })
       nodeStates[current.id] = {
         ...nodeStates[current.id],
         status: 'failed',

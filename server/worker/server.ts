@@ -40,6 +40,7 @@ export function createWorkerServer(groups: Commands[]) {
     }
     const scope = new LogScope('worker.command', {
       operation: operation.id,
+      method: operation.method,
       requestId: incoming.headers['x-request-id'],
     })
     const fail = (error: unknown) => {
@@ -66,6 +67,12 @@ export function createWorkerServer(groups: Commands[]) {
         response.statusCode >= 500 ? 'error' : response.statusCode >= 400 ? 'rejected' : 'success',
       )
     })
+    // A disconnected client never emits finish. Keep its completion event without a false 200.
+    response.once('close', () => {
+      if (response.writableFinished) return
+      scope.add({ responseAborted: true, ...(response.headersSent ? { statusCode: response.statusCode } : {}) })
+      scope.finish(scope.fields.error ? 'error' : 'cancelled')
+    })
     runInLogScope(scope, () => {
       void (async () => {
         const request = incoming as CommandRequest
@@ -79,6 +86,7 @@ export function createWorkerServer(groups: Commands[]) {
           operation.method === 'ALL'
             ? String(incoming.headers['x-worker-method'] || 'GET')
             : operation.method
+        scope.add({ method: request.method })
         // File picker routing retains its original query string; the command path is private.
         request.url = '/' + url.search
         if (operation.body !== 'stream') {

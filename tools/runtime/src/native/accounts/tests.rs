@@ -537,6 +537,8 @@ async fn login_claims_wait_for_cleanup_and_distinct_rejections_invalidate_creden
         let cancelled = Arc::new(AtomicUsize::new(0));
         let cancellations = cancelled.clone();
         let work_proxy = proxy.url.clone();
+        let request_ids = Arc::new(Mutex::new(Vec::new()));
+        let observed_ids = request_ids.clone();
         let fixture = Fixture::start(move |request| {
             let state = observed.clone();
             let proxies = proxies.clone();
@@ -545,7 +547,16 @@ async fn login_claims_wait_for_cleanup_and_distinct_rejections_invalidate_creden
             let opened = opened.clone();
             let proxy = work_proxy.clone();
             let cancellations = cancellations.clone();
+            let request_ids = observed_ids.clone();
             async move {
+                if request.uri().path().starts_with("/commands/browser.") {
+                    let request_id = request.headers()["x-request-id"]
+                        .to_str()
+                        .unwrap()
+                        .to_owned();
+                    assert!(uuid::Uuid::parse_str(&request_id).is_ok());
+                    request_ids.lock().await.push(request_id);
+                }
                 match request.uri().path() {
                     "/api/profiles/by-id" => {
                         Json(json!({"id":"p","name":"example","proxy":proxy,"igLoggedIn":false}))
@@ -643,6 +654,11 @@ async fn login_claims_wait_for_cleanup_and_distinct_rejections_invalidate_creden
         mutable.credential_key = Some(vec![0xaa; 32]);
         Arc::get_mut(&mut mutable.proxies).unwrap().probe_url = "http://geo.fixture/".into();
         accounts.login("p").await.unwrap();
+        let request_ids = request_ids.lock().await;
+        assert!(
+            request_ids.windows(2).all(|ids| ids[0] == ids[1]),
+            "browser attempts and cleanup must share one login correlation"
+        );
         let state = state.lock().await;
         match outcome {
             "success" => {

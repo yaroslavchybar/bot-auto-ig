@@ -66,11 +66,13 @@ export async function runBrowsingSession(profileId: string, automationId: string
   log: ActionLogger, shouldStop: StopCheck, deps = dependencies, activity?: SessionActivity,
   startupNotifications?: (session: BrowseSession, day: number, unread?: boolean) => Promise<void>): Promise<SessionResult> {
   const config = sessionConfig(input), runId = randomUUID()
+  addLogContext({ profileId, automationId, runId })
   const plan = await deps.begin({ profileId, automationId, runId,
     minMinutes: config.warmup_min_minutes, maxMinutes: config.warmup_max_minutes,
     sessionMinMinutes: config.session_min_minutes, sessionMaxMinutes: config.session_max_minutes,
     restMinMinutes: config.rest_min_minutes, restMaxMinutes: config.rest_max_minutes })
   if (plan.minutes <= 0) {
+    addLogContext({ browsingResult: 'skipped', browsingSkipReason: 'resting_or_budget_used' })
     log({ event: 'automation.session.skipped', reason: 'resting_or_budget_used' })
     return { minutes: 0, reason: 'skipped' }
   }
@@ -78,6 +80,7 @@ export async function runBrowsingSession(profileId: string, automationId: string
   const deadline = Math.min(started + plan.minutes * 60_000, midnight)
   const stopped = () => shouldStop() || deps.now() >= deadline
   const day = plan.day ?? 1
+  addLogContext({ warmupDay: day, reservedMinutes: plan.minutes })
   config.warmup_day = day
   const daily = plan.activityPlan ?? warmupActivityPlan(day)
   const eligible = day >= 2 && config.warmup_topics.length > 0
@@ -109,9 +112,11 @@ export async function runBrowsingSession(profileId: string, automationId: string
     reason = shouldStop() ? 'stopped' : 'finished'
   } finally {
     minutes = Math.min(plan.minutes, Math.max(0, deps.now() - started) / 60_000)
+    addLogContext({ browsingMinutes: minutes, activityAttempts: budget.delta() })
     await deps.finish({ profileId, runId, date: plan.date, minutes, activity: budget.delta() })
   }
   if (reason === 'stalled') addLogContext({ outcome: 'error', sessionReason: reason })
+  addLogContext({ browsingResult: reason })
   log({ event: 'automation.session.finished', reason, minutes, activityAttempts: budget.delta() })
   return { minutes, reason }
 }

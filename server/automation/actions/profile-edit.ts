@@ -7,6 +7,7 @@ import { dismissPopups } from './navigation.js'
 import { openOwnProfile } from './profiles.js'
 import { BrowseSession } from './session.js'
 import type { ActionLogger, StopCheck } from './shared.js'
+import { redactLogValues } from '../../shared/logger.js'
 
 export type ProfileEditTask = {
   kind: 'username' | 'fullName' | 'avatar'
@@ -39,6 +40,7 @@ export async function editProfileInBrowser(
   log: ActionLogger,
   shouldStop: StopCheck,
 ): Promise<ProfileEditResult> {
+  if (task.kind === 'fullName' && task.value) redactLogValues(task.value)
   const session = new BrowseSession(Date.now() + 120_000, shouldStop)
   const currentUsername = task.currentUsername.toLowerCase()
   let submitted = false
@@ -178,7 +180,9 @@ export async function editProfileInBrowser(
         .getByText(task.value, { exact: true })
         .waitFor({ state: 'visible', timeout: session.timeout(10_000) })
     return 'applied'
-  } catch {
+  } catch (error) {
+    log({ event: 'model.profile_edit_failed', kind: task.kind, result: submitted ? 'uncertain' : 'failed', error,
+      outcome: shouldStop() ? 'cancelled' : 'error' })
     return submitted ? 'uncertain' : 'failed'
   }
 }

@@ -593,12 +593,19 @@ impl Accounts {
     }
     pub async fn login(&self, id: &str) -> Result<()> {
         let started = Instant::now();
+        let request_id = uuid::Uuid::new_v4().to_string();
         let mut context = json!({"profileId": id, "outcome": "skipped"});
-        let result = self.login_inner(id, &mut context).await;
-        completion("accounts.login", context, started, result.as_ref().err());
+        let result = self.login_inner(id, &request_id, &mut context).await;
+        completion(
+            "accounts.login",
+            &request_id,
+            context,
+            started,
+            result.as_ref().err(),
+        );
         result
     }
-    async fn login_inner(&self, id: &str, context: &mut Value) -> Result<()> {
+    async fn login_inner(&self, id: &str, request_id: &str, context: &mut Value) -> Result<()> {
         let account = self.account_for_profile(id).await?;
         let profile = self.profiles.by_id(id).await?;
         // A manual login can make the query report connected before recovery is persisted.
@@ -636,7 +643,7 @@ impl Accounts {
                 if self.store("claimLoginProxy",json!({"id":account_id,"loginProxyId":proxy_id,"proxy":proxy["proxy"],"token":token})).await?!=true { continue; }
                 let mut browser_finished = false;
                 let attempt = async {
-                    let response = self.api.client.post(format!("{}/commands/browser.login",self.api.worker_url)).bearer_auth(&self.api.key).json(&json!({"attemptId":token,"profileName":profile["name"],"proxy":proxy["proxy"],"account":account})).timeout(Duration::from_secs(300)).send().await.map_err(|_| Failure::unavailable("Browser login worker unavailable"))?;
+                    let response = self.api.client.post(format!("{}/commands/browser.login",self.api.worker_url)).bearer_auth(&self.api.key).header("x-request-id", request_id).json(&json!({"attemptId":token,"profileName":profile["name"],"proxy":proxy["proxy"],"account":account})).timeout(Duration::from_secs(300)).send().await.map_err(|_| Failure::unavailable("Browser login worker unavailable"))?;
                     if !response.status().is_success() { return Err(Failure::unavailable("Browser login worker failed")); }
                     let value = api::bounded_json(response,4096).await?;
                     if value["rejected"]==true {
@@ -654,7 +661,7 @@ impl Accounts {
                     if result["cooldownRecorded"]!=true { ig_service_common::service_error("accounts.proxy_claim_expired","Browser login succeeded after proxy claim expired"); }
                     Ok(true)
                 }.await;
-                if !browser_finished && self.cancel_browser_login(&token).await.is_err() {
+                if !browser_finished && self.cancel_browser_login(&token, request_id).await.is_err() {
                     self.proxies.quarantine(exit_guard).await;
                     ig_service_common::service_error("accounts.login_cancel_unconfirmed","Browser cleanup unconfirmed; proxy IP quarantined until runtime restart and claim will expire");
                 } else if self.store("releaseLoginProxy",json!({"id":account_id,"loginProxyId":proxy_id,"token":token})).await.is_err() { ig_service_common::service_error("accounts.proxy_release_failed","Proxy claim will expire"); }
@@ -670,7 +677,7 @@ impl Accounts {
         }
         Ok(())
     }
-    async fn cancel_browser_login(&self, token: &str) -> Result<()> {
+    async fn cancel_browser_login(&self, token: &str, request_id: &str) -> Result<()> {
         let response = self
             .api
             .client
@@ -679,6 +686,7 @@ impl Accounts {
                 self.api.worker_url
             ))
             .bearer_auth(&self.api.key)
+            .header("x-request-id", request_id)
             .json(&json!({"attemptId":token}))
             .timeout(Duration::from_secs(300))
             .send()
@@ -962,18 +970,20 @@ fn public_row(row: &Value, key: &[u8]) -> Value {
     }
 }
 
-fn completion(event: &str, context: Value, started: Instant, error: Option<&Failure>) {
-    println!(
-        "{}",
-        json!({
-            "id": uuid::Uuid::new_v4().to_string(), "ts": api::now_ms(),
-            "requestId": uuid::Uuid::new_v4().to_string(), "event": event, "source": "runtime",
-            "level": if error.is_some() { "error" } else { "info" },
-            "outcome": if error.is_some() { "error" } else { context["outcome"].as_str().unwrap_or("success") },
-            "durationMs": started.elapsed().as_millis() as u64, "context": context,
-            "error": error.map(|e| json!({"type":"AccountError","message":e.message})),
-            "environment": {"service":"runtime","runtime":"rust","commitHash":api::env("COMMIT_SHA","unknown"),
-                "version":api::env("SERVICE_VERSION","1.0.0"),"region":api::env("REGION","unknown"),"instanceId":api::env("INSTANCE_ID","runtime")}
-        })
-    );
+fn completion(
+    event: &str,
+    request_id: &str,
+    context: Value,
+    started: Instant,
+    error: Option<&Failure>,
+) {
+    ig_service_common::write_log_entry(json!({
+        "id": uuid::Uuid::new_v4().to_string(), "ts": api::now_ms(),
+        "requestId": request_id, "event": event, "source": "runtime", "profileId": context["profileId"],
+        "level": if error.is_some() { "error" } else { "info" },
+        "outcome": if error.is_some() { "error" } else { context["outcome"].as_str().unwrap_or("success") },
+        "durationMs": started.elapsed().as_millis() as u64, "context": context,
+        "error": error.map(|e| json!({"type":"AccountError","message":e.message})),
+        "environment": ig_service_common::log_environment("runtime")
+    }));
 }

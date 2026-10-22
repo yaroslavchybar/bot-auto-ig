@@ -35,6 +35,86 @@ fn task(run_kind: TaskKind) -> Task {
     }
 }
 
+#[test]
+fn source_completion_keeps_task_result_and_reports_failed_finish() {
+    let job = task(TaskKind::Posts);
+    for status in ["completed", "paused", "failed"] {
+        let reason = (status != "completed").then_some("Original task result");
+        let event = source_completion(
+            &job,
+            status,
+            reason,
+            None,
+            Instant::now(),
+            Some("Convex unavailable"),
+        );
+        assert_eq!(event["level"], "error");
+        assert_eq!(event["outcome"], "error");
+        assert_eq!(event["context"]["status"], status);
+        assert_eq!(event["context"]["reason"], json!(reason));
+        assert_eq!(event["context"]["finishError"], "Convex unavailable");
+        assert_eq!(
+            event["error"]["message"],
+            if status == "failed" {
+                reason.unwrap()
+            } else {
+                "Convex unavailable"
+            }
+        );
+        assert_eq!(event["requestId"], job.run_id);
+        assert!(event["context"]["newIds"].is_null());
+        assert!(event["context"]["likeCount"].is_null());
+    }
+    let event = source_completion(
+        &job,
+        "paused",
+        Some("Rate limited"),
+        None,
+        Instant::now(),
+        None,
+    );
+    assert_eq!(event["level"], "info");
+    assert_eq!(event["outcome"], "paused");
+    assert!(event["error"].is_null());
+}
+
+#[test]
+fn source_completion_keeps_activity_totals_even_when_finish_fails() {
+    let job = task(TaskKind::Likers);
+    for activity in [
+        Activity {
+            new_ids: 3,
+            like_count: Some(200),
+        },
+        Activity {
+            new_ids: 0,
+            like_count: None,
+        },
+    ] {
+        for finish_error in [None, Some("Convex unavailable")] {
+            let event = source_completion(
+                &job,
+                "completed",
+                None,
+                Some(&activity),
+                Instant::now(),
+                finish_error,
+            );
+            assert_eq!(event["context"]["newIds"], activity.new_ids);
+            assert_eq!(event["context"]["likeCount"], json!(activity.like_count));
+            assert_eq!(event["context"]["finishError"], json!(finish_error));
+            assert_eq!(
+                event["outcome"],
+                if finish_error.is_some() {
+                    "error"
+                } else {
+                    "success"
+                }
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn own_post_likers_reuse_only_the_owners_cookie_and_keep_the_100_cap() {
     let raw_calls = Arc::new(AtomicUsize::new(0));

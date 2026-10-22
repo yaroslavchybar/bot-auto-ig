@@ -4,7 +4,7 @@ import { messageButton } from './follow.js'
 import { clickAction } from './actions/action-locator.js'
 import { BrowseSession } from './actions/session.js'
 import { random } from './actions/shared.js'
-import { currentLogScope } from '../shared/logger.js'
+import { currentLogScope, redactLogValues } from '../shared/logger.js'
 
 const editorSelector = '[role="textbox"][contenteditable="true"]'
 const closeControl = './/*[@role="button" or self::button][@aria-label="Close" or .//*[@aria-label="Close"]]'
@@ -58,6 +58,7 @@ export async function openOutreachMessage(page: Page, username: string, session:
 
 /** Keyboard events preserve the editor's state; Shift+Enter never sends a multiline draft. */
 export async function typeOutreachMessage(composer: Locator, message: string, session: BrowseSession) {
+  redactLogValues(message)
   session.check()
   // Cloak cannot resolve chained keyboard locators. Its page keyboard supports
   // natural typing directly; keep the selected editor pinned and verify focus.
