@@ -72,10 +72,12 @@ async function start(name: string, mode: string, env: Record<string, string>) {
             url,
             headers,
             logs: () =>
-              output
-                .split('\n')
-                .filter(Boolean)
-                .map((line) => JSON.parse(line)),
+              [output, errors].flatMap((stream) =>
+                stream
+                  .split('\n')
+                  .filter(Boolean)
+                  .map((line) => JSON.parse(line)),
+              ),
             stop,
           }
       } catch {
