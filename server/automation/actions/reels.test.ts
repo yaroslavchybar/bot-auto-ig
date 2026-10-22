@@ -183,12 +183,12 @@ function reelAdvanceFixture(width: number, height: number, options: { nextVisibl
       return fn(node as unknown as Element)
     } }
   })
-  let url = 'https://www.instagram.com/reels/current/', wheels = 0, clicks = 0, hovered = false
+  let url = 'https://www.instagram.com/reels/current/', wheels = 0, clicks = 0
   const next = { ...visibleActionGeometry, filter() { return this }, first() { return this },
     isVisible: async () => options.nextVisible !== false, isEnabled: async () => options.nextEnabled !== false,
     elementHandle: async () => ({ ...visibleActionGeometry,
-      hover: async () => { hovered = true },
-      click: async () => { assert.ok(hovered); clicks++; if (options.changeOnClick !== false)
+      hover: async () => {},
+      click: async () => { clicks++; if (options.changeOnClick !== false)
         url = `https://www.instagram.com/reels/next${options.successiveReels ? clicks : ''}/` },
       dispose: async () => {},
     }),
@@ -227,11 +227,58 @@ test('an already-open Reels viewer uses its visible frame without clicking the s
   } finally { await f.window.happyDOM.close() }
 })
 
+for (const recovery of ['settled', 'unsettled', 'timeout', 'stopped', 'deadline'] as const)
+  test(`a stuck Reels viewer gets one bounded reload (${recovery})`, async () => {
+    const f = reelAdvanceFixture(1024, 600), originalNow = Date.now
+    let now = originalNow(), reloads = 0, stopped = false
+    const started = now, notes: Record<string, unknown>[] = []
+    Date.now = () => now
+    const session = new BrowseSession(now + (recovery === 'deadline' ? 5500 : 60_000), () => stopped)
+    session.wait = async ms => { now += ms; session.check() }
+    f.boxes[1].y = 330
+    f.page.reload = async options => {
+      reloads++
+      assert.equal(options?.waitUntil, 'domcontentloaded')
+      assert.equal(options?.timeout, recovery === 'deadline' ? 500 : 5000)
+      if (recovery === 'settled') f.boxes[1].y = 16
+      if (recovery === 'stopped') stopped = true
+      if (recovery === 'timeout' || recovery === 'deadline') {
+        now += options!.timeout!
+        throw new errors.TimeoutError('Reload timed out')
+      }
+      return null
+    }
+    try {
+      const run = openReels(f.page, note => notes.push(note), session)
+      if (recovery === 'stopped' || recovery === 'deadline') await assert.rejects(run, SessionEnded)
+      else assert.equal(await run, recovery === 'settled')
+      assert.equal(reloads, 1)
+      assert.ok(now - started <= 15_000, 'recovery cannot reset the opening budget')
+      assert.equal(f.stats().clicks, 0, 'reload does not click the sidebar again')
+      assert.equal(notes.find(note => note.event === 'automation.actions.reels.settle_failed')?.reason, 'video_clipped')
+      if (recovery === 'unsettled')
+        assert.equal(notes.find(note => note.event === 'automation.actions.reels.open_failed')?.stage, 'settling_after_reload')
+    } finally { Date.now = originalNow; await f.window.happyDOM.close() }
+  })
+
+test('a stop during settling prevents the Reels recovery reload', async () => {
+  const f = reelAdvanceFixture(1024, 600)
+  let stopped = false
+  const session = new BrowseSession(Date.now() + 60_000, () => stopped)
+  session.wait = async () => { stopped = true; session.check() }
+  f.boxes[1].y = 330
+  f.page.reload = async () => { throw new Error('Must not reload a stopped session') }
+  try { await assert.rejects(openReels(f.page, () => {}, session), SessionEnded) }
+  finally { await f.window.happyDOM.close() }
+})
+
 test('a failed Reels sidebar click does not wait for navigation or retry the click', async () => {
   let clicks = 0, waits = 0
   const button = { filter() { return this }, first() { return this }, isVisible: async () => true,
     elementHandle: async () => { clicks++; return null } }
-  const page = { url: () => 'https://www.instagram.com/alice/', locator: (selector: string) => selector.includes('Not Now') ? { count: async () => 0 } : button,
+  const page = { url: () => 'https://www.instagram.com/alice/', locator: (selector: string) => selector.includes('Your Meta Account is here')
+    ? { filter() { return this }, first() { return this }, isVisible: async () => false }
+    : selector.includes('Not Now') ? { count: async () => 0 } : button,
     waitForURL: async () => { waits++ } } as unknown as Page
   const notes: Record<string, unknown>[] = []
   assert.equal(await openReels(page, note => notes.push(note)), false)
@@ -484,7 +531,8 @@ for (const failure of ['unchanged', 'transport', 'unsettled'])
       }), false)
       assert.equal(notches, 1)
       assert.deepEqual(f.stats(), { wheels: 0, clicks: 0 })
-      assert.equal(notes[0].stage, failure === 'transport' ? 'wheel' : failure === 'unsettled' ? 'settling' : 'navigation')
+      assert.equal(notes.find(note => note.event === 'automation.actions.reels.advance_failed')?.stage,
+        failure === 'transport' ? 'wheel' : failure === 'unsettled' ? 'settling' : 'navigation')
     } finally { await f.window.happyDOM.close() }
   })
 

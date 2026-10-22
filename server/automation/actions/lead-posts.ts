@@ -1,6 +1,5 @@
 import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
-import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import { clickLiveAction } from './action-locator.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { likePost } from './engagement.js'
@@ -139,7 +138,7 @@ export async function browseLeadPosts(page: Page, username: string, parent: Brow
         if (error instanceof SessionEnded) throw error
         session.check()
         await deps.check(page, session)
-        if (!isTemporaryUiError(error) && !(error instanceof UnsupportedHumanizeSelectorError)) throw error
+        if (!isTemporaryUiError(error)) throw error
         log({ event: 'automation.lead_posts.action_skipped', href, error })
       } finally {
         if (!parent.stopped() && await dialog.isVisible()) {

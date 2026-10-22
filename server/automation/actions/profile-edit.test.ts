@@ -28,7 +28,7 @@ for (const scenario of [
       const root=await fs.mkdtemp(path.join(tmpdir(),'profile-edit-test-'))
       const image=path.join(root,'avatar.jpg');await fs.writeFile(image,'fixture')
       let url='https://www.instagram.com/',username='old',name='Old Name',draft='',photo='old-photo',hidden=false
-      const clicks=[],hovers=[]
+      const clicks=[]
       function control(key) {
         return {
           first(){return this},filter(){return this},
@@ -44,7 +44,6 @@ for (const scenario of [
           },
           setInputFiles:async payload=>{assert.equal(payload.mimeType,'image/jpeg');assert.equal(payload.buffer.toString(),'fixture');photo=scenario==='avatar query only'?'old-photo?new=1':'new-photo';hidden=true;clicks.push('upload')},
           elementHandle:async()=>({...visibleActionGeometry,dispose:async()=>{},
-            hover:async()=>hovers.push(key),
             fill:async value=>{draft=value},
             click:async()=>{
               clicks.push(key)
@@ -71,7 +70,7 @@ for (const scenario of [
         const kind=scenario.startsWith('avatar')?'avatar':scenario==='fullName'?'fullName':'username'
         const result=await editProfileInBrowser(page,{kind,currentUsername:'old',value:kind==='fullName'?'New Name':'new',path:image},()=>{},()=>scenario==='stopped')
         assert.equal(result,['username','fullName','avatar'].includes(scenario)?'applied':scenario==='unavailable'?'unavailable':scenario==='uncertain'||scenario.startsWith('avatar ')?'uncertain':'failed')
-        if(['username','fullName'].includes(scenario)){assert.ok(clicks.includes('old Instagram'));assert.ok(clicks.includes('Done'));assert.ok(hovers.includes('Done'))}
+        if(['username','fullName'].includes(scenario)){assert.ok(clicks.includes('old Instagram'));assert.ok(clicks.includes('Done'))}
         if(scenario==='avatar'){assert.equal(photo,'new-photo');assert.deepEqual(clicks,['Change profile photo','upload'])}
         if(['unavailable','wrong account','stopped'].includes(scenario))assert.equal(clicks.includes('Done'),false)
         if(scenario==='unavailable')assert.equal(new URL(url).hostname,'www.instagram.com')

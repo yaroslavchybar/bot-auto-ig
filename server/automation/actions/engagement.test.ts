@@ -5,7 +5,6 @@ import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { engagePost, likePost, liveLikeSelector } from './engagement.js'
 import { Window } from 'happy-dom'
-import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import { BrowseSession, SessionEnded } from './session.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 
@@ -163,7 +162,7 @@ test('an expired click deadline prevents input after cursor movement', async () 
   } finally { Date.now = originalNow }
 })
 
-for (const failure of [new errors.TimeoutError('Moving timed out'), new UnsupportedHumanizeSelectorError('chained >> Like')])
+for (const failure of [new errors.TimeoutError('Moving timed out'), new Error('Element is not attached to the DOM')])
   test('an optional Like input failure is logged and browsing continues: ' + failure.name, async () => {
     const fixture = likeFixture({ failure })
     await fixture.run()
@@ -185,6 +184,7 @@ test('an optional Like still propagates account warnings and cancellation', asyn
   await assert.rejects(cancelled.run(), SessionEnded)
   assert.equal(cancelled.notes.length, 0)
   await assert.rejects(likeFixture({ failure: new Error('Browser disconnected') }).run(), /Browser disconnected/)
+  await assert.rejects(likeFixture({ failure: new Error('Unknown engine while parsing selector') }).run(), /Unknown engine/)
 })
 
 test('the live Like selector targets the heart inside a padded button and stops matching Unlike', async () => {
@@ -199,9 +199,6 @@ test('the live Like selector targets the heart inside a padded button and stops 
     window.document.body.prepend(window.document.createElement('div'))
     selected.prepend(window.document.createElement('span'))
     assert.equal(window.document.querySelector(selector), selected.querySelector('svg'))
-    const moduleUrl = new URL('./stealthDom.js', import.meta.resolve('cloakbrowser/human'))
-    const { buildSnapshotJs } = await import(moduleUrl.href)
-    assert.equal(window.eval(buildSnapshotJs(selector)).r, 'ok', 'Cloak must resolve the generated selector')
     selected.querySelector('svg')!.setAttribute('aria-label', 'Unlike')
     assert.equal(window.document.querySelectorAll(selector).length, 0)
     selected.remove()

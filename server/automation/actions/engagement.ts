@@ -1,6 +1,5 @@
 import type { Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
-import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { engagementMatches, feedPostContext, type FeedPostContext } from '../../shared/warmupTopics.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
@@ -46,7 +45,7 @@ export async function likePost(page: Page, target: Locator, budget: WarmupActivi
         session.check(); await assertInstagramReady(page)
         await checkTarget?.()
         if (await control(target, 'Unlike').isVisible() || !await like.isVisible()) return
-        // Resolve a fresh Like through one CSS selector; Cloak rejects the original chained locator.
+        // Keep the same heart selected and require it to remain Like after cursor movement.
         const selector = await like.evaluate(liveLikeSelector, undefined, { timeout: session.timeout(Math.max(1, deadline - Date.now())) })
         try {
           const remaining = deadline - Date.now()
@@ -79,7 +78,7 @@ export async function engagePost(page: Page, target: Locator,
       if (error instanceof SessionEnded) throw error
       session.check()
       await assertInstagramReady(page)
-      if (!isTemporaryUiError(error) && !(error instanceof UnsupportedHumanizeSelectorError)) throw error
+      if (!isTemporaryUiError(error)) throw error
       log({ event: 'automation.engagement.action_skipped', action, error })
     }
   }

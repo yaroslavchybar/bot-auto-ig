@@ -55,7 +55,7 @@ function fixture(options: { missing?: boolean; wrongTarget?: boolean; checkpoint
 test('topic navigation types a hashtag, presses Enter, and clicks its native result', async () => {
   const s = fixture()
   assert.equal(await openTopicResults(s.page, 'strength training', s.session), true)
-  assert.deepEqual(s.calls, ['hover:search', 'click:search', 'type:#strengthtraining', 'enter', 'hover:result', 'click:result'])
+  assert.deepEqual(s.calls, ['click:search', 'type:#strengthtraining', 'enter', 'click:result'])
 })
 
 test('native hashtag suggestions with emoji can open their result without constructing a URL', async () => {
@@ -67,7 +67,7 @@ test('native hashtag suggestions with emoji can open their result without constr
 test('username search clicks the exact username and verifies the destination', async () => {
   const s = fixture()
   assert.equal(await openProfileThroughSearch(s.page, 'Alice', s.session), true)
-  assert.deepEqual(s.calls, ['hover:search', 'click:search', 'type:alice', 'enter', 'hover:result', 'click:result'])
+  assert.deepEqual(s.calls, ['click:search', 'type:alice', 'enter', 'click:result'])
 })
 
 test('missing results allow a fallback but never click another suggestion', async () => {

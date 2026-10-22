@@ -44,7 +44,7 @@ function reelId(url: string): string {
   return url.match(REEL_URL)?.[1] ?? ''
 }
 
-// Reuse an open viewer; otherwise navigate through the sidebar within one opening budget.
+// Reuse a healthy viewer; reset a stuck one once within the same opening budget.
 export async function openReels(page: Page, log: ActionLogger, session = new BrowseSession()): Promise<boolean> {
   session.check()
   const opening = new BrowseSession(Math.min(session.end, Date.now() + 15_000), () => session.stopped())
@@ -66,7 +66,17 @@ export async function openReels(page: Page, log: ActionLogger, session = new Bro
       await page.waitForURL(/\/reels\//, { timeout: opening.timeout(10_000) })
     }
     stage = 'settling'
-    if (!await waitForSettle(page, opening) || !onReels()) {
+    let settled = await waitForSettle(page, opening, log)
+    if (!settled && onReels()) {
+      opening.check()
+      stage = 'reload'
+      log({ event: 'automation.actions.reels.viewer_reload', reason: 'Visible reel did not settle' })
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: opening.timeout(5000) })
+      await dismissPopups(page, opening)
+      stage = 'settling_after_reload'
+      settled = await waitForSettle(page, opening, log)
+    }
+    if (!settled || !onReels()) {
       log({ event: 'automation.actions.reels.open_failed', stage, reason: 'Visible reel did not settle' })
       return false
     }
@@ -140,18 +150,25 @@ function reelViewBounds(video: Element) {
 }
 
 // Instagram can offset media within a reel. Wait for a visible, stable frame, not viewport centering.
-async function waitForSettle(page: Page, session: BrowseSession): Promise<boolean> {
+async function waitForSettle(page: Page, session: BrowseSession, log: ActionLogger): Promise<boolean> {
   const sleep = session.wait
   session.check()
   let previous: { x: number; y: number; width: number; height: number } | undefined
+  let reason = 'video_unavailable'
+  let videoBox: typeof previous
+  let viewBounds: { top: number; bottom: number } | undefined
   for (let i = 0; i < 50; i++) {
     const video = await inViewVideo(page, session)
     const box = await video?.boundingBox({ timeout: session.timeout(1000) })
     const port = await video?.evaluate(reelViewBounds, undefined, { timeout: session.timeout(1000) })
+    videoBox = box ?? undefined
+    viewBounds = port
+    reason = !box ? 'video_unavailable' : !port || port.bottom <= port.top ? 'scrollport_unavailable' : 'video_clipped'
     if (box && port && port.bottom > port.top) {
       const height = port.bottom - port.top
       const visible = Math.max(0, Math.min(box.y + box.height, port.bottom) - Math.max(box.y, port.top))
       if (visible >= Math.min(box.height, height) * 0.9) {
+        reason = 'video_moving'
         if (previous && Math.abs(box.y - previous.y) <= 1 && Math.abs(box.x - previous.x) <= 1 &&
           Math.abs(box.width - previous.width) <= 1 && Math.abs(box.height - previous.height) <= 1) return true
         previous = { ...box }
@@ -159,6 +176,7 @@ async function waitForSettle(page: Page, session: BrowseSession): Promise<boolea
     } else previous = undefined
     await sleep(100)
   }
+  log({ event: 'automation.actions.reels.settle_failed', reason, videoBox, viewBounds })
   return false
 }
 
@@ -200,7 +218,7 @@ export async function advanceReel(page: Page, session: BrowseSession, log: Actio
     stage = 'navigation'
     await page.waitForURL(url => !!reelId(url.href) && reelId(url.href) !== before, { timeout: session.timeout(5000) })
     stage = 'settling'
-    if (await waitForSettle(page, session) && changed()) return true
+    if (await waitForSettle(page, session, log) && changed()) return true
     return failed('Next reel did not settle')
   } catch (error) {
     return failed('Reel advancement failed', error)
@@ -312,7 +330,7 @@ export async function watchReels(
         log({ event: 'automation.actions.reels.skipped_reel_ad', message: 'Skipped reel ad', adMarker })
         if (Date.now() >= end || shouldStop()) break
         if (!await advance()) {
-          log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
+          log({ event: 'automation.actions.reels.stalled', reason: 'Reel advancement failed' })
           break
         }
         continue
@@ -362,7 +380,7 @@ export async function watchReels(
     if (Date.now() >= end || shouldStop()) break
     if (watched >= target) break
     if (!await advance()) {
-      log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
+      log({ event: 'automation.actions.reels.stalled', reason: 'Reel advancement failed' })
       break
     }
   }

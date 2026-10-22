@@ -51,7 +51,12 @@ async function fixture(options: { missing?: boolean; budgetMs?: number; hardMs?:
     url: () => opened ? 'https://www.instagram.com/stories/' + frames[index]!.owner + '/' : 'https://www.instagram.com/',
     waitForURL: async (accept: (url: URL) => boolean) => { if (!accept(new URL(page.url()))) throw new errors.TimeoutError('Story did not advance') },
     keyboard: { press: async (key: string) => { assert.equal(opened, false, 'never close the story with Escape'); assert.equal(key, 'Escape') } },
-    locator: (selector: string) => selector.includes('Story by') ? story : { count: async () => 0, filter: () => ({ evaluateAll: async () => null }) },
+    locator: (selector: string) => {
+      if (selector.includes('Story by')) return story
+      const empty = { count: async () => 0, filter: () => empty, first: () => empty,
+        isVisible: async () => false, evaluateAll: async () => null }
+      return empty
+    },
     getByRole: (_role: string, controlOptions: { name: string }) => ({ name: controlOptions.name, filter() { return this }, first() { return this },
       isVisible: async () => {
         if (controlOptions.name === 'Close' && options.stopDuringCloseCheck) stopped = true

@@ -1,5 +1,5 @@
 import type { Locator, Page } from 'playwright-core'
-import { StealthDomError } from 'cloakbrowser/human'
+import { isTemporaryUiError } from './ui-errors.js'
 import { random, type ActionLogger } from './shared.js'
 import { BrowseSession } from './session.js'
 import { actionLocator, clickAction } from './action-locator.js'
@@ -39,7 +39,6 @@ async function dismissConsent(page: Page, session: BrowseSession): Promise<boole
   const clicked = new Set<string>()
   while (isInstagramConsentPage(page)) {
     session.check()
-    // Cloak's humanized click supports CSS selectors, but not getByRole.
     const steps = [
       ['cookies', 'Decline optional cookies'],
       ['intro', 'Get started'],
@@ -75,7 +74,7 @@ async function dismissConsent(page: Page, session: BrowseSession): Promise<boole
         try {
           await clickAction(button, session.timeout(2_000))
         } catch (error) {
-          if (error instanceof StealthDomError) throw error
+          if (!isTemporaryUiError(error)) throw error
           continue
         }
         clicked.add(name)
@@ -117,7 +116,7 @@ export async function dismissMetaAccountPopup(page: Page, session = new BrowseSe
     }
   } catch (error) {
     session.check()
-    if (error instanceof StealthDomError) throw error
+    if (!isTemporaryUiError(error)) throw error
     return false
   }
 }

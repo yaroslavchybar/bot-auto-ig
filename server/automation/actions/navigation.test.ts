@@ -2,9 +2,10 @@ import { visibleActionGeometry } from './action-locator.test-support.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
-import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import { backToFeed, dismissPopups, isInstagramHome } from './navigation.js'
 import { BrowseSession, SessionEnded } from './session.js'
+
+const absentPopup = { filter: () => absentPopup, first: () => absentPopup, isVisible: async () => false, count: async () => 0 }
 
 const consentLabels = [
   'Decline optional cookies', 'Get started', 'Use free of charge with ads',
@@ -51,7 +52,7 @@ test('inbox returns to Home once and repeated browsing retains that page', async
 
 function mockConsentLocator<T extends object>(selector: string, control: (label: string) => T) {
   const label = consentLabels.find(value => selector.includes(`:has-text(${JSON.stringify(value)})`))
-  if (!label) return { count: async () => 0 }
+  if (!label) return absentPopup
   assert.match(selector, /^button:has-text\(/)
   const item = {
     ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
@@ -99,7 +100,7 @@ test('feed popup handling completes Instagram consent with fewer optional choice
   })
   const page = {
     url: () => screen === 'home' ? 'https://www.instagram.com/' : 'https://www.instagram.com/consent/?flow=ad_free_subscription',
-    getByRole: () => { throw new Error('Cloak humanized clicks cannot use role selectors') },
+    getByRole: () => { throw new Error('Consent matching uses labels across buttons and choice cards') },
     getByText: (name: string | RegExp) => control(typeof name === 'string' ? name : 'free-agreement'),
     locator: (selector: string) => mockConsentLocator(selector, control),
   } as unknown as Page
@@ -214,7 +215,7 @@ test('consent skips hidden and nonexact controls before clicking Agree', async (
     getByText: () => ({ first: () => ({ isVisible: async () => true }) }),
     locator: (selector: string) => selector.includes(':has-text("Agree")')
       ? { count: async () => 4, nth: (i: number) => [hidden, candidate('Disagree'), candidate('Agree to terms', true), candidate('Agree')][i] }
-      : { count: async () => 0 },
+      : absentPopup,
   } as unknown as Page
   const session = new BrowseSession()
   session.wait = async () => {}
@@ -240,7 +241,7 @@ test('Not Now click does not report success while the popup remains', async () =
   const page = {
     url: () => 'https://www.instagram.com/',
     getByText: () => { throw new Error('text alone is not a popup control') },
-    locator: () => button,
+    locator: (selector: string) => selector.includes("Your Meta Account is here") ? absentPopup : button,
   } as unknown as Page
   const session = new BrowseSession()
   session.wait = async () => {}
@@ -268,7 +269,7 @@ test('Not Now checks the clicked dialog when button indexes shift', async () => 
   }
   const page = {
     url: () => 'https://www.instagram.com/',
-    locator: () => buttons,
+    locator: (selector: string) => selector.includes("Your Meta Account is here") ? absentPopup : buttons,
   } as unknown as Page
   const session = new BrowseSession()
   session.wait = async () => {}
@@ -293,7 +294,7 @@ test('Not Now checks visible controls beyond three hidden matches', async () => 
   const buttons = { count: async () => 4, nth: (i: number) => i === 3 ? visible : hidden }
   const page = {
     url: () => 'https://www.instagram.com/',
-    locator: () => buttons,
+    locator: (selector: string) => selector.includes("Your Meta Account is here") ? absentPopup : buttons,
   } as unknown as Page
   const session = new BrowseSession()
   session.wait = async () => {}
@@ -311,7 +312,7 @@ test('Not Now does not count a detached button as a closed popup without its dia
   }
   const page = {
     url: () => 'https://www.instagram.com/',
-    locator: () => ({ count: async () => 1, nth: () => button }),
+    locator: (selector: string) => selector.includes("Your Meta Account is here") ? absentPopup : ({ count: async () => 1, nth: () => button }),
   } as unknown as Page
 
   assert.equal(await dismissPopups(page), false)
@@ -439,13 +440,13 @@ test('consent controls are ignored outside Instagram consent pages', async () =>
   const page = {
     url: () => 'https://www.instagram.com/',
     getByText: () => ({ count: async () => 0 }),
-    locator: () => ({ count: async () => 0 }),
+    locator: () => absentPopup,
   } as unknown as Page
   assert.equal(await dismissPopups(page), false)
 })
 
-test('a Cloak selector failure during consent is reported instead of retried silently', async () => {
-  const failure = new UnsupportedHumanizeSelectorError('internal:role=button')
+test('a Playwright selector failure during consent is reported instead of retried silently', async () => {
+  const failure = new Error('Unknown engine while parsing selector')
   const page = {
     url: () => 'https://www.instagram.com/consent/',
     getByText: () => ({

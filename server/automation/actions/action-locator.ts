@@ -1,11 +1,10 @@
 import type { ElementHandle, Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import type { HumanConfig } from 'cloakbrowser/human'
-import { revealForClick } from './scroll.js'
-import { BrowseSession, SessionEnded } from './session.js'
+import { BrowseSession } from './session.js'
 
-/** Pin actions to one element and move Cloak's cursor onto it before clicking. */
-export async function actionLocator(target: Locator, timeout = 10_000): Promise<Pick<ElementHandle, 'click' | 'dblclick' | 'fill' | 'hover'>> {
+/** Pin the element and share its selection budget; Cloak owns scrolling, movement and input. */
+export async function actionLocator(target: Locator, timeout = 10_000): Promise<Pick<ElementHandle, 'click' | 'dblclick' | 'fill' | 'hover' | 'dispose'>> {
   const selectionDeadline = timeout > 0 ? Date.now() + timeout : Infinity
   const element = await target.elementHandle({ timeout })
   if (!element) throw new Error('Action target is detached or missing')
@@ -13,17 +12,7 @@ export async function actionLocator(target: Locator, timeout = 10_000): Promise<
     try { await action() }
     finally { await element.dispose().catch(() => {}) }
   }
-  const prepare = async (deadline: number) => {
-    try {
-      const frame = await element.ownerFrame()
-      if (!frame || !await revealForClick(frame.page(), element, new BrowseSession(deadline)))
-        throw new Error('Action target is detached or missing')
-    } catch (error) {
-      if (error instanceof SessionEnded) throw new errors.TimeoutError('Action timed out while revealing its target')
-      throw error
-    }
-  }
-  // Our wheel glides reveal targets. Cloak should only move the cursor, without centering them again.
+  // Fully visible targets need no extra centering.
   const humanOptions: { human_config: Partial<HumanConfig> } = { human_config: { scroll_target_zone: [0, 1] } }
   const deadlineFor = (actionTimeout = timeout) => Math.min(selectionDeadline,
     actionTimeout > 0 ? Date.now() + actionTimeout : Infinity)
@@ -37,26 +26,18 @@ export async function actionLocator(target: Locator, timeout = 10_000): Promise<
     // fresh action budget at the original deadline without subtracting selection twice.
     const deadline = deadlineFor(options?.timeout)
     if (deadline <= Date.now()) throw new errors.TimeoutError('Click timed out while selecting its target')
-    await prepare(deadline)
-    const hoverTimeout = deadline - Date.now()
-    if (hoverTimeout <= 0) throw new errors.TimeoutError('Click timed out while selecting its target')
-    await element.hover({ ...humanOptions, timeout: Number.isFinite(hoverTimeout) ? hoverTimeout : 0, position: options?.position,
-      force: options?.force, modifiers: options?.modifiers, trial: options?.trial })
-    const remaining = deadline - Date.now()
-    if (remaining <= 0) throw new errors.TimeoutError('Click timed out while moving to its target')
-    await element[method]({ ...humanOptions, ...options, timeout: Number.isFinite(deadline) ? remaining : 0 })
+    await element[method]({ ...humanOptions, ...options, timeout: remainingTimeout(deadline) })
   })
   return {
+    dispose: () => element.dispose(),
     click: options => click('click', options),
     dblclick: options => click('dblclick', options),
     fill: (value, options) => run(async () => {
       const deadline = deadlineFor(options?.timeout)
-      await prepare(deadline)
       await element.fill(value, { ...humanOptions, ...options, timeout: remainingTimeout(deadline) })
     }),
     hover: options => run(async () => {
       const deadline = deadlineFor(options?.timeout)
-      await prepare(deadline)
       await element.hover({ ...humanOptions, ...options, timeout: remainingTimeout(deadline) })
     }),
   }
@@ -67,21 +48,16 @@ export async function clickAction(target: Locator, timeout = 10_000): Promise<vo
   await (await actionLocator(target, timeout)).click({ timeout })
 }
 
-/** Give Cloak a single live CSS target instead of an unsupported chained locator. */
-export async function clickLiveAction(page: Page, target: Locator, session: BrowseSession, maxTimeout = 5000): Promise<void> {
-  const selector = await target.evaluate(node => {
-    if (!node.isConnected) throw new Error('Action target is detached or missing')
-    const marker = `igbot-${node.ownerDocument.defaultView!.crypto.randomUUID()}`
-    node.setAttribute('data-igbot-action-target', marker)
-    return `[data-igbot-action-target=${marker}]`
-  }, undefined, { timeout: session.timeout(maxTimeout) })
+/** Cloak 0.6 supports scoped locators directly; pin the selected control without DOM markers. */
+export async function clickLiveAction(_page: Page, target: Locator, session: BrowseSession, maxTimeout = 5000): Promise<void> {
+  const timeout = session.timeout(maxTimeout)
+  const options = { timeout, human_config: { scroll_target_zone: [0, 1], mouse_overshoot_chance: 0 } }
+  const action = await actionLocator(target, timeout)
   try {
-    const timeout = session.timeout(maxTimeout)
-    const options = { timeout, human_config: { scroll_target_zone: [0, 1], mouse_overshoot_chance: 0 } }
-    await (await actionLocator(page.locator(selector), timeout)).click(options)
-  } finally {
-    await page.locator(selector).evaluateAll(nodes => {
-      for (const node of nodes) node.removeAttribute('data-igbot-action-target')
-    }).catch(() => {})
+    session.check()
+  } catch (error) {
+    await action.dispose().catch(() => {})
+    throw error
   }
+  await action.click(options)
 }

@@ -168,6 +168,7 @@ async function browserOptions(profile: DbProfileRow, profileDir: string, options
   return {
     userDataDir: profileDir,
     headless: options.headless ?? false,
+    releaseChannel: 'stable' as const,
     locale: 'en-US',
     // Viewport matches the VNC desktop geometry so window and page agree.
     viewport: { width: BROWSER_WINDOW_WIDTH, height: BROWSER_WINDOW_HEIGHT },
@@ -368,7 +369,7 @@ export async function openBrowserSession(
       ...options,
       display: display?.display ?? options.display,
     })
-    // Native hooks must precede Cloak's capture of raw mouse methods.
+    // The desktop bridge humanizes every page and hooks the unified engine's raw input.
     if (display && !options.inspect) launchOptions.humanize = false
     checkStartup()
     // The license seat can lag a few seconds behind a clean close. Retry a

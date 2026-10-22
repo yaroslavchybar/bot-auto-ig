@@ -9,7 +9,6 @@ import { actionLocator, clickLiveAction } from './action-locator.js'
 import { assertInstagramReady } from './instagram-state.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { visitStoryProfile } from './story-profile.js'
-import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 
 export const UNSEEN_STORY_SELECTOR = 'main [role="button"][aria-label^="Story by "][aria-label$=", not seen"]:not([aria-disabled="true"])'
 
@@ -154,7 +153,7 @@ export async function watchStories(
               catch (error) {
                 session.check()
                 await assertInstagramReady(page, session)
-                if (!isTemporaryUiError(error) && !(error instanceof UnsupportedHumanizeSelectorError)) throw error
+                if (!isTemporaryUiError(error)) throw error
                 log({ event: 'automation.actions.stories.profile_skipped', error })
               }
               // Time spent on the profile is not stalled Story playback.

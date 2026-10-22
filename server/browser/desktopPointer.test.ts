@@ -4,6 +4,72 @@ import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
 import { mouseBackFor } from './desktopPointer.js'
 
+test('the real Cloak engine sends explicit and humanized moves through the desktop hook', () => {
+  execFileSync('bun', ['--eval', `
+    import assert from 'node:assert/strict'
+    import { EventEmitter } from 'node:events'
+    import { WebSocketServer } from 'ws'
+    import { patchPage, resolveConfig } from 'cloakbrowser/human'
+    import { installDesktopPointer, desktopCursorFor } from './server/browser/desktopPointer.ts'
+    const events = []
+    class Mouse {
+      constructor(page) { this._page = page }
+      async move(x, y, options) { events.push({ source: 'browser', x, y, options }) }
+      async click() {} async dblclick() {} async down() {} async up() {} async wheel() {}
+    }
+    class Keyboard {
+      async type() {} async down() {} async up() {} async press() {} async insertText() {}
+    }
+    class Frame {}
+    class Locator {}
+    class Page extends EventEmitter {
+      constructor() { super(); this.mouse = new Mouse(this); this.keyboard = new Keyboard(); this.frame = new Frame() }
+      mainFrame() { return this.frame }
+      locator() { return new Locator() }
+    }
+    const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+    await new Promise(resolve => server.once('listening', resolve))
+    process.env.RUNTIME_URL = 'http://127.0.0.1:' + server.address().port
+    server.on('connection', socket => {
+      socket.send(JSON.stringify({ ready: true }))
+      socket.on('message', data => {
+        events.push({ source: 'native', ...JSON.parse(data.toString()) })
+        socket.send(JSON.stringify({ ready: true }))
+      })
+    })
+    const context = new EventEmitter(), restored = new Page()
+    context.pages = () => [restored]
+    context.newCDPSession = async () => ({ send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }) })
+    // A persistent context may already have humanized its restored page.
+    patchPage(restored, resolveConfig('careful'))
+    const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
+    try {
+      for (const page of [restored, new Page()]) {
+        if (page !== restored) context.emit('page', page)
+        events.length = 0
+        await page.mouse.move(100, 200, { steps: 1 })
+        assert.deepEqual(events.map(e => e.source), ['native', 'browser'])
+        assert.deepEqual(events[1].options, { steps: 1 })
+        events.length = 0
+        await page.mouse.move(130, 210)
+        assert.ok(events.length >= 2)
+        assert.equal(events.length % 2, 0)
+        for (let i = 0; i < events.length; i += 2) {
+          assert.equal(events[i].source, 'native')
+          assert.equal(events[i + 1].source, 'browser')
+          assert.equal(events[i].x, events[i + 1].x)
+          assert.equal(events[i].y, events[i + 1].y)
+        }
+        assert.deepEqual(desktopCursorFor(page), { x: 130, y: 210 })
+      }
+    } finally {
+      close()
+      for (const socket of server.clients) socket.terminate()
+      await new Promise(resolve => server.close(resolve))
+    }
+  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 10000 })
+})
+
 for (const failPress of [false, true]) test(`CDP Back mouse input always releases and detaches (${failPress})`, async () => {
   const events: unknown[] = []
   const page = { viewportSize: () => ({ width: 800, height: 600 }), context: () => ({ newCDPSession: async () => ({
@@ -58,7 +124,7 @@ for (const action of ['wheel', 'back']) for (const reply of ['ack', 'timeout']) 
       const context = new EventEmitter(), page = { mouse: { move: async () => {} }, viewportSize: () => ({ width: 200, height: 400 }) }
       context.pages = () => [page]
       context.newCDPSession = async () => ({ send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }) })
-      mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchContext: () => {} }))
+      mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchPage: page => ({ raw: { move: page.mouse.move } }) }))
       const { installDesktopPointer, nativeWheelFor, nativeBackFor } = await import('./server/browser/desktopPointer.ts')
       const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
       const input = (x, timeout) => action === 'wheel' ? nativeWheelFor(page)(x, 200, 'down', timeout)
@@ -122,7 +188,7 @@ for (const stalledStage of ['attach', 'metrics']) {
         return page === blocked && stalledStage === 'metrics' ? stalled : viewport
       } })
       context.newCDPSession = async page => page === blocked && stalledStage === 'attach' ? stalled : sessionFor(page)
-      mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchContext: () => {} }))
+      mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchPage: page => ({ raw: { move: async () => {} } }) }))
       const { installDesktopPointer, nativeWheelFor } = await import('./server/browser/desktopPointer.ts')
       const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
       let guard
@@ -198,9 +264,10 @@ for (const ending of ['close', 'timeout']) {
     const captured = new Map()
     mock.module('cloakbrowser/human', () => ({
       resolveConfig: preset => { assert.equal(preset, 'careful'); return {} },
-      patchContext: context => {
-        for (const page of context.pages()) captured.set(page, page.mouse.move.bind(page.mouse))
-        context.on('page', page => captured.set(page, page.mouse.move.bind(page.mouse)))
+      patchPage: page => {
+        const human = { raw: { move: page.mouse.move.bind(page.mouse) } }
+        captured.set(page, (...args) => human.raw.move(...args))
+        return human
       },
     }))
     const { installDesktopPointer, nativeWheelFor, desktopCursorFor } = await import('./server/browser/desktopPointer.ts')
@@ -245,7 +312,7 @@ for (const ending of ['close', 'timeout']) {
       assert.equal(nativeWheelFor(fresh), undefined)
       assert.equal(desktopCursorFor(restored), undefined)
       assert.equal(desktopCursorFor(fresh), undefined)
-      assert.equal(context.listenerCount('page'), 1, 'native page listener is removed')
+      assert.equal(context.listenerCount('page'), 0, 'native page listener is removed')
       const sent = events.length
       await assert.rejects(captured.get(fresh)(700, 400), /disconnected/)
       assert.equal(events.length, sent, 'later requests must not send or move the browser pointer')

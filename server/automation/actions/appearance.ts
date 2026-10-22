@@ -1,6 +1,5 @@
 import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
-import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
 import { clickLiveAction } from './action-locator.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { BrowseSession, SessionEnded } from './session.js'
@@ -65,7 +64,7 @@ export async function setSessionAppearance(page: Page, timezone: string | undefi
   } catch (error) {
     parent.check()
     await deps.check(page, parent)
-    if (!(error instanceof SessionEnded) && !isTemporaryUiError(error) && !(error instanceof UnsupportedHumanizeSelectorError)) throw error
+    if (!(error instanceof SessionEnded) && !isTemporaryUiError(error)) throw error
     log({ event: 'automation.session.appearance', theme, timezone, outcome: 'skipped', error })
   }
 }

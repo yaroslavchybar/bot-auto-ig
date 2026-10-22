@@ -15,6 +15,9 @@ import { openAuthorProfile, openOwnProfile } from './profiles.js'
 import { watchStories } from './stories.js'
 import { actionLocator } from './action-locator.js'
 
+const absentControl = { filter() { return this }, first() { return this }, isVisible: async () => false,
+  count: async () => 0, evaluateAll: async () => null }
+
 const completedStory = {
   chance: () => false,
   visit: async () => {},
@@ -217,7 +220,7 @@ test('stories wait for the button tray and honor a stop while it loads', async (
       goto: async () => { throw new Error('Stories must reuse the already-open Home page') },
       url: () => 'https://www.instagram.com/',
       keyboard: { press: async () => {} },
-      locator: (selector: string) => selector.includes('Story by') ? story : { count: async () => 0 },
+      locator: (selector: string) => selector.includes('Story by') ? story : absentControl,
     } as unknown as Page
     assert.equal(await watchStories(page, 0, () => {}, () => stopped), 0)
     assert.equal(clicks, stopWhileLoading ? 0 : 1)
@@ -226,7 +229,7 @@ test('stories wait for the button tray and honor a stop while it loads', async (
 
 test('story navigation and opening expiry stay local to the optional story chunk', async () => {
   const originalNow = Date.now
-  for (const expiresAt of ['navigation', 'visibility', 'hover']) {
+  for (const expiresAt of ['navigation', 'visibility', 'click']) {
     let now = originalNow(), clicks = 0
     const deadline = now + 10_000
     Date.now = () => now
@@ -234,8 +237,7 @@ test('story navigation and opening expiry stay local to the optional story chunk
       evaluateAll: async () => ['alice'],
       isVisible: async () => { if (expiresAt === 'visibility') now += 11_000; return true },
       elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {},
-        hover: async () => { now += 11_000; throw new errors.TimeoutError('Story opening expired') },
-        click: async () => { clicks++ },
+        click: async () => { now += 11_000; throw new errors.TimeoutError('Story opening expired') },
       }),
     }
     const page = { url: () => expiresAt === 'navigation' ? 'https://www.instagram.com/alice/' : 'https://www.instagram.com/',
@@ -243,7 +245,7 @@ test('story navigation and opening expiry stay local to the optional story chunk
         assert.equal(options.timeout, 10_000)
         if (expiresAt === 'navigation') { now += 11_000; throw new errors.TimeoutError('Navigation expired') }
       }, keyboard: { press: async () => {} },
-      locator: (selector: string) => selector.includes('Story by') ? story : { count: async () => 0 },
+      locator: (selector: string) => selector.includes('Story by') ? story : absentControl,
     } as unknown as Page
     try {
       assert.equal(await watchStories(page, 1, () => {}, () => false, { deadline }), 0)
@@ -263,11 +265,11 @@ for (const stage of ['open', 'next']) test(`temporary story ${stage} failure ski
   let opened = false
   const control = { ...visibleActionGeometry, first() { return this }, waitFor: async () => {}, isVisible: async () => true,
     evaluateAll: async () => ['alice'],
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { if (stage === 'open') throw failure },
-      click: async () => { opened = true }, dispose: async () => {} }),
+    elementHandle: async () => ({ ...visibleActionGeometry,
+      click: async () => { if (stage === 'open') throw failure; opened = true }, dispose: async () => {} }),
   }
   const next = { ...control, page: () => page,
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { throw failure }, dispose: async () => {} }),
+    elementHandle: async () => ({ ...visibleActionGeometry, click: async () => { throw failure }, dispose: async () => {} }),
   }
   const page = { url: () => opened ? 'https://www.instagram.com/stories/alice/1/' : 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
     waitForURL: async () => {},
@@ -295,6 +297,7 @@ test('stories skip hidden or already-seen controls before choosing an unseen sto
         goto: async () => {}, url: () => 'https://www.instagram.com/',
         keyboard: { press: async () => {} },
         locator: (selector: string) => {
+          if (selector.includes('Your Meta Account is here')) return absentControl
           const nodes = [...window.document.querySelectorAll(selector.replaceAll(':visible', ''))]
             .filter(node => !selector.includes(':visible') || node.getAttribute('style') !== 'display:none')
           return { count: async () => nodes.length, first: () => ({
@@ -336,7 +339,7 @@ test('stories return zero for missing trays and only completed views after an ea
       viewportSize: () => ({ width: 1280, height: 800 }),
       keyboard: { press: async () => {} },
       locator: (selector: string) => selector.includes('Story by') ? control
-        : selector.includes('Next') ? next : { count: async () => 0, filter: () => ({ evaluateAll: async () => null }) },
+        : selector.includes('Next') ? next : absentControl,
     } as unknown as Page
     const watched = await watchStories(page, mode === 'stop on next' ? 3 : 1, () => {}, () => stopped,
       {}, completedStory)

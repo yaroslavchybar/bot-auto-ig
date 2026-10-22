@@ -329,6 +329,7 @@ for (const scenario of [
         // Cloak stealth wiring: persistent profile, human behavior, seed identity.
         assert.ok(String(launchOptions.userDataDir).endsWith('test'))
         assert.equal(launchOptions.humanize, inspect, 'automation patches human behavior after native hooks')
+        assert.equal(launchOptions.releaseChannel, 'stable', 'launches must never inherit the preview channel')
         assert.ok(launchOptions.args.some(arg => String(arg).startsWith('--fingerprint=')))
         assert.ok(launchOptions.args.includes('--fingerprint-portable-cookies'))
         if (scenario === 'crash') {

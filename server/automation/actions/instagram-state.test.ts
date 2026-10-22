@@ -6,7 +6,6 @@ import { Window } from 'happy-dom'
 import type { Page } from 'playwright-core'
 import { assertInstagramReady, checkNotifications, hasUnreadNotifications } from './instagram-state.js'
 import { BrowseSession } from './session.js'
-import { ElementNotVisibleError } from 'cloakbrowser/human'
 import { dismissMetaAccountPopup, dismissPopups } from './navigation.js'
 
 function metaAccountFixture(remainsOpen = false) {
@@ -18,7 +17,9 @@ function metaAccountFixture(remainsOpen = false) {
   const clicks: string[] = []
   const visible = () => Boolean(window.document.querySelector('#meta:not([hidden])'))
   const handle = {
-    waitForElementState: async () => { assert.equal(visible(), false, 'The actual Meta popup must close') },
+    waitForElementState: async () => {
+      if (visible()) throw new errors.TimeoutError('The actual Meta popup stayed visible')
+    },
     dispose: async () => {},
   }
   const close = {
@@ -67,7 +68,7 @@ test('Meta announcement is closed before automation actions and during feed popu
     const fixture = metaAccountFixture()
     try {
       await dismiss(fixture.page, new BrowseSession())
-      assert.deepEqual(fixture.clicks, ['cursor-to-close', 'meta-close'])
+      assert.deepEqual(fixture.clicks, ['meta-close'])
       assert.ok(fixture.window.document.querySelector('#messages'), 'Other dialogs stay open')
     } finally { await fixture.window.close() }
   }
@@ -92,7 +93,7 @@ test('Meta dismissal reports failure if the clicked popup remains visible', asyn
   const fixture = metaAccountFixture(true)
   try {
     assert.equal(await dismissMetaAccountPopup(fixture.page), false)
-    assert.deepEqual(fixture.clicks, ['cursor-to-close', 'meta-close'])
+    assert.deepEqual(fixture.clicks, ['meta-close'])
   } finally { await fixture.window.close() }
 })
 
@@ -100,7 +101,7 @@ test('readiness fails when the Meta announcement cannot be dismissed', async () 
   const fixture = metaAccountFixture(true)
   try {
     await assert.rejects(assertInstagramReady(fixture.page), /Instagram Meta account popup needs attention/)
-    assert.deepEqual(fixture.clicks, ['cursor-to-close', 'meta-close'])
+    assert.deepEqual(fixture.clicks, ['meta-close'])
     assert.ok(fixture.window.document.querySelector('#meta'))
   } finally { await fixture.window.close() }
 })
@@ -207,7 +208,7 @@ function notificationFixture(
       ...visibleActionGeometry, hover: async () => {},
       click: async () => {
         if (options.closedBeforeError) opened = false
-        if (options.closeFailure) throw new ElementNotVisibleError('<ElementHandle>')
+        if (options.closeFailure) throw new Error('Element is not visible')
         clicks.push('notification-close')
         opened = false
       },
@@ -264,7 +265,7 @@ function notificationFixture(
               click: async () => {
                 if (options.openedBeforeError) opened = true
                 if (selected <= (options.failures ?? 0))
-                  throw new ElementNotVisibleError('<ElementHandle>')
+                  throw new Error('Element is not visible')
                 clicks.push('notifications')
                 opened = true
               },

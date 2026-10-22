@@ -1,5 +1,5 @@
 import WebSocket from 'ws'
-import { patchContext, resolveConfig } from 'cloakbrowser/human'
+import { patchPage, resolveConfig } from 'cloakbrowser/human'
 import type { BrowserContext, CDPSession, Page } from 'playwright-core'
 import { runtimeHeaders, runtimeUrl } from '../shared/runtime.js'
 import type { Display } from './display.js'
@@ -64,7 +64,7 @@ function beforeInputDeadline<T>(start: () => Promise<T>, deadline: number): Prom
   })
 }
 
-/** Sync the X11 pointer before Cloak's raw moves, including locator/handle clicks. */
+/** Sync X11 before the unified Cloak engine emits each raw pointer move. */
 export async function installDesktopPointer(
   context: BrowserContext,
   display: Pick<Display, 'vncPort' | 'id'>,
@@ -127,8 +127,10 @@ export async function installDesktopPointer(
     return work
   }
   const attach = (page: Page) => {
+    if (pages.has(page)) return
     pages.add(page)
-    const move = page.mouse.move.bind(page.mouse)
+    const human = patchPage(page, resolveConfig('careful'))
+    const move = human.raw.move.bind(human.raw)
     const metrics = context.newCDPSession(page)
     const input = async (x: number, y: number, action?: PointerAction, deadline = Infinity) => {
       const session = await beforeInputDeadline(() => metrics, deadline)
@@ -140,7 +142,7 @@ export async function installDesktopPointer(
       desktopCursors.set(page, { x, y })
     }
     // Page.getLayoutMetrics is real geometry; window.screen* is fingerprint-spoofed.
-    page.mouse.move = async (x, y, options) => {
+    human.raw.move = async (x, y, options) => {
       await enqueue(async () => {
         await input(x, y)
         await move(x, y, options)
@@ -172,9 +174,8 @@ export async function installDesktopPointer(
   }
   try {
     for (const page of context.pages()) attach(page)
-    // Register first so new tabs receive the native hook before Cloak captures raw methods.
+    // patchPage is idempotent, including pages already humanized during launch.
     context.on('page', attach)
-    patchContext(context, resolveConfig('careful'))
     return close
   } catch (error) {
     close()
