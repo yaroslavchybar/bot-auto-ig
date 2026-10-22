@@ -2,16 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useConvex } from 'convex/react'
 import type { FunctionReturnType } from 'convex/server'
-import {
-  RefreshCw,
-  UserPlus,
-  Send,
-  Flame,
-  Users,
-  ArrowUpRight,
-  UserRound,
-  UserCheck,
-} from 'lucide-react'
+import { RefreshCw, UserPlus, Send, Flame, UserCheck } from 'lucide-react'
 import { api } from '../../../../convex/_generated/api'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,7 +13,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
-import { Link } from '@/lib/router'
 import { FollowBackAnalytics } from './FollowBackAnalytics'
 
 type Overview = FunctionReturnType<typeof api.analytics.overview>
@@ -36,24 +26,6 @@ const periods: Record<Period, string> = {
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 })
 const format = (value: number | null) =>
   value === null || !Number.isFinite(value) ? '—' : number.format(value)
-
-function Panel({ title, to, children }: { title: string; to: string; children: ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-line-soft bg-panel p-4">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-medium">{title}</h2>
-        <Link
-          to={to}
-          className="flex shrink-0 items-center gap-1 rounded text-xs text-muted-copy hover:text-ink focus-visible:outline-2 focus-visible:outline-ring"
-        >
-          View <ArrowUpRight className="size-4" />
-          <span className="sr-only">{title}</span>
-        </Link>
-      </div>
-      {children}
-    </section>
-  )
-}
 
 function Stat({
   label,
@@ -194,60 +166,11 @@ export function AnalyticsPage() {
                 icon={<Flame className="size-5" />}
               />
               <Stat
-                label="Total leads"
-                value={data.leads?.total ?? null}
-                detail={
-                  data.leads ? 'Each person counted once' : 'Counts initializing · Refresh shortly'
-                }
-                icon={<Users className="size-5" />}
-              />
-              <Stat
-                label="Male leads"
-                value={data.leads?.male ?? null}
-                detail="Enriched and classified as male"
-                icon={<UserRound className="size-5" />}
-              />
-              <Stat
                 label="Assigned to profiles"
                 value={data.leads?.assigned ?? null}
                 detail="Already reserved for outreach"
                 icon={<UserCheck className="size-5" />}
               />
-              <Panel
-                title={data.period === 'today' ? 'Scraper requests / hour' : 'Scraper requests'}
-                to="/scraper"
-              >
-                <p className="text-2xl font-medium tabular-nums">
-                  {format(data.quota.used)}{' '}
-                  <span className="text-sm font-normal text-muted-copy">
-                    {data.period === 'today'
-                      ? `/ ${format(data.quota.limit)} requests`
-                      : 'requests'}
-                  </span>
-                </p>
-                {data.period === 'today' && data.quota.limit > 0 && (
-                  <div
-                    role="progressbar"
-                    aria-label="Hourly scraper request quota used"
-                    aria-valuemin={0}
-                    aria-valuemax={data.quota.limit}
-                    aria-valuenow={Math.min(data.quota.used, data.quota.limit)}
-                    className="mt-2 h-1.5 overflow-hidden rounded-full bg-panel-muted"
-                  >
-                    <div
-                      className="h-full rounded-full bg-status-success"
-                      style={{
-                        width: `${Math.min(100, (data.quota.used / data.quota.limit) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                )}
-                <p className="mt-2 text-xs text-subtle-copy">
-                  Liker scraping and monitoring.{' '}
-                  {data.period === 'today' &&
-                    `Today: ${format(data.quota.totalRequests)} requests.`}
-                </p>
-              </Panel>
             </div>
             <FollowBackAnalytics data={data.outreach} />
           </>
