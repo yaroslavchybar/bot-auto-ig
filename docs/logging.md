@@ -18,6 +18,31 @@ lose unread events. Sink retries can create duplicates; use `id` to deduplicate
 when counting exact operations. Vector's own diagnostics remain in its Docker
 logs and are excluded from ingestion to avoid feedback loops.
 
+## Dataset schema
+
+Configure `context` as an Axiom **map field** in `ig-bot-prod`. This is a
+dataset setting, not a JSON encoding change: the collector continues to send
+the same nested objects. It was enabled on October 22, 2026. Custom attributes,
+notes, decision details, and event names in `context.stepCounts` now share one
+field instead of creating a field for every key.
+
+Keep the stable envelope (`event`, `level`, `outcome`, IDs, `durationMs`), error
+fields, environment, and container metadata as ordinary fields. Add variable
+business details inside `context`, never as new top-level fields. Filter on
+time and ordinary fields first; map lookups cost more query work and their
+keys are not listed in schema autocomplete.
+
+For a replacement dataset, create the `context` map before collecting logs:
+**Datasets → select dataset → fields list More → Create map field → context**.
+Use an administrator's session for this one-time setting. The production
+collector must retain its existing ingest-only token.
+
+The change does not rewrite older events or immediately free their fields.
+Preserve them for historical queries. Once the old events leave retention,
+use **Settings → Datasets and views → Vacuum fields** to remove the unused
+field definitions. Vacuuming does not delete events. Do not delete old fields
+or trim the dataset just to reduce the count: that removes historical data.
+
 ## Deploy
 
 `AXIOM_INGEST_TOKEN` is a GitHub Actions secret with **only ingest** access to
@@ -65,6 +90,21 @@ actions. Do not add log forwarding code to every mutation.
 | order by _time asc
 ```
 
+Map keys use index notation, especially event names containing dots:
+
+```apl
+['ig-bot-prod']
+| where _time > ago(1h) and event == "http.request"
+| extend statusCode = tolong(coalesce(['context']['statusCode'], ['context.statusCode']))
+| summarize requests=count() by statusCode
+```
+
+The `coalesce` includes ordinary fields from before the map was enabled.
+For recent events, access step counts as
+`['context']['stepCounts']['automation.routine.notifications']` and notes as
+`['context']['notes']`. Older step-count fields contain escaped literal dots;
+use Axiom's schema field picker when querying that older structure.
+
 ```apl
 ['ig-bot-prod']
 | summarize operations=dcount(id), errors=countif(outcome == "error"),
@@ -97,6 +137,9 @@ their `environment.commitHash` to the deployed revision. A setup test event
 proves dataset/token access; it does not prove the production collector is live.
 
 References: [Axiom Vector guide](https://axiom.co/docs/send-data/vector),
+[Axiom map fields](https://axiom.co/docs/apl/data-types/map-fields),
+[Axiom field limits](https://axiom.co/docs/reference/limits),
+[Axiom dataset maintenance](https://axiom.co/docs/reference/datasets),
 [Vector Axiom sink](https://vector.dev/docs/reference/configuration/sinks/axiom/),
 [Vector secrets](https://vector.dev/docs/reference/configuration/secrets/),
 [Convex log streams](https://docs.convex.dev/production/integrations/log-streams).

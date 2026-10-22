@@ -118,6 +118,7 @@ const STANDARD_FIELDS = new Set(['event', 'message', 'source', 'requestId', 'ope
 function emit(level: LogLevel, fields: LogFields): void {
   const clean = sanitizeLogValue(fields, secrets) as LogFields
   const { event, message, ...rest } = clean
+  // Axiom stores context as a map so variable keys don't expand the dataset schema.
   const context = Object.fromEntries(Object.entries(rest).filter(([key]) => !STANDARD_FIELDS.has(key)))
   const entry = {
     ...Object.fromEntries(Object.entries(rest).filter(([key]) => STANDARD_FIELDS.has(key))),

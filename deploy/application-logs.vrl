@@ -9,6 +9,7 @@ assert!(is_string(entry.id) && is_string(entry.event) && is_string(entry.request
 assert!(entry.level == "info" || entry.level == "error")
 assert!(is_string(entry.outcome) && is_object(entry.context) && is_object(entry.environment))
 assert!(is_integer(entry.ts))
+# Keep context as an object: Axiom's dataset-level map setting prevents field growth.
 . = entry
 # Use the event's creation time, including when a buffered event is retried.
 ._time = from_unix_timestamp!(int!(.ts), unit: "milliseconds")
