@@ -31,15 +31,13 @@ for (const mode of ['muted', 'unmuted', 'missing', 'timeout', 'probe-timeout', '
       evaluateAll: async (fn: (nodes: Element[]) => unknown) => fn(resolve() ? [resolve() as unknown as Element] : []),
       locator: (selector: string) => locator(() => resolve()?.querySelector(selector) ?? null),
       isVisible: async () => !!resolve(),
-      waitFor: async () => { assert.equal(resolve(), null) },
-      elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
-        click: async () => {
-          assert.ok(current.contains(resolve())); clicks++
-          if (mode === 'timeout') throw new errors.TimeoutError('Sound toggle timed out')
-          if (mode === 'disconnected') throw new Error('Browser disconnected')
-          video.muted = false; resolve()!.setAttribute('aria-label', 'Audio is playing')
-        },
-      }),
+      waitFor: async ({ state }: { state: string }) => { assert.equal(!!resolve(), state !== 'hidden') },
+      hover: async () => {}, click: async () => {
+        assert.ok(current.contains(resolve())); clicks++
+        if (mode === 'timeout') throw new errors.TimeoutError('Sound toggle timed out')
+        if (mode === 'disconnected') throw new Error('Browser disconnected')
+        video.muted = false; resolve()!.setAttribute('aria-label', 'Audio is playing')
+      },
     }) as unknown as Locator
     const media = { evaluate: async (fn: (element: Element) => unknown) => {
       if (mode === 'probe-timeout') throw new errors.TimeoutError('Sound state unavailable during navigation')
@@ -97,9 +95,7 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
       count: async () => Number(!!resolve()), isVisible: async () => !!resolve(),
       waitFor: async () => { assert.ok(resolve(), 'the Like must be confirmed as Unlike') },
       click: async () => { buttonClicks++; like(resolve() as unknown as Element) },
-      elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
-        evaluate: async (fn: (node: Element, point: unknown) => unknown, point: unknown) => fn(resolve() as unknown as Element, point),
-        dblclick: async () => { doubleTaps++; like(resolve() as unknown as Element) } }),
+      hover: async () => {}, dblclick: async () => { doubleTaps++; like(resolve() as unknown as Element) },
     }) as unknown as Locator
     const post = locator(() => current)
     const target = {
@@ -186,12 +182,8 @@ function reelAdvanceFixture(width: number, height: number, options: { nextVisibl
   let url = 'https://www.instagram.com/reels/current/', wheels = 0, clicks = 0
   const next = { ...visibleActionGeometry, filter() { return this }, first() { return this },
     isVisible: async () => options.nextVisible !== false, isEnabled: async () => options.nextEnabled !== false,
-    elementHandle: async () => ({ ...visibleActionGeometry,
-      hover: async () => {},
-      click: async () => { clicks++; if (options.changeOnClick !== false)
+    hover: async () => {}, click: async () => { clicks++; if (options.changeOnClick !== false)
         url = `https://www.instagram.com/reels/next${options.successiveReels ? clicks : ''}/` },
-      dispose: async () => {},
-    }),
   }
   const page = { url: () => url, viewportSize: () => options.fixedViewport !== false ? { width, height } : null,
     evaluate: async (fn: () => unknown) => window.eval(`(${fn.toString()})()`),
@@ -274,8 +266,8 @@ test('a stop during settling prevents the Reels recovery reload', async () => {
 
 test('a failed Reels sidebar click does not wait for navigation or retry the click', async () => {
   let clicks = 0, waits = 0
-  const button = { filter() { return this }, first() { return this }, isVisible: async () => true,
-    elementHandle: async () => { clicks++; return null } }
+  const button = { ...visibleActionGeometry, filter() { return this }, first() { return this }, isVisible: async () => true,
+    waitFor: async () => { clicks++; throw new errors.TimeoutError('Sidebar target disappeared') } }
   const page = { url: () => 'https://www.instagram.com/alice/', locator: (selector: string) => selector.includes('Your Meta Account is here')
     ? { filter() { return this }, first() { return this }, isVisible: async () => false }
     : selector.includes('Not Now') ? { count: async () => 0 } : button,
@@ -293,7 +285,7 @@ test('Reels opening shares a 15-second budget across navigation and settling', a
   Date.now = () => now
   const locator = f.page.locator.bind(f.page)
   const button = { ...visibleActionGeometry, filter() { return this }, first() { return this }, isVisible: async () => true,
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => {}, dispose: async () => {} }) }
+    hover: async () => {}, click: async () => {} }
   f.page.url = () => onReels ? 'https://www.instagram.com/reels/current/' : 'https://www.instagram.com/alice/'
   f.page.locator = ((selector: string) => selector === 'video' || selector.includes('Not Now') || selector.includes('Your Meta Account is here')
     ? locator(selector) : button) as Page['locator']
@@ -320,15 +312,13 @@ test('Reels opening dismisses the inbox notification prompt before clicking the 
   const notNow = {
     isVisible: async () => popupOpen,
     locator: () => ({ elementHandle: async () => popup }),
-    elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {}, hover: async () => {},
-      click: async () => { popupOpen = false; clicks.push('not-now') } }),
+    ...visibleActionGeometry, hover: async () => {}, click: async () => { popupOpen = false; clicks.push('not-now') },
   }
   const reels = { filter() { return this }, first() { return this }, isVisible: async () => true,
-    elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {}, hover: async () => {},
-      click: async () => {
-        assert.equal(popupOpen, false, 'Reels must not be clicked underneath a notification prompt')
-        clicks.push('reels'); f.navigate('https://www.instagram.com/reels/current/')
-      } }),
+    ...visibleActionGeometry, hover: async () => {}, click: async () => {
+      assert.equal(popupOpen, false, 'Reels must not be clicked underneath a notification prompt')
+      clicks.push('reels'); f.navigate('https://www.instagram.com/reels/current/')
+    },
   }
   f.page.locator = ((selector: string) => selector.includes('Not Now')
     ? { count: async () => Number(popupOpen), nth: () => notNow }

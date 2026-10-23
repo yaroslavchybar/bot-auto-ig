@@ -20,22 +20,19 @@ function likeFixture(options: { path?: string; alreadyLiked?: boolean; missing?:
       ? 'svg[data-igbot-like-target=fixture][aria-label=Like]' : visibleActionGeometry.evaluate(fn),
     count: async () => label === 'Unlike' ? Number(liked) : Number(!options.missing),
     isVisible: async () => label === 'Unlike' ? liked : !liked && !options.missing,
-    waitFor: async () => { if (!liked) throw new errors.TimeoutError('Like was not confirmed') },
+    waitFor: async ({ state }: { state: string }) => { if (state !== 'attached' && !liked) throw new errors.TimeoutError('Like was not confirmed') },
     click: async (clickOptions: { human_config: { mouse_overshoot_chance: number } }) => {
       assert.equal(clickOptions.human_config.mouse_overshoot_chance, 0)
       if (options.lateLike === 'before-live-click') liked = true
       if (liked) throw new errors.TimeoutError('The live Like locator no longer matches')
       calls.push(label); liked = options.confirms !== false
     },
-    elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {},
-      hover: async (hoverOptions: { human_config: { mouse_overshoot_chance: number } }) => {
-        assert.equal(hoverOptions.human_config.mouse_overshoot_chance, 0)
-        options.slowMovement?.()
-        if (options.lateLike === 'during-hover') liked = true
-        if (options.failure) { failed = true; throw options.failure }
-      },
-      click: async () => { throw new Error('Never click a pinned Like handle') },
-    }),
+    hover: async (hoverOptions: { human_config: { mouse_overshoot_chance: number } }) => {
+      assert.equal(hoverOptions.human_config.mouse_overshoot_chance, 0)
+      options.slowMovement?.()
+      if (options.lateLike === 'during-hover') liked = true
+      if (options.failure) { failed = true; throw options.failure }
+    },
   })
   const target = { evaluate: async (_fn: unknown, kind: string) => {
     assert.equal(kind, 'likes'); return options.reelLikes === undefined ? 3001 : options.reelLikes
@@ -265,14 +262,14 @@ for (const roll of [0.1, 0.3]) for (const [path, comments, eligible] of [
       isVisible: async () => label === 'Unlike' ? liked : label === 'Save' ? !saved : true,
       boundingBox: async () => ({ x: 100, y: 100, width: 30, height: 30 }),
       waitFor: async () => { if (label === 'Unlike') assert.ok(liked) },
-      click: async () => { assert.equal(label, 'Like'); calls.push(label); liked = true },
-      elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {}, click: async () => {
+      click: async () => {
         calls.push(label)
         if (label === 'Like') liked = true
         if (label === 'Save') saved = true
         if (label === 'Comment') commentsOpen = true
         if (label === 'Close') commentsOpen = false
-      } }),
+      },
+      hover: async () => {},
     })
     const target = { evaluate: async (_fn: unknown, kind: string) => {
       assert.notEqual(path, '/', 'Home feed comments do not require a count')

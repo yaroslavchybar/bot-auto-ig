@@ -31,6 +31,7 @@ for (const scenario of [
       const clicks=[]
       function control(key) {
         return {
+          ...visibleActionGeometry,
           first(){return this},filter(){return this},
           locator(selector){return selector==='img'?control('photo-image'):control('center')},
           getByRole(role,options){return control(options?.name||'form')},
@@ -43,18 +44,16 @@ for (const scenario of [
             if(key==='verified-name'&&name!=='New Name')throw Error('The saved name did not match')
           },
           setInputFiles:async payload=>{assert.equal(payload.mimeType,'image/jpeg');assert.equal(payload.buffer.toString(),'fixture');photo=scenario==='avatar query only'?'old-photo?new=1':'new-photo';hidden=true;clicks.push('upload')},
-          elementHandle:async()=>({...visibleActionGeometry,dispose:async()=>{},
-            fill:async value=>{draft=value},
-            click:async()=>{
-              clicks.push(key)
-              if(key==='center')url='https://accountscenter.instagram.com/profiles/'
-              if(key==='Username'){draft=username;hidden=false}
-              if(key==='Name'){draft=name;hidden=false}
-              if(key==='Done'&&scenario!=='uncertain'){if(scenario==='fullName')name=draft;else username=draft;hidden=true}
-              if(key==='Close')hidden=true
-              if(key==='Back to Instagram Settings')url='https://www.instagram.com/accounts/edit/'
-            },
-          }),
+          fill:async value=>{draft=value},
+          click:async()=>{
+            clicks.push(key)
+            if(key==='center')url='https://accountscenter.instagram.com/profiles/'
+            if(key==='Username'){draft=username;hidden=false}
+            if(key==='Name'){draft=name;hidden=false}
+            if(key==='Done'&&scenario!=='uncertain'){if(scenario==='fullName')name=draft;else username=draft;hidden=true}
+            if(key==='Close')hidden=true
+            if(key==='Back to Instagram Settings')url='https://www.instagram.com/accounts/edit/'
+          },
         }
       }
       const page={url:()=>url,reload:async()=>{if(scenario==='avatar not persisted')photo='old-photo'},

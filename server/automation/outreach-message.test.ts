@@ -78,64 +78,67 @@ function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox'
       if (await this.isVisible() !== (state !== 'hidden')) restorePopup()
       if (await this.isVisible() !== (state !== 'hidden')) throw new errors.TimeoutError('Fixture target did not become ' + state)
     }
+    async click() {
+      const node = this.one()
+      calls.push(node.id)
+      if (node.getAttribute('role') === 'textbox') (node as HTMLElement).focus()
+      if (node.id === 'options') {
+        const menu = document.querySelector('#menu')!
+        menu.toggleAttribute('hidden')
+        node.setAttribute('aria-expanded', String(!menu.hasAttribute('hidden')))
+      }
+      if (node.id === 'message' || node.id === 'menu-message') document.querySelector('#alice')!.removeAttribute('hidden')
+      if (node.id === 'menu-message') {
+        document.querySelector('#menu')!.setAttribute('hidden', '')
+        document.querySelector('#options')!.setAttribute('aria-expanded', 'false')
+        if (entry === 'menu-inbox' || entry === 'menu-inbox-root') {
+          const inbox = document.createElement('main')
+          inbox.id = 'inbox'
+          inbox.innerHTML = '<nav aria-label="Thread list"></nav>'
+          inbox.append(document.querySelector('#alice')!)
+          document.body.append(inbox)
+          close.remove()
+          document.querySelector('#profile')!.setAttribute('hidden', '')
+          url = entry === 'menu-inbox' ? 'https://www.instagram.com/direct/t/123/' : 'https://www.instagram.com/direct/inbox/'
+        }
+      }
+      if (node.id === 'alice-profile' || node.id === 'alice-view-profile') {
+        assert.ok(url.includes('/direct/'), 'The native profile link is used only to leave the inbox')
+        url = 'https://www.instagram.com/alice/'
+        const chat = document.querySelector('#alice')!
+        chat.append(close)
+        document.querySelector('#chats')!.append(chat)
+        document.querySelector('#inbox')!.remove()
+        document.querySelector('#profile')!.removeAttribute('hidden')
+        if (restored !== 'chat') chat.setAttribute('hidden', '')
+        const showPopup = () => {
+          if (restored === 'delayed-chat') chat.removeAttribute('hidden')
+          else if (restored.includes('messages')) {
+            const panel = document.createElement('div')
+            panel.id = 'messages-panel'
+            panel.innerHTML = '<div><h3>Messages</h3><button aria-label="Expand"></button><button id="messages-close" aria-label="Close"></button></div><p>No chats</p>'
+            document.body.append(panel)
+          }
+        }
+        if (restored.startsWith('delayed-')) restorePopup = () => {
+          calls.push('wait-restored-popup')
+          restorePopup = () => {}
+          showPopup()
+        }
+        else showPopup()
+        afterProfileClick()
+      }
+      if (node.id === 'messages-close') document.querySelector('#messages-panel')!.remove()
+      else if (node.id.endsWith('-close')) node.closest('#alice,#other')!.setAttribute('hidden', '')
+    }
     async elementHandle() {
       const node = this.one()
       return { ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
+        ownerFrame: async () => ({ locator: (selector: string) => new Fields(() => Array.from(document.querySelectorAll(selector))) }),
         innerText: async () => node.textContent || '\n',
-        evaluate: async <T>(fn: (element: Element) => T) => fn.name === 'scrollBounds'
-          ? visibleActionGeometry.evaluate(fn) : fn(node),
-        click: async () => {
-        calls.push(node.id)
-        if (node.getAttribute('role') === 'textbox') (node as HTMLElement).focus()
-        if (node.id === 'options') {
-          const menu = document.querySelector('#menu')!
-          menu.toggleAttribute('hidden')
-          node.setAttribute('aria-expanded', String(!menu.hasAttribute('hidden')))
-        }
-        if (node.id === 'message' || node.id === 'menu-message') document.querySelector('#alice')!.removeAttribute('hidden')
-        if (node.id === 'menu-message') {
-          document.querySelector('#menu')!.setAttribute('hidden', '')
-          document.querySelector('#options')!.setAttribute('aria-expanded', 'false')
-          if (entry === 'menu-inbox' || entry === 'menu-inbox-root') {
-            const inbox = document.createElement('main')
-            inbox.id = 'inbox'
-            inbox.innerHTML = '<nav aria-label="Thread list"></nav>'
-            inbox.append(document.querySelector('#alice')!)
-            document.body.append(inbox)
-            close.remove()
-            document.querySelector('#profile')!.setAttribute('hidden', '')
-            url = entry === 'menu-inbox' ? 'https://www.instagram.com/direct/t/123/' : 'https://www.instagram.com/direct/inbox/'
-          }
-        }
-        if (node.id === 'alice-profile' || node.id === 'alice-view-profile') {
-          assert.ok(url.includes('/direct/'), 'The native profile link is used only to leave the inbox')
-          url = 'https://www.instagram.com/alice/'
-          const chat = document.querySelector('#alice')!
-          chat.append(close)
-          document.querySelector('#chats')!.append(chat)
-          document.querySelector('#inbox')!.remove()
-          document.querySelector('#profile')!.removeAttribute('hidden')
-          if (restored !== 'chat') chat.setAttribute('hidden', '')
-          const showPopup = () => {
-            if (restored === 'delayed-chat') chat.removeAttribute('hidden')
-            else if (restored.includes('messages')) {
-              const panel = document.createElement('div')
-              panel.id = 'messages-panel'
-              panel.innerHTML = '<div><h3>Messages</h3><button aria-label="Expand"></button><button id="messages-close" aria-label="Close"></button></div><p>No chats</p>'
-              document.body.append(panel)
-            }
-          }
-          if (restored.startsWith('delayed-')) restorePopup = () => {
-            calls.push('wait-restored-popup')
-            restorePopup = () => {}
-            showPopup()
-          }
-          else showPopup()
-          afterProfileClick()
-        }
-        if (node.id === 'messages-close') document.querySelector('#messages-panel')!.remove()
-        else if (node.id.endsWith('-close')) node.closest('#alice,#other')!.setAttribute('hidden', '')
-      } }
+        evaluate: async <T, A>(fn: (element: Element, arg: A) => T, arg: A) => fn.name === 'scrollBounds'
+          ? visibleActionGeometry.evaluate(element => fn(element, arg)) : fn(node, arg),
+      }
     }
     async press(key: string) {
       assert.equal(this.keyboardSupported, true, 'Cloak rejects chained keyboard selectors')

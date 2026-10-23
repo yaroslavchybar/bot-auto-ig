@@ -44,8 +44,7 @@ async function fixture(options: { missing?: boolean; budgetMs?: number; hardMs?:
   const story = { ...visibleActionGeometry, first() { return this }, evaluateAll: async () => owners,
     isVisible: async () => !options.missing,
     waitFor: async () => { if (options.missing) throw new errors.TimeoutError('No unseen stories') },
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {},
-      click: async () => { opened = true }, dispose: async () => {} }),
+    hover: async () => {}, click: async () => { opened = true },
   }
   const page = { viewportSize: () => ({ width: 1280, height: 800 }),
     url: () => opened ? 'https://www.instagram.com/stories/' + frames[index]!.owner + '/' : 'https://www.instagram.com/',

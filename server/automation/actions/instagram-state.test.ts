@@ -24,14 +24,10 @@ function metaAccountFixture(remainsOpen = false) {
   }
   const close = {
     first() { return this }, filter() { return this }, isVisible: async () => visible(),
-    elementHandle: async () => ({ ...visibleActionGeometry,
-      hover: async () => { clicks.push('cursor-to-close') },
-      click: async () => {
-        clicks.push('meta-close')
-        if (!remainsOpen) window.document.querySelector('#meta')?.remove()
-      },
-      dispose: async () => {},
-    }),
+    ...visibleActionGeometry, hover: async () => { clicks.push('cursor-to-close') }, click: async () => {
+      clicks.push('meta-close')
+      if (!remainsOpen) window.document.querySelector('#meta')?.remove()
+    },
   }
   const popup = {
     first() { return this }, filter() { return this }, isVisible: async () => visible(),
@@ -204,16 +200,12 @@ function notificationFixture(
       return this
     },
     isVisible: async () => opened,
-    elementHandle: async () => ({
-      ...visibleActionGeometry, hover: async () => {},
-      click: async () => {
-        if (options.closedBeforeError) opened = false
-        if (options.closeFailure) throw new Error('Element is not visible')
-        clicks.push('notification-close')
-        opened = false
-      },
-      dispose: async () => {},
-    }),
+    ...visibleActionGeometry, hover: async () => {}, click: async () => {
+      if (options.closedBeforeError) opened = false
+      if (options.closeFailure) throw new Error('Element is not visible')
+      clicks.push('notification-close')
+      opened = false
+    },
   }
   const heading = {
     filter() {
@@ -250,6 +242,7 @@ function notificationFixture(
     locator: (selector: string) => {
       if (selector.includes('svg[aria-label="Notifications"]'))
         return {
+          ...visibleActionGeometry,
           filter({ visible }: { visible: boolean }) {
             assert.equal(visible, true)
             return this
@@ -258,19 +251,14 @@ function notificationFixture(
             return this
           },
           isVisible: async () => !opened,
-          elementHandle: async () => {
+          waitFor: async () => {},
+          click: async () => {
             const selected = ++selections
-            return {
-              ...visibleActionGeometry, hover: async () => {},
-              click: async () => {
-                if (options.openedBeforeError) opened = true
-                if (selected <= (options.failures ?? 0))
-                  throw new Error('Element is not visible')
-                clicks.push('notifications')
-                opened = true
-              },
-              dispose: async () => {},
-            }
+            if (options.openedBeforeError) opened = true
+            if (selected <= (options.failures ?? 0))
+              throw new Error('Element is not visible')
+            clicks.push('notifications')
+            opened = true
           },
         }
       return {

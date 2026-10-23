@@ -22,14 +22,12 @@ for (const mode of ['normal', 'empty', 'expiry', 'cancelled'] as const)
       evaluate: async (fn: (element: Element) => unknown) => fn(node as unknown as Element),
       evaluateAll: async (fn: (elements: Element[]) => unknown) => fn(node ? [node as unknown as Element] : []),
       isVisible: async () => node === panelNode ? open : !!node,
-      waitFor: async ({ state }: { state: string }) => { assert.equal(open, state === 'visible') },
-      elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
-        click: async () => {
-          const label = node?.getAttribute('aria-label')
-          if (label === 'Comment') open = true
-          else { assert.equal(label, 'Close'); open = false; closes++ }
-        },
-      }),
+      waitFor: async ({ state }: { state: string }) => { if (state !== 'attached') assert.equal(open, state === 'visible') },
+      hover: async () => {}, click: async () => {
+        const label = node?.getAttribute('aria-label')
+        if (label === 'Comment') open = true
+        else { assert.equal(label, 'Close'); open = false; closes++ }
+      },
     }) as unknown as Locator
     const panel = locator(panelNode)
     const page = { url: () => 'https://www.instagram.com/reels/current/', viewportSize: () => ({ width: 1280, height: 800 }),

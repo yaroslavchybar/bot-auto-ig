@@ -1,4 +1,3 @@
-import { visibleActionGeometry } from './actions/action-locator.test-support.js'
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Window } from 'happy-dom';
@@ -90,7 +89,14 @@ test('private request cleanup prefers visible dialog confirmations without block
           assert.equal(clicked, layout === 'dialog' ? 'dialog-confirm' : 'page-confirm');
           complete();
         }
-        async elementHandle() { return { ...visibleActionGeometry, hover: async () => {}, click: () => this.click(), dispose: async () => {} }; }
+        async elementHandle() {
+          const node = this.find()[0]!;
+          return {
+            ownerFrame: async () => ({ locator: (selector: string) => new Fields(() => Array.from(document.querySelectorAll(selector)) as unknown as Element[]) }),
+            evaluate: async <T, A>(fn: (node: Element, arg: A) => T, arg: A) => fn(node, arg),
+            dispose: async () => {},
+          };
+        }
       }
       const page = { locator: (selector: string) => {
         if (selector.includes('="unfollow"')) {

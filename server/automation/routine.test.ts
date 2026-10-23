@@ -21,7 +21,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; }, filter() { return this; },
     getByRole() { return this; }, count: async () => 1, ...visibleActionGeometry, hover: async () => {}, isVisible: async () => false,
     page: () => page,
-    elementHandle: async function() { return this; }, dispose: async () => {},
+    dispose: async () => {},
     click: async () => { calls.push('message-button'); },
     fill: async (_text: string) => { calls.push('compose'); },
     press: async () => { calls.push('send'); },

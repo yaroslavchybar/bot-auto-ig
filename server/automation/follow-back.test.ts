@@ -18,7 +18,7 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
   globalThis.getComputedStyle = window.getComputedStyle.bind(window) as unknown as typeof getComputedStyle;
   let closed = false, scrolls = 0, wheels = 0;
   const close = { filter() { return this; }, first() { return this; }, isVisible: async () => !closed,
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => { closed = true; }, dispose: async () => {} }) };
+    ...visibleActionGeometry, hover: async () => {}, click: async () => { closed = true; } };
   const title = { filter() { return this; }, first() { return this; }, isVisible: async () => !closed,
     waitFor: async () => {}, evaluate: async (fn: (el: HTMLElement) => unknown) => fn(heading as unknown as HTMLElement),
     locator: (selector: string) => { assert.match(selector, /^xpath=ancestor::/); return { getByRole: () => close }; } };
@@ -28,11 +28,7 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
     getByRole: (role: string, opts: { name: string }) => role === 'heading'
       ? title
       : {
-        elementHandle: async () => ({
-          ...visibleActionGeometry, hover: async () => {},
-          click: async () => { if (opts.name === 'Close') closed = true; },
-          dispose: async () => {},
-        }),
+        ...visibleActionGeometry, hover: async () => {}, click: async () => { if (opts.name === 'Close') closed = true; },
         page: () => page,
         evaluate: async () => {
           const xpath = `/*[1]/*[${opts.name === 'Close' ? 3 : opts.name === 'Follows' ? 2 : 1}]`;

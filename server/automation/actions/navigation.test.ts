@@ -56,7 +56,6 @@ function mockConsentLocator<T extends object>(selector: string, control: (label:
   assert.match(selector, /^button:has-text\(/)
   const item = {
     ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
-    elementHandle: async () => item,
     innerText: async () => label,
     getByText: (text: string, { exact }: { exact: boolean }) => ({ count: async () => Number(exact && text === label) }),
     ...control(label),
@@ -129,7 +128,7 @@ test('dismisses a notification popup after leaving consent', async () => {
     isVisible: async () => label === 'Decline optional cookies' ? onConsent : label === 'Not Now' && !onConsent && notificationOpen,
     isEnabled: async () => true,
     locator: () => ({ count: async () => 1, elementHandle: async () => popup }),
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: () => control(label).click(), dispose: async () => {} }),
+    ...visibleActionGeometry, hover: async () => {},
     click: async () => {
       clicks.push(label)
       if (label === 'Decline optional cookies') onConsent = false
@@ -201,7 +200,7 @@ test('consent skips hidden and nonexact controls before clicking Agree', async (
   let onConsent = true
   const hidden = { isVisible: async () => false }
   const candidate = (text: string, hasAgreeChild = false) => ({
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => { clicks.push(text); onConsent = false }, dispose: async () => {} }),
+    ...visibleActionGeometry, hover: async () => {},
     isVisible: async () => true,
     isEnabled: async () => true,
     innerText: async () => text,
@@ -233,7 +232,7 @@ test('Not Now click does not report success while the popup remains', async () =
   const button = {
     count: async () => 1,
     nth: () => button,
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: () => button.click(), dispose: async () => {} }),
+    ...visibleActionGeometry, hover: async () => {},
     isVisible: async () => true,
     locator: () => ({ count: async () => 1, elementHandle: async () => popup }),
     click: async () => { clicks++ },
@@ -258,7 +257,7 @@ test('Not Now checks the clicked dialog when button indexes shift', async () => 
   }
   const hidden = { isVisible: async () => false }
   const first = {
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: () => first.click(), dispose: async () => {} }),
+    ...visibleActionGeometry, hover: async () => {},
     isVisible: async () => true,
     locator: () => ({ count: async () => 1, elementHandle: async () => popup }),
     click: async () => { firstPresent = false },
@@ -286,7 +285,7 @@ test('Not Now checks visible controls beyond three hidden matches', async () => 
   }
   const hidden = { isVisible: async () => false }
   const visible = {
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: () => visible.click(), dispose: async () => {} }),
+    ...visibleActionGeometry, hover: async () => {},
     isVisible: async () => true,
     locator: () => ({ count: async () => 1, elementHandle: async () => popup }),
     click: async () => { clicks++; open = false },

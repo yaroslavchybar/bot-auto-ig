@@ -11,16 +11,12 @@ function fixture(options: { missing?: boolean; wrongTarget?: boolean; checkpoint
   const control = (name: string) => ({ ...visibleActionGeometry,
     filter() { return this }, first() { return this }, isVisible: async () => true,
     waitFor: async () => { if (name === 'result' && options.missing) throw new errors.TimeoutError('Missing result') },
-    elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {},
-      hover: async () => { calls.push(`hover:${name}`) },
-      fill: async (value: string) => { query = value; calls.push(`type:${value}`) },
-      click: async () => {
-        calls.push(`click:${name}`)
-        if (name === 'result') url = options.wrongTarget ? 'https://www.instagram.com/alice_other/'
-          : query.startsWith('#') ? 'https://www.instagram.com/explore/search/keyword/?q=%23strengthtraining'
-          : 'https://www.instagram.com/alice/'
-      },
-    }),
+    hover: async () => { calls.push(`hover:${name}`) }, fill: async (value: string) => { query = value; calls.push(`type:${value}`) }, click: async () => {
+      calls.push(`click:${name}`)
+      if (name === 'result') url = options.wrongTarget ? 'https://www.instagram.com/alice_other/'
+        : query.startsWith('#') ? 'https://www.instagram.com/explore/search/keyword/?q=%23strengthtraining'
+        : 'https://www.instagram.com/alice/'
+    },
   })
   const page = { url: () => url,
     goto: async () => { throw new Error('Direct URL navigation is forbidden') },

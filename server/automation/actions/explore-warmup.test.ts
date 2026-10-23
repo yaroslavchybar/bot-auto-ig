@@ -62,8 +62,7 @@ test('topic results scroll the grid between opened posts without direct URL navi
     assert.equal(role, 'article'); return article
   } }
   const tile = { ...visibleActionGeometry, getAttribute: async () => scrolls ? '/p/two/' : '/p/one/', isVisible: async () => true,
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { now += 6000 },
-      click: async () => { url = `https://www.instagram.com/p/${scrolls ? 'two' : 'one'}/` }, dispose: async () => {} }) }
+    hover: async () => { now += 6000 }, click: async () => { url = `https://www.instagram.com/p/${scrolls ? 'two' : 'one'}/` } }
   const tiles = { first: () => ({ waitFor: async () => {} }), count: async () => 1, nth: () => tile,
     evaluateAll: async () => [{ href: await tile.getAttribute(), box: await tile.boundingBox() }],
   }
@@ -124,9 +123,7 @@ test('completed playback is recorded before optional comment reading expires', a
     getByRole: () => article,
   }
   const tile = { ...visibleActionGeometry, getAttribute: async () => '/p/one/', isVisible: async () => true,
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {},
-      click: async () => { url = 'https://www.instagram.com/p/one/' }, dispose: async () => {},
-    }),
+    hover: async () => {}, click: async () => { url = 'https://www.instagram.com/p/one/' },
   }
   const tiles = { first: () => ({ waitFor: async () => {} }), count: async () => 1, nth: () => tile,
     evaluateAll: async () => [{ href: await tile.getAttribute(), box: await tile.boundingBox() }],
@@ -163,9 +160,9 @@ for (const gridMatch of [false, true]) test(`Explore requires both grid and open
   }
   const dialog = { filter() { return this }, first() { return this }, getByRole: () => article }
   const item = { ...visibleActionGeometry, first() { return this }, isVisible: async () => true,
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => {
+    hover: async () => {}, click: async () => {
       clicks++; url = 'https://www.instagram.com/p/one/'
-    }, dispose: async () => {} }),
+    },
   }
   const tiles = { first: () => ({ waitFor: async () => {} }), evaluateAll: async () => [
     { href: '/p/one/', box: await item.boundingBox() },

@@ -148,7 +148,6 @@ function likeTarget(alreadyLiked: boolean, confirms: boolean, y = 100) {
   const button = {
     ...visibleActionGeometry,
     boundingBox: async () => ({ x: 100, y, width: 30, height: 30 }),
-    elementHandle: async () => button,
     hover: async () => {},
     dispose: async () => {},
     page: () => ({
@@ -167,33 +166,27 @@ test('visible-in-DOM but offscreen controls are not clicked', async () => {
   assert.equal(offscreen.clicks(), 0)
 })
 
-test('opening an author adapts the selected nested link before clicking', async () => {
+test('opening an author clicks the scoped locator directly', async () => {
   const window = new Window()
   window.document.body.innerHTML = '<a href="/alice/">alice</a>'
   const link = window.document.querySelector('a')!
   let currentUrl = 'https://www.instagram.com/'
   const author = {
+    ...visibleActionGeometry,
     first() { return this },
     getAttribute: async () => '/alice/',
     evaluate: async (fn: (node: Element) => unknown) => fn(link as unknown as Element),
     evaluateAll: async () => {},
     boundingBox: async () => ({ x: 100, y: 100, width: 100, height: 30 }),
     isVisible: async () => true,
-    elementHandle: async () => ({
-      ...visibleActionGeometry, hover: async () => {},
-      click: async () => { currentUrl = 'https://www.instagram.com/alice/' },
-      dispose: async () => {},
-    }),
+    waitFor: async () => {},
     page: () => page,
-    click: async () => { throw new Error('Cloak rejects a chained author selector') },
+    click: async () => { currentUrl = 'https://www.instagram.com/alice/' },
   }
   const page = {
     viewportSize: () => ({ width: 1280, height: 800 }),
     url: () => currentUrl,
-    locator: (selector: string) => {
-      assert.equal(window.document.querySelector(selector), link, 'the live marker must resolve only the selected author')
-      return author
-    },
+    locator: () => ({ filter: () => ({ evaluateAll: async () => null }) }),
   } as unknown as Page
   const target = { locator: () => author } as unknown as Locator
   const session = new BrowseSession()
@@ -236,9 +229,7 @@ test('story navigation and opening expiry stay local to the optional story chunk
     const story = { first() { return this }, waitFor: async () => {},
       evaluateAll: async () => ['alice'],
       isVisible: async () => { if (expiresAt === 'visibility') now += 11_000; return true },
-      elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {},
-        click: async () => { now += 11_000; throw new errors.TimeoutError('Story opening expired') },
-      }),
+      ...visibleActionGeometry, click: async () => { now += 11_000; throw new errors.TimeoutError('Story opening expired') },
     }
     const page = { url: () => expiresAt === 'navigation' ? 'https://www.instagram.com/alice/' : 'https://www.instagram.com/',
       goto: async (_url: string, options: { timeout: number }) => {
@@ -265,16 +256,15 @@ for (const stage of ['open', 'next']) test(`temporary story ${stage} failure ski
   let opened = false
   const control = { ...visibleActionGeometry, first() { return this }, waitFor: async () => {}, isVisible: async () => true,
     evaluateAll: async () => ['alice'],
-    elementHandle: async () => ({ ...visibleActionGeometry,
-      click: async () => { if (stage === 'open') throw failure; opened = true }, dispose: async () => {} }),
+    click: async () => { if (stage === 'open') throw failure; opened = true },
   }
   const next = { ...control, page: () => page,
-    elementHandle: async () => ({ ...visibleActionGeometry, click: async () => { throw failure }, dispose: async () => {} }),
+    ...visibleActionGeometry, click: async () => { throw failure },
   }
   const page = { url: () => opened ? 'https://www.instagram.com/stories/alice/1/' : 'https://www.instagram.com/', viewportSize: () => ({ width: 1280, height: 800 }),
     waitForURL: async () => {},
     getByRole: (_role: string, { name }: { name: string }) => ({ filter() { return this }, first() { return this },
-      isVisible: async () => name === 'Next', elementHandle: next.elementHandle }),
+      ...visibleActionGeometry, isVisible: async () => name === 'Next', waitFor: next.waitFor, click: next.click }),
     keyboard: { press: async () => {} },
     locator: (selector: string) => selector.includes('Story by') ? control : selector.includes('Next')
       ? { count: async () => 1, nth: () => next }
@@ -303,7 +293,7 @@ test('stories skip hidden or already-seen controls before choosing an unseen sto
           return { count: async () => nodes.length, first: () => ({
             waitFor: async () => { assert.ok(nodes[0]) },
             isVisible: async () => !!nodes[0] && nodes[0].getAttribute('style') !== 'display:none',
-            elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, click: async () => { clicked = nodes[0]!.id }, dispose: async () => {} }),
+            ...visibleActionGeometry, hover: async () => {}, click: async () => { clicked = nodes[0]!.id },
           }) }
         },
       } as unknown as Page
@@ -327,15 +317,12 @@ test('stories return zero for missing trays and only completed views after an ea
       ...visibleActionGeometry, hover: async () => {},
       click: async () => { opened = true; stopped = mode === 'stop on open' },
     }
-    const next = { ...control, elementHandle: async () => ({
-      ...visibleActionGeometry, hover: async () => {},
-      click: async () => { stopped = true }, dispose: async () => {},
-    }) }
+    const next = { ...control, ...visibleActionGeometry, hover: async () => {}, click: async () => { stopped = true } }
     const page = {
       goto: async () => {}, url: () => opened ? 'https://www.instagram.com/stories/alice/1/' : 'https://www.instagram.com/',
       waitForURL: async () => {},
       getByRole: (_role: string, { name }: { name: string }) => ({ filter() { return this }, first() { return this },
-        isVisible: async () => name === 'Next', elementHandle: next.elementHandle }),
+        ...visibleActionGeometry, isVisible: async () => name === 'Next', waitFor: next.waitFor, click: next.click }),
       viewportSize: () => ({ width: 1280, height: 800 }),
       keyboard: { press: async () => {} },
       locator: (selector: string) => selector.includes('Story by') ? control

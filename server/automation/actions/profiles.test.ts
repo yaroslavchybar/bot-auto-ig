@@ -20,12 +20,9 @@ for (const native of [false, true]) for (const expiresWhileOpening of [false, tr
     const author = { ...visibleActionGeometry, first() { return this }, getAttribute: async () => link.getAttribute('href'),
       evaluate: async (fn: (node: Element) => unknown) => fn(link as unknown as Element),
       isVisible: async () => true,
-      elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
-        click: async () => { url = profile; history.push(url); if (expiresWhileOpening) now = start + 121_000 },
-      }),
+      hover: async () => {}, click: async () => { url = profile; history.push(url); if (expiresWhileOpening) now = start + 121_000 },
     }
-    const tab = { ...author, elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {},
-      click: async () => { url = 'https://www.instagram.com/alice/reels/'; history.push(url) } }) }
+    const tab = { ...author, ...visibleActionGeometry, hover: async () => {}, click: async () => { url = 'https://www.instagram.com/alice/reels/'; history.push(url) } }
     const target = { locator: () => author } as unknown as Locator
     const restore = async () => { returns++; history.pop(); url = history.at(-1)! }
     const page = { url: () => url, viewportSize: () => ({ width: 1280, height: 800 }),

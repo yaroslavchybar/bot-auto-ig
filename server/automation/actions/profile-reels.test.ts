@@ -63,8 +63,8 @@ for (const mode of ['one', 'three', 'expiry'] as const)
       evaluateAll: async (fn: (nodes: Element[]) => unknown) => fn(resolve() ? [resolve() as unknown as Element] : []),
       count: async () => Number(!!resolve()), isVisible: async () => !!resolve(),
       boundingBox: async () => resolve()?.getBoundingClientRect() ?? null,
-      waitFor: async ({ state }: { state: string }) => { assert.equal(!!resolve(), state === 'visible') },
-      elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {}, dispose: async () => {}, click: async () => action(resolve()) }),
+      waitFor: async ({ state }: { state: string }) => { assert.equal(!!resolve(), state !== 'hidden') },
+      hover: async () => {}, click: async () => action(resolve()),
     }) as unknown as Locator
     const page = { url: () => url, viewportSize: () => ({ width: 1280, height: 800 }),
       locator: (selector: string) => selector === 'main a[href*="/reel/"]' ? {

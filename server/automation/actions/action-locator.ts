@@ -1,16 +1,38 @@
+import { randomUUID } from 'node:crypto'
 import type { ElementHandle, Locator, Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import type { HumanConfig } from 'cloakbrowser/human'
 import { BrowseSession } from './session.js'
 
-/** Pin the element and share its selection budget; Cloak owns scrolling, movement and input. */
-export async function actionLocator(target: Locator, timeout = 10_000): Promise<Pick<ElementHandle, 'click' | 'dblclick' | 'fill' | 'hover' | 'dispose'>> {
+/** Pin identity with a temporary marker; only locator input can disambiguate shared boxes in Cloak. */
+export async function actionLocator(target: Locator, timeout = 10_000): Promise<Pick<Locator, 'click' | 'dblclick' | 'fill' | 'hover'> & Pick<ElementHandle, 'dispose'>> {
   const selectionDeadline = timeout > 0 ? Date.now() + timeout : Infinity
   const element = await target.elementHandle({ timeout })
   if (!element) throw new Error('Action target is detached or missing')
+  const attribute = `data-igbot-action-${randomUUID()}`
+  let disposed = false
+  const dispose = async () => {
+    if (disposed) return
+    disposed = true
+    await element.evaluate((node, name) => node.removeAttribute(name), attribute).catch(() => {})
+    await element.dispose().catch(() => {})
+  }
+  let anchored: Locator
+  try {
+    const frame = await element.ownerFrame()
+    if (!frame) throw new Error('Action target is detached or missing')
+    await element.evaluate((node, name) => {
+      if (!node.isConnected) throw new Error('Action target is detached or missing')
+      node.setAttribute(name, '')
+    }, attribute)
+    anchored = frame.locator(`[${attribute}]`)
+  } catch (error) {
+    await dispose()
+    throw error
+  }
   const run = async (action: () => Promise<void>) => {
     try { await action() }
-    finally { await element.dispose().catch(() => {}) }
+    finally { await dispose() }
   }
   // Fully visible targets need no extra centering.
   const humanOptions: { human_config: Partial<HumanConfig> } = { human_config: { scroll_target_zone: [0, 1] } }
@@ -21,24 +43,24 @@ export async function actionLocator(target: Locator, timeout = 10_000): Promise<
     if (remaining <= 0) throw new errors.TimeoutError('Action timed out while revealing its target')
     return Number.isFinite(remaining) ? remaining : 0
   }
-  const click = (method: 'click' | 'dblclick', options?: Parameters<ElementHandle['click']>[0]) => run(async () => {
+  const click = (method: 'click' | 'dblclick', options?: Parameters<Locator['click']>[0]) => run(async () => {
     // A caller may pass its remaining session time after selection. Cap that
     // fresh action budget at the original deadline without subtracting selection twice.
     const deadline = deadlineFor(options?.timeout)
     if (deadline <= Date.now()) throw new errors.TimeoutError('Click timed out while selecting its target')
-    await element[method]({ ...humanOptions, ...options, timeout: remainingTimeout(deadline) })
+    await anchored[method]({ ...humanOptions, ...options, timeout: remainingTimeout(deadline) })
   })
   return {
-    dispose: () => element.dispose(),
+    dispose,
     click: options => click('click', options),
     dblclick: options => click('dblclick', options),
     fill: (value, options) => run(async () => {
       const deadline = deadlineFor(options?.timeout)
-      await element.fill(value, { ...humanOptions, ...options, timeout: remainingTimeout(deadline) })
+      await anchored.fill(value, { ...humanOptions, ...options, timeout: remainingTimeout(deadline) })
     }),
     hover: options => run(async () => {
       const deadline = deadlineFor(options?.timeout)
-      await element.hover({ ...humanOptions, ...options, timeout: remainingTimeout(deadline) })
+      await anchored.hover({ ...humanOptions, ...options, timeout: remainingTimeout(deadline) })
     }),
   }
 }
@@ -48,7 +70,7 @@ export async function clickAction(target: Locator, timeout = 10_000): Promise<vo
   await (await actionLocator(target, timeout)).click({ timeout })
 }
 
-/** Cloak 0.6 supports scoped locators directly; pin the selected control without DOM markers. */
+/** Recheck cancellation after waiting for the target and before starting Cloak's input action. */
 export async function clickLiveAction(_page: Page, target: Locator, session: BrowseSession, maxTimeout = 5000): Promise<void> {
   const timeout = session.timeout(maxTimeout)
   const options = { timeout, human_config: { scroll_target_zone: [0, 1], mouse_overshoot_chance: 0 } }
@@ -56,7 +78,7 @@ export async function clickLiveAction(_page: Page, target: Locator, session: Bro
   try {
     session.check()
   } catch (error) {
-    await action.dispose().catch(() => {})
+    await action.dispose()
     throw error
   }
   await action.click(options)

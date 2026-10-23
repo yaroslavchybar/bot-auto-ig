@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
 import { BrowseSession, SessionEnded } from './session.js'
 import { publishFeedPost } from './publish.js'
-import { visibleActionGeometry } from './action-locator.test-support.js'
+import { actionElementHandle, visibleActionGeometry } from './action-locator.test-support.js'
 
 type Box = { x: number; y: number; width: number; height: number }
 const box = (): Box => ({ x: 10, y: 10, width: 100, height: 20 })
@@ -16,7 +16,7 @@ class FakeItem {
   async isVisible(): Promise<boolean> { return this.visible() }
   async click(_options?: unknown): Promise<void> { this.onClick?.() }
   async hover(): Promise<void> {}
-  async elementHandle(): Promise<FakeItem> { return this }
+  elementHandle = actionElementHandle
   async dispose(): Promise<void> {}
   async setInputFiles(files: FakePage['files'], _options?: unknown): Promise<void> { this.owner.files = [...files] }
   async waitFor(_options?: unknown): Promise<void> { if (!this.visible()) throw new Error('timeout') }
@@ -33,7 +33,7 @@ class FakeLocator {
   async isVisible(): Promise<boolean> { return this.visible() }
   async waitFor(_options?: unknown): Promise<void> { if (!this.visible()) throw new Error('timeout') }
   async click(_options?: unknown): Promise<void> { this.onClick?.() }
-  async elementHandle(): Promise<FakeItem> { return this.first() }
+  elementHandle = actionElementHandle
   async getAttribute(_name?: unknown): Promise<null> { return null }
   locator(selector: string): FakeLocator { return this.page.locator(selector) }
 }
