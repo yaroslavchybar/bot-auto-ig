@@ -20,12 +20,11 @@ import { EXPLORE_TILE_SELECTOR, matchExploreGrid, readExploreTiles } from './exp
 export const EXPLORE_WARMUP_LAST_DAY = 4
 
 /** Search through the UI, scan the grid, and return to it after each opened post. */
-export async function watchTopicPosts(page: Page, topic: string, count: number, budget: WarmupActivityBudget,
+export async function watchTopicPosts(page: Page, topic: string, budget: WarmupActivityBudget,
   seen: Set<string>, session: BrowseSession, log: ActionLogger, maintenance = false, matchesTopic: TopicMatcher = topicContentMatches,
   topics: readonly string[], deps: { search: typeof openTopicResults; scroll: typeof smoothScroll; skip?: typeof quickScroll; grid?: typeof matchExploreGrid } = {
     search: openTopicResults, scroll: smoothScroll, skip: quickScroll, grid: matchExploreGrid,
   }): Promise<void> {
-  if (count <= 0) return
   if (!await deps.search(page, topic, session)) return
   const tiles = page.locator(EXPLORE_TILE_SELECTOR)
   await tiles.first().waitFor({ state: 'visible', timeout: session.timeout(10_000) }).catch(() => {})
@@ -33,7 +32,7 @@ export async function watchTopicPosts(page: Page, topic: string, count: number, 
   await assertInstagramReady(page)
   let watched = 0
   const inspected = new Map<string, boolean>()
-  for (let step = 0; step < count + 15 && watched < count; step++) {
+  while (!session.stopped()) {
     session.check()
     const viewport = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
     const visible = (await readExploreTiles(page)).filter(tile => !seen.has(tile.href))
@@ -107,7 +106,7 @@ export async function runExploreWarmup(page: Page, end: number, config: Record<s
     session.check()
     if (!terms.length) return
     const query = terms[Math.floor(deps.random(0, terms.length))]!
-    await deps.posts(page, query, Infinity, budget, new Set(), session, log,
+    await deps.posts(page, query, budget, new Set(), session, log,
       Number(config.warmup_day ?? 1) >= 2, topicContentMatches, topics)
   } catch (error) {
     if (error instanceof SessionEnded || session.stopped()) return

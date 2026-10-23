@@ -7,7 +7,7 @@ test('create and rename reject Windows device names, including extensions', asyn
   const profile = (await seedProfile(t, { name: 'Valid' }))!
   for (const name of ['CON', 'con.txt', 'PRN', 'AUX.json', 'NUL', 'COM1', 'com9.txt', 'LPT1', 'lpt9.log', 'profile' + String.fromCharCode(0)]) {
     await expect(t.mutation(api.profiles.mutations.create, { name })).rejects.toThrow(/Invalid profile name/)
-    await expect(t.mutation(api.profiles.mutations.updateById, { profileId: profile._id, name })).rejects.toThrow(/Invalid profile name/)
+    await expect(t.mutation(internal.profiles.mutations.updateByNameInternal, { oldName: (await t.run(ctx => ctx.db.get(profile._id)))!.name, name })).rejects.toThrow(/Invalid profile name/)
   }
   expect((await t.query(api.profiles.queries.getById, { profileId: profile._id }))?.name).toBe('Valid')
 })
@@ -21,7 +21,7 @@ test('deletion remains pending through runtime updates and blocks edits', async 
   await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: profile.name })
   await t.mutation(internal.profiles.mutations.syncStatusInternal, { name: profile.name, status: 'idle', inUse: false })
   expect(await t.query(api.profiles.queries.getById, { profileId: profile._id })).toMatchObject({ status: 'deleting' })
-  await expect(t.mutation(api.profiles.mutations.updateById, { profileId: profile._id, name: 'Renamed' })).rejects.toThrow(/maintenance/)
+  await expect(t.mutation(internal.profiles.mutations.updateByNameInternal, { oldName: (await t.run(ctx => ctx.db.get(profile._id)))!.name, name: 'Renamed' })).rejects.toThrow(/maintenance/)
   await expect(t.mutation(api.profiles.mutations.create, { name: 'delete ME' })).rejects.toThrow(/already in use/)
   await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
   await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
@@ -34,7 +34,7 @@ test('rename reserves both names until filesystem work is acknowledged', async (
   await t.mutation(internal.profiles.mutations.updateByNameInternal, { oldName: 'Old', name: 'New' })
   expect(await t.query(api.profiles.queries.getById, { profileId: profile._id })).toMatchObject({ name: 'New', pendingRenameFrom: 'Old' })
   await expect(t.mutation(api.profiles.mutations.create, { name: 'Old' })).rejects.toThrow(/already in use/)
-  await expect(t.mutation(api.profiles.mutations.updateById, { profileId: profile._id, name: 'Next' })).rejects.toThrow(/maintenance/)
+  await expect(t.mutation(internal.profiles.mutations.updateByNameInternal, { oldName: (await t.run(ctx => ctx.db.get(profile._id)))!.name, name: 'Next' })).rejects.toThrow(/maintenance/)
   await t.mutation(internal.profiles.mutations.finishRenameInternal, { profileId: profile._id })
   expect((await t.query(api.profiles.queries.getById, { profileId: profile._id }))?.pendingRenameFrom).toBeUndefined()
   await t.mutation(api.profiles.mutations.create, { name: 'Old' })

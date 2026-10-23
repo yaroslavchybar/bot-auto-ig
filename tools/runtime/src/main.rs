@@ -163,11 +163,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if mode == "helper" {
         tokio::select! {
             result = &mut server => {
-                if let Some(native) = api_state.native.get() { native.accounts.shutdown().await; native.coordination.shutdown().await; native.processes.shutdown().await?; }
+                if let Some(native) = api_state.native.get() { native.shutdown().await?; }
                 result??;
             },
             _ = helper_shutdown() => {
-                if let Some(native) = api_state.native.get() { native.accounts.shutdown().await; native.coordination.shutdown().await; native.processes.shutdown().await?; }
+                if let Some(native) = api_state.native.get() { native.shutdown().await?; }
                 let _ = stop.send(true);
                 if let Ok(result) = tokio::time::timeout(Duration::from_secs(5), server).await { result??; }
             }
@@ -190,12 +190,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let result = tokio::select! {
         result = child.wait() => result,
         _ = &mut server => {
-            if let Some(native) = api_state.native.get() { native.accounts.shutdown().await; native.coordination.shutdown().await; native.processes.shutdown().await?; }
+            if let Some(native) = api_state.native.get() { native.shutdown().await?; }
             child.kill().await?;
             return Err("Native runtime stopped unexpectedly".into());
         },
         _ = shutdown() => {
-            if let Some(native) = api_state.native.get() { native.accounts.shutdown().await; native.coordination.shutdown().await; native.processes.shutdown().await?; }
+            if let Some(native) = api_state.native.get() { native.shutdown().await?; }
             #[cfg(unix)]
             if let Some(pid) = child.id() { unsafe { libc::kill(pid as i32, libc::SIGTERM); } }
             match tokio::time::timeout(Duration::from_secs(60), child.wait()).await {
@@ -205,9 +205,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     }?;
     if let Some(native) = api_state.native.get() {
-        native.accounts.shutdown().await;
-        native.coordination.shutdown().await;
-        native.processes.shutdown().await?;
+        native.shutdown().await?;
     }
     let _ = stop.send(true);
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;

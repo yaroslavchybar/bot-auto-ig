@@ -16,7 +16,6 @@ import {
   numeric,
   random,
   type ActionLogger,
-  type StopCheck,
 } from './shared.js'
 
 const REEL_URL = /\/reels\/([A-Za-z0-9_-]+)\/?/
@@ -296,15 +295,12 @@ export async function waitForReelOutreach(page: Page, until: number, config: Rec
   return true
 }
 
-// Browse until the session deadline; a finite count is only used by bounded callers.
+// Viewing ends with the session or an unavailable/stalled viewer; counts are metrics only.
 export async function watchReels(
   page: Page,
-  count: number,
+  session: BrowseSession,
   config: Record<string, unknown>,
   log: ActionLogger,
-  shouldStop: StopCheck,
-  end: number,
-  session = new BrowseSession(end, shouldStop),
   budget?: WarmupActivityBudget,
   matchesTopic: TopicMatcher = topicContentMatches,
   seen = new Set<string>(),
@@ -314,7 +310,6 @@ export async function watchReels(
   const viewMin = Math.max(0, numeric(config.post_view_min_seconds, 2))
   const viewMax = Math.max(viewMin, numeric(config.post_view_max_seconds, 5))
   let watched = 0
-  const target = Math.max(0, Math.round(count))
   const topics = warmupTopics(config.warmup_topics)
   const advance = async () => {
     const moved = await advanceReel(page, session, log)
@@ -322,8 +317,7 @@ export async function watchReels(
     if (moved && budget) budget.browsed++
     return moved
   }
-  let inspected = 0
-  while (watched < target && inspected++ < target + 15 && Date.now() < end && !shouldStop()) {
+  while (!session.stopped()) {
     await assertInstagramReady(page)
     const id = reelId(page.url())
     if (id) {
@@ -342,7 +336,7 @@ export async function watchReels(
       // Sponsored reel: advance before classification or engagement.
       if (adMarker) {
         log({ event: 'automation.actions.reels.skipped_reel_ad', message: 'Skipped reel ad', adMarker })
-        if (Date.now() >= end || shouldStop()) break
+        if (session.stopped()) break
         if (!await advance()) {
           log({ event: 'automation.actions.reels.stalled', reason: 'Reel advancement failed' })
           break
@@ -391,8 +385,7 @@ export async function watchReels(
     }
     if (viewed) watched++
     await assertInstagramReady(page)
-    if (Date.now() >= end || shouldStop()) break
-    if (watched >= target) break
+    if (session.stopped()) break
     if (!await advance()) {
       log({ event: 'automation.actions.reels.stalled', reason: 'Reel advancement failed' })
       break

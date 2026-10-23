@@ -19,10 +19,10 @@ function setup(day = 8) {
     unreadNotifications: async () => true,
     inbox: async () => { calls.push('inbox'); return true }, home: async () => { calls.push('home') },
     openReels: async () => { calls.push('open-reels'); return true },
-    stories: async (_page, count, _log, _stop, timing) => {
-      calls.push('stories'); assert.equal(count, Infinity)
-      assert.equal(timing.budget, budget); assert.equal(timing.sessionDeadline, context.deadline)
-      assert.equal(timing.deadline! - now, 60_000); now += 60_000; return 12
+    stories: async (_page, session, _log, timing) => {
+      calls.push('stories')
+      assert.equal(timing.budget, budget); assert.equal(session.end, context.deadline)
+      assert.equal(timing.watchUntil - now, 60_000); now += 60_000; return 12
     },
     content: async (_page, end, _config, shared) => { calls.push('content'); assert.equal(shared, budget); now = end; budget.browsed++; return 'finished' },
     terms: async () => ['fishing'], follow: async () => { calls.push('follow') },
@@ -233,15 +233,15 @@ for (const [home, reels] of [[true, true], [true, false], [false, true], [false,
     const state: FeedState = { next: 'home', homeSeen: new Set(), reelsSeen: new Set() }
     const deps: NonNullable<Parameters<typeof browseContent>[7]> = {
       now: () => now, random: min => min,
-      home: async (_page, minutes, _config, _log, _stop, shared, _matcher, seen) => {
+      home: async (_page, session, _config, _log, shared, _matcher, seen) => {
         assert.ok(home); assert.equal(shared, budget); assert.equal(seen, state.homeSeen)
-        calls.push('home'); now += minutes * 60_000; budget.browsed++; return 'finished'
+        calls.push('home'); now = session.end; budget.browsed++; return 'finished'
       },
       openReels: async () => { assert.ok(reels); calls.push('open-reels'); return true },
-      reels: async (_page, count, _config, _log, _stop, deadline, session, shared, _matcher, seen) => {
-        assert.equal(count, Infinity); assert.equal(deadline, session.end); assert.ok(deadline <= end)
+      reels: async (_page, session, _config, _log, shared, _matcher, seen) => {
+        assert.ok(session.end <= end)
         assert.equal(shared, budget); assert.equal(seen, state.reelsSeen)
-        calls.push('reels'); now = deadline; budget.used.reels += 10; budget.browsed++
+        calls.push('reels'); now = session.end; budget.used.reels += 10; budget.browsed++
       },
     }
     const result = await browseContent({} as Page, end, { browse_home_feed: home, scroll_reels: reels }, budget, state,
@@ -256,7 +256,7 @@ test('failed Reels opening falls back to enabled Home feed, while account warnin
   let now = Date.now(), homes = 0
   const end = now + 180_000
   const deps = { now: () => now, random: (min: number) => min, openReels: async () => false,
-    home: async (_page: Page, minutes: number) => { homes++; now += minutes * 60_000; budget.browsed++; return 'finished' as const },
+    home: async (_page: Page, session: { end: number }) => { homes++; now = session.end; budget.browsed++; return 'finished' as const },
     reels: async () => { throw new Error('An unopened viewer must not be used') },
   }
   const state: FeedState = { next: 'reels', homeSeen: new Set(), reelsSeen: new Set() }
@@ -273,10 +273,10 @@ test('a content slice expiry does not stop the entire browsing session', async (
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 0, stories: 0 })
   const state: FeedState = { next: 'reels', homeSeen: new Set(), reelsSeen: new Set() }
   const deps = { now: () => now, random: (min: number) => min, openReels: async () => true,
-    reels: async (_page: Page, _count: number, _config: unknown, _log: unknown, _stop: unknown, deadline: number) => {
-      budget.browsed++; now = deadline; throw new SessionEnded()
+    reels: async (_page: Page, session: { end: number }) => {
+      budget.browsed++; now = session.end; throw new SessionEnded()
     },
-    home: async (_page: Page, minutes: number) => { budget.browsed++; now += minutes * 60_000; return 'finished' as const },
+    home: async (_page: Page, session: { end: number }) => { budget.browsed++; now = session.end; return 'finished' as const },
   }
   assert.equal(await browseContent({} as Page, end, {}, budget, state, () => {}, () => false, deps), 'finished')
   assert.equal(now, end)

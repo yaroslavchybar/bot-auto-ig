@@ -1,5 +1,5 @@
 import { useDocumentVisibility } from './use-document-visibility'
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { env } from '@/lib/env'
 import { useAppAuth } from '@/lib/auth'
 import { addWebSocketBreadcrumb } from '@/lib/sentry'
@@ -9,7 +9,6 @@ export type WebSocketMessage = WorkerEvent
 
 interface UseWebSocketOptions {
   url?: string
-  autoConnect?: boolean
   enabled?: boolean
   pauseWhenHidden?: boolean
   topic?: SocketTopic
@@ -52,10 +51,8 @@ function safeCloseSocket(ws: WebSocket | null) {
 type SocketConnection = {
   ws: WebSocket | null
   connecting: boolean
-  intentionalDisconnect: boolean
   reconnectTimer: ReturnType<typeof setTimeout> | null
   reconnectAttempt: number
-  cancelled: { current: boolean }
 }
 
 async function connectWebSocket(options: {
@@ -110,15 +107,12 @@ async function connectWebSocket(options: {
 /* ── Schedule reconnection with backoff ── */
 
 function scheduleReconnect(options: {
-  autoConnect: boolean
-  enabled: boolean
-  isVisible: boolean
   connection: SocketConnection
   cancelled: { current: boolean }
   retry: () => void
 }) {
-  const { autoConnect, enabled, isVisible, connection, cancelled, retry } = options
-  if (autoConnect && enabled && isVisible && !cancelled.current) {
+  const { connection, cancelled, retry } = options
+  if (!cancelled.current) {
     const delay = getReconnectDelay(connection.reconnectAttempt++)
     connection.reconnectTimer = setTimeout(() => {
       if (!cancelled.current) retry()
@@ -149,7 +143,6 @@ function cleanupConnection(
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {
     url,
-    autoConnect = true,
     enabled = true,
     pauseWhenHidden = false,
     onEvent,
@@ -166,10 +159,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const connectionRef = useRef<SocketConnection>({
     ws: null,
     connecting: false,
-    intentionalDisconnect: false,
     reconnectTimer: null,
     reconnectAttempt: 0,
-    cancelled: { current: false },
   })
 
   const handleSocketMessage = useEffectEvent((rawMessage: string) => {
@@ -185,20 +176,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   useEffect(() => {
     if (!enabled || (pauseWhenHidden && !isVisible)) return
-    if (!autoConnect && reconnectCounter === 0) return
     const connection = connectionRef.current
     const rs = connection.ws?.readyState
     if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return
     if (connection.connecting) return
 
-    connection.intentionalDisconnect = false
     const cancelled = { current: false }
-    connection.cancelled = cancelled
     const reconnect = () =>
       scheduleReconnect({
-        autoConnect,
-        enabled,
-        isVisible,
         connection,
         cancelled,
         retry: () => setReconnectCounter((count) => count + 1),
@@ -223,25 +208,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           setConnected(false)
           connection.ws = null
           addWebSocketBreadcrumb('close', wsUrl)
-          if (!connection.intentionalDisconnect) reconnect()
+          reconnect()
         }
       })
       .catch(() => {
         connection.connecting = false
-        if (!connection.intentionalDisconnect) reconnect()
+        reconnect()
       })
 
     return () => cleanupConnection(connection, cancelled, setConnected)
-  }, [wsUrl, autoConnect, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible])
+  }, [wsUrl, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible])
 
-  const connect = useCallback(() => {
-    setReconnectCounter((c) => c + 1)
-  }, [])
-  const disconnect = useCallback(() => {
-    const connection = connectionRef.current
-    connection.intentionalDisconnect = true
-    cleanupConnection(connection, connection.cancelled, setConnected)
-  }, [])
-
-  return { connected, connect, disconnect }
+  return { connected }
 }

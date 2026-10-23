@@ -9,7 +9,7 @@ import { pruneOldCloakBrowsers } from './browser/cloakCache.js'
 import logger, { logOperation, addLogContext, redactLogValues } from './shared/logger.js'
 import { automationsReconcileInterrupted } from './shared/convexClient.js'
 import { startRuntime, stopRuntime, runtimeRequest } from './shared/runtime.js'
-import { Commands } from './worker/commands.js'
+import type { Commands } from './worker/commands.js'
 
 import { cancelBrowserLogin, runBrowserLogin, shutdownBrowserLogins } from './ig-accounts/login.js'
 import { ValidationError } from './shared/errors.js'
@@ -18,44 +18,57 @@ import { createWorkerServer } from './worker/server.js'
 import { interestCommands } from './automation/interests.js'
 
 captureConsole()
-const callbacks = new Commands()
-callbacks.include(interestCommands())
-callbacks.register('browser.shutdown', 'POST', '/', async (_req, res) => {
-  await shutdownBrowserLogins()
-  res.json({ stopped: true })
-})
-callbacks.register('browser.login', 'POST', '/', async (req, res) => {
-  const { attemptId, profileName, proxy, account } = req.body ?? {}
-  if (
-    typeof attemptId !== 'string' ||
-    !/^[\da-f-]{36}$/.test(attemptId) ||
-    typeof profileName !== 'string' ||
-    typeof proxy !== 'string' ||
-    typeof account?.username !== 'string' ||
-    typeof account?.password !== 'string' ||
-    typeof account?.authenticatorKey !== 'string'
-  )
-    throw new ValidationError('Invalid browser login')
-  redactLogValues(account.password, account.authenticatorKey, proxy)
-  const disconnected = () => {
-    void cancelBrowserLogin(attemptId).catch(() => undefined)
-  }
-  const action = runBrowserLogin(attemptId, profileName, proxy, account)
-  res.once('close', disconnected)
-  try {
-    res.json(await action)
-  } finally {
-    res.off('close', disconnected)
-  }
-})
-callbacks.register('browser.cancel-login', 'POST', '/', async (req, res) => {
-  const { attemptId } = req.body ?? {}
-  if (typeof attemptId !== 'string' || !/^[\da-f-]{36}$/.test(attemptId))
-    throw new ValidationError('Invalid browser login attempt')
-  await cancelBrowserLogin(attemptId)
-  res.json({ cancelled: true })
-})
-const server = createWorkerServer([callbacks])
+const callbacks: Commands = {
+  ...interestCommands(),
+  'browser.shutdown': async () => {
+    await shutdownBrowserLogins()
+    return { stopped: true }
+  },
+  'browser.login': async ({ body, signal }) => {
+    if (!body || typeof body !== 'object') throw new ValidationError('Invalid browser login')
+    const { attemptId, profileName, proxy, account } = body as Record<string, unknown>
+    if (
+      typeof attemptId !== 'string' ||
+      !/^[\da-f-]{36}$/.test(attemptId) ||
+      typeof profileName !== 'string' ||
+      typeof proxy !== 'string' ||
+      !account ||
+      typeof account !== 'object' ||
+      !('username' in account) ||
+      typeof account.username !== 'string' ||
+      !('password' in account) ||
+      typeof account.password !== 'string' ||
+      !('authenticatorKey' in account) ||
+      typeof account.authenticatorKey !== 'string'
+    )
+      throw new ValidationError('Invalid browser login')
+    redactLogValues(account.password, account.authenticatorKey, proxy)
+    const disconnected = () => {
+      void cancelBrowserLogin(attemptId).catch(() => undefined)
+    }
+    signal.throwIfAborted()
+    const action = runBrowserLogin(attemptId, profileName, proxy, {
+      username: account.username,
+      password: account.password,
+      authenticatorKey: account.authenticatorKey,
+    })
+    signal.addEventListener('abort', disconnected, { once: true })
+    try {
+      return await action
+    } finally {
+      signal.removeEventListener('abort', disconnected)
+    }
+  },
+  'browser.cancel-login': async ({ body }) => {
+    const attemptId =
+      body && typeof body === 'object' && 'attemptId' in body ? body.attemptId : undefined
+    if (typeof attemptId !== 'string' || !/^[\da-f-]{36}$/.test(attemptId))
+      throw new ValidationError('Invalid browser login attempt')
+    await cancelBrowserLogin(attemptId)
+    return { cancelled: true }
+  },
+}
+const server = createWorkerServer(callbacks)
 const PORT = process.env.WORKER_PORT || 3005
 
 const STARTUP_RETRY_ATTEMPTS = 10

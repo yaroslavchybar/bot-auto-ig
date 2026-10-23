@@ -1,5 +1,5 @@
 import { expect, test } from 'vite-plus/test'
-import { api, internal } from '../../convex/_generated/api'
+import { internal } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 
 test('a replaced browser cannot clear runtime status or overwrite its successor cookies', async () => {
@@ -39,13 +39,6 @@ test('a replaced browser cannot clear runtime status or overwrite its successor 
   await expect(
     t.mutation(internal.profiles.mutations.updateByNameInternal, {
       oldName: 'fixture',
-      name: 'fixture',
-      cookiesJson: '[]',
-    }),
-  ).rejects.toThrow(/Close the browser/)
-  await expect(
-    t.mutation(api.profiles.mutations.updateById, {
-      profileId: id,
       name: 'fixture',
       cookiesJson: '[]',
     }),
@@ -93,8 +86,8 @@ test('startup claims reject stale revisions after close or cookie import and rem
   expect(await claim('second', 1)).toBe(true)
   await close('second')
   expect(await claim('late', 1)).toBe(false)
-  await t.mutation(api.profiles.mutations.updateById, {
-    profileId: id,
+  await t.mutation(internal.profiles.mutations.updateByNameInternal, {
+    oldName: (await t.run(ctx => ctx.db.get(id)))!.name,
     name: 'fixture',
     cookiesJson: '[]',
   })
@@ -139,7 +132,7 @@ test('lease recovery invalidates a pending startup claim before a replacement ca
   }))
   expect(await status('wrong-profile', 2, false, other)).toBe(false)
   // An idle cookie import also invalidates the captured lease revision.
-  await t.mutation(api.profiles.mutations.updateById, { profileId: id, name: 'fixture', cookiesJson: '[]' })
+  await t.mutation(internal.profiles.mutations.updateByNameInternal, { oldName: (await t.run(ctx => ctx.db.get(id)))!.name, name: 'fixture', cookiesJson: '[]' })
   expect(await status('pending-before-import', 2, false)).toBe(false)
   expect(await status('pending-before-import', 2, true)).toBe(false)
   expect(await status('fresh', 3, true)).toBe(true)

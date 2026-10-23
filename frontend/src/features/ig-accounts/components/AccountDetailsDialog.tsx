@@ -171,11 +171,13 @@ function WarmupStages({
   const fullNameSkipped = !progress.fullNameDone && (progress.avatarDone || posts > 0)
 
   const stages: Array<{
+    id: string
     label: string
     detail?: string
     state: StageState
   }> = [
     {
+      id: 'login',
       label: 'Browser login',
       detail: credential.browserLoggedInAt
         ? new Date(credential.browserLoggedInAt).toLocaleDateString('en-US', {
@@ -185,29 +187,35 @@ function WarmupStages({
       state: credential.browserLoggedInAt ? 'done' : 'current',
     },
     {
+      id: 'feed',
       label: 'Feed warmup (days 1–2)',
       state: day >= 3 ? 'done' : credential.browserLoggedInAt ? 'current' : 'waiting',
     },
     {
+      id: 'username',
       label: 'Username change',
       detail: progress.targetUsername ? `@${progress.targetUsername}` : undefined,
       state: progress.usernameDone ? 'done' : day >= 3 && !progress.pending ? 'current' : 'waiting',
     },
     {
+      id: 'fullName',
       label: 'Full name',
       detail: fullNameSkipped ? 'Skipped (no names for this model)' : progress.fullName,
       state: progress.fullNameDone || fullNameSkipped ? 'done' : 'waiting',
     },
     {
+      id: 'avatar',
       label: 'Avatar (day 4+)',
       state: progress.avatarDone ? 'done' : day >= 4 ? 'current' : 'waiting',
     },
     {
+      id: 'post',
       label: 'Feed posts',
       detail: `${posts}/${postTarget}${progress.postDates.length ? ` · last ${progress.postDates[progress.postDates.length - 1]}` : ''}`,
       state: posts >= postTarget ? 'done' : day >= 4 ? 'current' : 'waiting',
     },
     {
+      id: 'outreach',
       label: 'Outreach ready',
       detail: `Requires ${OUTREACH_MIN_POSTS} posts; Outreach starts from warm-up day 8`,
       state: progress.outreachReadyMarked ? 'done' : 'waiting',
@@ -217,15 +225,7 @@ function WarmupStages({
   // First incomplete stage is where the profile is right now.
   const currentIndex = stages.findIndex((stage) => stage.state !== 'done')
   const pendingKind = progress.pending?.kind
-  const attentionIndex = pendingKind
-    ? ({
-        name: 3,
-        username: 3,
-        fullName: 4,
-        avatar: 5,
-        post: 6,
-      }[pendingKind] ?? -1)
-    : -1
+  const attentionStage = stages.find(stage => stage.id === pendingKind)
 
   return (
     <div>
@@ -234,7 +234,7 @@ function WarmupStages({
         {new Date(progress.startedAt).toLocaleDateString('en-US', {
           timeZone: 'Europe/Kyiv',
         })}
-        {currentIndex >= 0 && attentionIndex < 0 && (
+        {currentIndex >= 0 && !attentionStage && (
           <> · now: {stages[currentIndex].label.toLowerCase()}</>
         )}
       </p>
@@ -262,13 +262,13 @@ function WarmupStages({
       <ul className="mt-3 space-y-2">
         {stages.map((stage, index) => {
           const state =
-            index === attentionIndex
+            stage === attentionStage
               ? 'attention'
               : index === currentIndex && stage.state !== 'done'
                 ? 'current'
                 : stage.state
           return (
-            <li key={stage.label} className="flex items-start gap-2.5">
+            <li key={stage.id} className="flex items-start gap-2.5">
               <span className="mt-0.5">
                 <StageDot state={state} />
               </span>

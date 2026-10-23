@@ -4,17 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-
-function parseUsernames(text: string): string[] {
-  return [
-    ...new Set(
-      text
-        .split(/[\s,]+/)
-        .map((name) => name.trim().replace(/^@/, '').toLowerCase())
-        .filter(Boolean),
-    ),
-  ]
-}
+import { parseModelUsernames, isValidModelUsername } from '../../../../../server/shared/modelIdentity'
 
 export function ModelCreateForm({
   saving,
@@ -30,9 +20,10 @@ export function ModelCreateForm({
   const [usernames, setUsernames] = useState('')
   const [error, setError] = useState('')
   const trimmed = name.trim()
-  const parsed = parseUsernames(usernames)
+  const parsed = parseModelUsernames(usernames).items
+  const invalid = parsed.filter(name => !isValidModelUsername(name))
   const save = () => {
-    if (trimmed && !saving) onSave({ name: trimmed, baseFullName: baseFullName.trim(), usernames: parsed })
+    if (trimmed && !saving && !invalid.length) onSave({ name: trimmed, baseFullName: baseFullName.trim(), usernames: parsed })
   }
 
   return (
@@ -115,16 +106,16 @@ export function ModelCreateForm({
           </label>
         </Button>
       </div>
-      {error && (
+      {(error || invalid.length > 0) && (
         <p role="alert" className="text-sm text-status-danger">
-          {error}
+          {error || `Invalid usernames (${invalid.length}). Use 1–30 letters, digits, periods or underscores.`}
         </p>
       )}
       <div className="flex justify-end gap-3">
         <Button variant="ghost" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
-        <Button onClick={save} disabled={saving || !trimmed} className="brand-button font-medium">
+        <Button onClick={save} disabled={saving || !trimmed || invalid.length > 0} className="brand-button font-medium">
           {saving ? 'Creating...' : 'Create'}
         </Button>
       </div>

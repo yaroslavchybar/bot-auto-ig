@@ -135,7 +135,7 @@ async fn bounded_json_handles_large_prefixed_data_and_rejects_oversized_bodies()
 }
 
 #[tokio::test]
-async fn streamed_body_limit_returns_413_and_releases_capacity() {
+async fn streamed_json_body_limit_returns_413_and_releases_capacity() {
     let worker = Fixture::start(|request| async {
         match axum::body::to_bytes(request.into_body(), 100).await {
             Ok(bytes) => bytes.into_response(),
@@ -150,12 +150,10 @@ async fn streamed_body_limit_returns_413_and_releases_capacity() {
     let slots = state.slots.clone();
     let state = Arc::new(state);
     let operation = Arc::new(Operation {
-        id: "fixture".into(),
+        id: "interests.post.rewrite".into(),
         method: "POST".into(),
         path: "/upload".into(),
-        body: "stream".into(),
         max_body: 8,
-        image_read: false,
     });
     let router = Router::new()
         .route(
@@ -184,146 +182,79 @@ async fn streamed_body_limit_returns_413_and_releases_capacity() {
 }
 
 #[tokio::test]
-async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
+async fn public_api_proxies_only_json_rewrites_and_native_routes_fail_closed() {
     let calls = Arc::new(AtomicUsize::new(0));
     let observed = calls.clone();
     let worker = Fixture::start(move |request| {
-        let calls = observed.clone();
+        let observed = observed.clone();
         async move {
-            calls.fetch_add(1, Ordering::SeqCst);
+            observed.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(request.uri().path(), "/commands/interests.post.rewrite");
             assert_eq!(request.headers()["authorization"], "Bearer worker-key");
-            let path = request.uri().path().to_string();
-            if path == "/health" {
-                return Json(json!({"ok":true})).into_response();
-            }
             assert_eq!(request.headers()["x-request-id"], "fixture-request-123");
-            let params: Value = serde_json::from_slice(
-                &URL_SAFE_NO_PAD
-                    .decode(request.headers()["x-worker-params"].as_bytes())
-                    .unwrap(),
-            )
-            .unwrap();
-            if path.ends_with("image") {
-                return (
-                    [("content-type", "image/jpeg"), ("vary", "Authorization")],
-                    vec![255u8, 216, 255, 217],
-                )
-                    .into_response();
-            }
-            if path.ends_with("name_start") {
-                assert_eq!(params["name"], "Profile A");
-                assert_eq!(request.headers()["x-worker-method"], "POST");
-                assert_eq!(body(request).await, json!({"value":42}));
-                return Json(json!({"success":true})).into_response();
-            }
-            if path.ends_with("profileId_connect") {
+            assert!(request.headers().get("x-worker-params").is_none());
+            assert!(request.headers().get("x-worker-method").is_none());
+            let input = body(request).await;
+            if input["label"] == "limited" {
                 return (
                     StatusCode::TOO_MANY_REQUESTS,
                     [("retry-after", "60")],
-                    Json(json!({"error":{"message":"Instagram is limiting requests."}})),
+                    Json(json!({"error":"limited"})),
                 )
                     .into_response();
             }
-            if path.contains("file-picker") {
-                assert_eq!(request.headers()["x-worker-method"], "POST");
-                let bytes = axum::body::to_bytes(request.into_body(), 100)
-                    .await
-                    .unwrap();
-                return bytes.into_response();
+            if input["label"] == "malformed" {
+                return "not JSON".into_response();
             }
-            Json(json!([])).into_response()
+            assert_eq!(input, json!({"label":"fishing"}));
+            Json(json!({"description":"Fishing techniques"})).into_response()
         }
     })
     .await;
-    let convex=Fixture::start(|request|async move{
-        assert_eq!(request.headers()["authorization"],"Bearer worker-key");
-        if request.uri().path()=="/api/profiles/by-id"{assert_eq!(request.uri().query(),Some("profileId=profile"));return Json(json!({"id":"profile","cookiesJson":"editable","instagramSessionId":"private-session","login":"private-login","testIp":"private-ip"})).into_response();}
-        Json(json!([{"id":"profile","cookiesJson":"private-cookies","instagramSessionId":"private-session","name":"Profile"}])).into_response()
-    }).await;
     let mut state = Api::from_env().unwrap();
     Arc::get_mut(&mut state.auth).unwrap().bypass = true;
     state.worker_url = worker.url.clone();
     state.key = "worker-key".into();
-    state.convex_url = convex.url.clone();
     let public = Fixture::router(router(Arc::new(state))).await;
     let client = reqwest::Client::new();
-    let start = client
-        .post(format!("{}/api/profiles/Profile%20A/start", public.url))
+    let rewrite = format!("{}/api/automations/interests/rewrite", public.url);
+    let result = client
+        .post(&rewrite)
         .header("x-request-id", "fixture-request-123")
-        .json(&json!({"value":42}))
+        .json(&json!({"label":"fishing"}))
         .send()
         .await
         .unwrap();
-    assert_eq!(start.status(), StatusCode::OK);
-    assert_eq!(start.headers()["x-request-id"], "fixture-request-123");
-    let reconnect = client
-        .post(format!("{}/api/ig-accounts/profile/connect", public.url))
+    assert_eq!(result.status(), StatusCode::OK);
+    assert_eq!(result.headers()["x-request-id"], "fixture-request-123");
+    assert_eq!(
+        result.json::<Value>().await.unwrap(),
+        json!({"description":"Fishing techniques"})
+    );
+    let limited = client
+        .post(&rewrite)
         .header("x-request-id", "fixture-request-123")
-        .json(&json!({"credentialId":"account"}))
+        .json(&json!({"label":"limited"}))
         .send()
         .await
         .unwrap();
-    assert_eq!(reconnect.status(), StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(reconnect.headers()["retry-after"], "60");
-    let profiles: Value = client
-        .get(format!("{}/api/profiles/", public.url))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(profiles, json!([{"id":"profile","name":"Profile"}]));
-    let profile: Value = client
-        .get(format!("{}/api/profiles/by-id?id=profile", public.url))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(profile, json!({"id":"profile","cookiesJson":"editable"}));
+    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(limited.headers()["retry-after"], "60");
     assert_eq!(
         client
-            .get(format!("{}/api/profiles/by-id", public.url))
+            .post(&rewrite)
+            .header("x-request-id", "fixture-request-123")
+            .json(&json!({"label":"malformed"}))
             .send()
             .await
             .unwrap()
             .status(),
-        StatusCode::BAD_REQUEST
+        StatusCode::BAD_GATEWAY
     );
-    let image = client
-        .get(format!(
-            "{}/api/ig-accounts/models/model/content/posts/content/image",
-            public.url
-        ))
-        .header("x-request-id", "fixture-request-123")
-        .header("origin", "http://localhost:5173")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(image.status(), StatusCode::OK);
-    assert_eq!(image.headers()["cache-control"], "private, max-age=3600");
-    assert!(image
-        .headers()
-        .get_all("vary")
-        .iter()
-        .any(|v| v == "Authorization"));
-    assert_eq!(image.bytes().await.unwrap().as_ref(), &[255, 216, 255, 217]);
-    let upload = client
-        .post(format!("{}/api/displays/5901/file-picker", public.url))
-        .header("x-request-id", "fixture-request-123")
-        .body(vec![0u8, 255, 1, 128])
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(upload.status(), StatusCode::OK);
-    assert_eq!(upload.bytes().await.unwrap().as_ref(), &[0, 255, 1, 128]);
     let before = calls.load(Ordering::SeqCst);
     assert_eq!(
         client
-            .post(format!("{}/api/profiles", public.url))
-            .header("content-type", "application/json")
+            .post(&rewrite)
             .body("invalid")
             .send()
             .await
@@ -331,26 +262,40 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
             .status(),
         StatusCode::BAD_REQUEST
     );
-    // Declared oversized bodies are rejected before any bytes reach the worker.
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let address = public.url.trim_start_matches("http://");
-    let mut socket = tokio::net::TcpStream::connect(address).await.unwrap();
-    socket.write_all(format!("POST /api/profiles HTTP/1.1\r\nHost: {address}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",1024*1024+1).as_bytes()).await.unwrap();
-    let mut response = vec![];
-    tokio::time::timeout(Duration::from_secs(3), socket.read_to_end(&mut response))
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(String::from_utf8_lossy(&response).starts_with("HTTP/1.1 413"));
-    assert_eq!(calls.load(Ordering::SeqCst), before);
     assert_eq!(
         client
-            .get(format!("{}/api/health", public.url))
+            .post(&rewrite)
+            .body(vec![0; 4097])
             .send()
             .await
             .unwrap()
             .status(),
-        StatusCode::OK
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    for (method, path) in [
+        (Method::GET, "/api/profiles/"),
+        (Method::GET, "/api/profiles/by-id?id=profile"),
+        (Method::POST, "/api/profiles/Profile/start"),
+        (
+            Method::GET,
+            "/api/ig-accounts/models/model/content/posts/content/image",
+        ),
+        (Method::POST, "/api/displays/5901/file-picker"),
+    ] {
+        assert_eq!(
+            client
+                .request(method, format!("{}{path}", public.url))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        before,
+        "native operations and rejected bodies must not reach Bun"
     );
 }
 
@@ -374,7 +319,7 @@ async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
                 .await
                 .unwrap()
                 .status(),
-            StatusCode::OK
+            StatusCode::SERVICE_UNAVAILABLE
         );
     }
     for _ in 0..100 {
@@ -385,7 +330,7 @@ async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
                 .await
                 .unwrap()
                 .status(),
-            StatusCode::OK
+            StatusCode::SERVICE_UNAVAILABLE
         );
     }
     assert_eq!(
@@ -437,7 +382,7 @@ async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
             .await
             .unwrap()
             .status(),
-        StatusCode::OK
+        StatusCode::SERVICE_UNAVAILABLE
     );
     assert_eq!(
         client

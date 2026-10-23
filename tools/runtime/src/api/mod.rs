@@ -12,7 +12,6 @@ use axum::{
     routing::{get, on, MethodFilter},
     Json, Router,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -180,9 +179,7 @@ struct Operation {
     id: String,
     method: String,
     path: String,
-    body: String,
     max_body: usize,
-    image_read: bool,
 }
 
 pub fn router(state: Arc<Api>) -> Router {
@@ -435,172 +432,73 @@ async fn invoke(
     request: Request,
 ) -> Response {
     if crate::native::Native::handles(&operation.id) {
-        if let Some(native) = state.native.get() {
-            return native.invoke(&operation.id, &params, request).await;
-        }
-    }
-    if operation.id == "profiles.get.list" || operation.id == "profiles.get.by-id" {
-        let path = if operation.id == "profiles.get.list" {
-            "/api/profiles".into()
-        } else {
-            {
-                let query = reqwest::Url::parse(&format!(
-                    "http://local/?{}",
-                    request.uri().query().unwrap_or("")
-                ))
-                .unwrap();
-                let pairs: HashMap<_, _> = query.query_pairs().into_owned().collect();
-                let id = pairs
-                    .get("profileId")
-                    .or_else(|| pairs.get("id"))
-                    .map(|v| v.trim())
-                    .unwrap_or("");
-                if id.is_empty() {
-                    return error(
-                        StatusCode::BAD_REQUEST,
-                        "VALIDATION_ERROR",
-                        "profileId is required",
-                    );
-                }
-                let url =
-                    reqwest::Url::parse_with_params("http://local/", [("profileId", id)]).unwrap();
-                format!("/api/profiles/by-id?{}", url.query().unwrap())
-            }
-        };
-        return match state.convex(Method::GET, &path, None).await {
-            Ok(mut value) => {
-                fn strip(value: &mut Value, cookies: bool) {
-                    if let Some(row) = value.as_object_mut() {
-                        for key in ["instagramSessionId", "login", "testIp"] {
-                            row.remove(key);
-                        }
-                        if cookies {
-                            row.remove("cookiesJson");
-                        }
-                    }
-                }
-                if let Some(rows) = value.as_array_mut() {
-                    for row in rows {
-                        strip(row, true);
-                    }
-                } else {
-                    strip(&mut value, false);
-                }
-                if value.is_null() {
-                    error(StatusCode::NOT_FOUND, "NOT_FOUND", "Profile not found")
-                } else {
-                    Json(value).into_response()
-                }
-            }
-            Err(message) => error(StatusCode::BAD_GATEWAY, "EXTERNAL_SERVICE_ERROR", message),
+        return match state.native.get() {
+            Some(native) => native.invoke(&operation.id, &params, request).await,
+            None => error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "NATIVE_UNAVAILABLE",
+                "Native services unavailable",
+            ),
         };
     }
-    let query = request
-        .uri()
-        .query()
-        .map(|query| format!("?{query}"))
-        .unwrap_or_default();
-    let method = request.method().clone();
+    // The only public Bun callback is JSON interest rewriting. Native routes never fall back.
+    if operation.id != "interests.post.rewrite" {
+        return error(StatusCode::NOT_FOUND, "NOT_FOUND", "Unknown operation");
+    }
     let request_id = request
         .headers()
         .get("x-request-id")
         .cloned()
         .unwrap_or_else(|| HeaderValue::from_str(&Uuid::new_v4().to_string()).unwrap());
-    let content_type = if operation.body == "json" {
-        "application/json"
-    } else {
-        "application/octet-stream"
-    };
-    let exceeded = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let mark_exceeded = exceeded.clone();
-    let body = request.into_body();
-    let body = if operation.body == "json" {
-        match to_bytes(body, operation.max_body).await {
-            Ok(bytes) if bytes.is_empty() || serde_json::from_slice::<Value>(&bytes).is_ok() => {
-                reqwest::Body::from(bytes)
-            }
-            Ok(_) => {
-                return error(
-                    StatusCode::BAD_REQUEST,
-                    "VALIDATION_ERROR",
-                    "Invalid JSON body",
-                )
-            }
-            Err(_) => {
-                return error(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "PAYLOAD_TOO_LARGE",
-                    "Request body too large",
-                )
-            }
+    let body = match to_bytes(request.into_body(), operation.max_body).await {
+        Ok(bytes) if bytes.is_empty() || serde_json::from_slice::<Value>(&bytes).is_ok() => bytes,
+        Ok(_) => {
+            return error(
+                StatusCode::BAD_REQUEST,
+                "VALIDATION_ERROR",
+                "Invalid JSON body",
+            )
         }
-    } else {
-        reqwest::Body::wrap_stream(body.into_data_stream().map(move |part| {
-            if let Err(error) = &part {
-                let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
-                while let Some(error) = source {
-                    if error.is::<http_body_util::LengthLimitError>() {
-                        mark_exceeded.store(true, std::sync::atomic::Ordering::Relaxed);
-                        break;
-                    }
-                    source = error.source();
-                }
-            }
-            part
-        }))
+        Err(_) => {
+            return error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "PAYLOAD_TOO_LARGE",
+                "Request body too large",
+            )
+        }
     };
-    let upstream = state
+    let upstream = match state
         .client
-        .post(format!(
-            "{}/commands/{}{query}",
-            state.worker_url, operation.id
-        ))
+        .post(format!("{}/commands/{}", state.worker_url, operation.id))
         .bearer_auth(&state.key)
         .header("x-request-id", request_id)
-        .header("x-worker-method", method.as_str())
-        .header(
-            "x-worker-params",
-            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&params).unwrap()),
-        )
-        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONTENT_TYPE, "application/json")
         .timeout(Duration::from_secs(30 * 60))
         .body(body)
         .send()
-        .await;
-    let upstream = match upstream {
+        .await
+    {
         Ok(response) => response,
         Err(_) => {
-            if exceeded.load(std::sync::atomic::Ordering::Relaxed) {
-                return error(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "PAYLOAD_TOO_LARGE",
-                    "Request body too large",
-                );
-            }
             return error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "WORKER_UNAVAILABLE",
                 "Browser worker unavailable",
-            );
+            )
         }
     };
-    let mut response = Response::builder().status(upstream.status());
-    for name in [
-        header::CONTENT_TYPE,
-        header::CACHE_CONTROL,
-        header::VARY,
-        header::RETRY_AFTER,
-    ] {
-        if let Some(value) = upstream.headers().get(&name) {
-            response = response.header(name, value);
+    let status = upstream.status();
+    let retry_after = upstream.headers().get(header::RETRY_AFTER).cloned();
+    match bounded_json(upstream, 1024 * 1024).await {
+        Ok(value) => {
+            let mut response = (status, Json(value)).into_response();
+            if let Some(value) = retry_after {
+                response.headers_mut().insert(header::RETRY_AFTER, value);
+            }
+            response
         }
+        Err(message) => error(StatusCode::BAD_GATEWAY, "EXTERNAL_SERVICE_ERROR", message),
     }
-    if operation.image_read {
-        response = response.header(header::CACHE_CONTROL, "private, max-age=3600");
-    }
-    response
-        .body(Body::from_stream(upstream.bytes_stream()))
-        .unwrap()
 }
 
 pub async fn bounded_json(

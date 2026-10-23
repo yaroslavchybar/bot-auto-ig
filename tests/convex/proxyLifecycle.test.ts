@@ -1,5 +1,5 @@
 import { expect, test } from 'vite-plus/test'
-import { api } from '../../convex/_generated/api'
+import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedProfile } from './helpers'
 import { parseProxy } from '../../server/shared/proxy'
 
@@ -27,8 +27,8 @@ test('equivalent URL and legacy formats share limits on create and update', asyn
   expect(parseProxy(endpoint.proxy)).toEqual(parseProxy(equivalent))
   await expect(seedProfile(t, { name: 'B', proxy: equivalent })).rejects.toThrow(/limit 1/)
   const direct = await seedProfile(t, { name: 'Direct' })
-  await expect(t.mutation(api.profiles.mutations.updateById, {
-    profileId: direct!._id, name: 'Direct', proxy: equivalent,
+  await expect(t.mutation(internal.profiles.mutations.updateByNameInternal, {
+    oldName: (await t.run(ctx => ctx.db.get(direct!._id)))!.name, name: 'Direct', proxy: equivalent,
   })).rejects.toThrow(/limit 1/)
   expect(await t.query(api.proxies.list, {})).toHaveLength(1)
 })
@@ -69,7 +69,7 @@ test('assigned proxies cannot be deleted; unassigned deletion stays deleted', as
   const p = await seedProfile(t, { name: 'A', ...endpoint })
   await expect(t.mutation(api.proxies.remove, { id: saved!._id })).rejects.toThrow(/Reassign profiles/)
   expect(await t.query(api.proxies.list, {})).toMatchObject([{ name: 'Solo', maxProfiles: 1 }])
-  await t.mutation(api.profiles.mutations.updateById, { profileId: p!._id, name: 'A', proxy: '' })
+  await t.mutation(internal.profiles.mutations.updateByNameInternal, { oldName: (await t.run(ctx => ctx.db.get(p!._id)))!.name, name: 'A', proxy: '' })
   await t.mutation(api.proxies.remove, { id: saved!._id })
   expect(await t.query(api.proxies.list, {})).toHaveLength(0)
 })

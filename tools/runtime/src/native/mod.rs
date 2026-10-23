@@ -33,6 +33,11 @@ pub struct Native {
     pub accounts: Arc<accounts::Accounts>,
 }
 impl Native {
+    pub async fn shutdown(&self) -> Result<()> {
+        self.accounts.shutdown().await;
+        self.coordination.shutdown().await;
+        self.processes.shutdown().await
+    }
     pub fn new(api: Arc<api::Api>, scraper: Arc<crate::scraper::Scraper>) -> Result<Arc<Self>> {
         let root = project_root();
         let content = content::Content::new(
@@ -299,9 +304,7 @@ async fn process_command(
 async fn run_process_command(state: Arc<Native>, action: String) -> Result<Json<Value>> {
     let value = match action.as_str() {
         "shutdown" => {
-            state.accounts.shutdown().await;
-            state.coordination.shutdown().await;
-            state.processes.shutdown().await?;
+            state.shutdown().await?;
             json!({"ok": true})
         }
         _ => return Err(Failure::missing("Unknown process operation")),

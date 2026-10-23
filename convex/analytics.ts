@@ -1,7 +1,5 @@
 import { v } from 'convex/values'
 import { mutation, query, type QueryCtx } from './_generated/server'
-import { scraperRequestState } from './scraperRequests'
-import { SCRAPER_REQUEST_LIMIT } from './scraperRequestPolicy'
 import { addActivity, emptyActivity, type ActivityCounts } from './analyticsActivity'
 import { outreachSummary } from './outreachAnalytics'
 
@@ -91,9 +89,6 @@ export const overview = query({
         .take(days)
       counts = rows.reduce((sum, row) => addActivity(sum, row.counts), emptyActivity())
     }
-    const requestStates = await Promise.all(
-      accounts.map((account) => scraperRequestState(ctx, account.profileId)),
-    )
     return {
       period,
       historySince: new Date(history.startedAt).toISOString().slice(0, 10),
@@ -103,14 +98,6 @@ export const overview = query({
         follows: counts.follows,
         dms: counts.dms,
         warmupMinutes: counts.warmupMinutes,
-      },
-      quota: {
-        used:
-          period === 'today'
-            ? requestStates.reduce((sum, state) => sum + state.used, 0)
-            : (counts.scraperRequests ?? 0),
-        limit: accounts.length * SCRAPER_REQUEST_LIMIT,
-        totalRequests: counts.scraperRequests ?? 0,
       },
     }
   },

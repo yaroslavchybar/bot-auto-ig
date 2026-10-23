@@ -270,6 +270,20 @@ async function lease(native: Awaited<ReturnType<typeof fixture>>, route: string,
   return { socket, ready, next }
 }
 
+test('native profile reads retain editable cookies only on details and strip internal secrets', async () => {
+  const native = await fixture()
+  try {
+    Object.assign(native.profile!, { cookiesJson: 'editable', instagramSessionId: 'private', login: 'private', testIp: 'private' })
+    const rows = await (await fetch(native.publicUrl + '/api/profiles/')).json()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].cookiesJson).toBeUndefined()
+    const detail = await (await fetch(native.publicUrl + '/api/profiles/by-id?id=p')).json()
+    expect(detail.cookiesJson).toBe('editable')
+    for (const row of [rows[0], detail]) for (const key of ['instagramSessionId', 'login', 'testIp']) expect(row[key]).toBeUndefined()
+    expect((await fetch(native.publicUrl + '/api/profiles/by-id')).status).toBe(400)
+  } finally { await native.stop() }
+}, 15_000)
+
 test('Rust owns profile locks, rename, restart cleanup and reconciliation without Bun routes', async () => {
   const native = await fixture()
   try {

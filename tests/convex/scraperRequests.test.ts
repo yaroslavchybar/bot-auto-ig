@@ -99,14 +99,12 @@ test('request history starts before opening Analytics and bridge retries count o
   await s.reserve('first')
   await s.t.mutation(api.analytics.initialize, {})
   expect(
-    (await s.t.query(api.analytics.overview, { date: '2026-10-12', period: 'all' })).quota
-      .totalRequests,
+    await s.t.run(async ctx => (await ctx.db.query('analyticsHistory').unique())?.totals.scraperRequests),
   ).toBe(1)
   await s.reserve('second')
   await s.t.mutation(api.analytics.initialize, {})
   expect(
-    (await s.t.query(api.analytics.overview, { date: '2026-10-12', period: 'all' })).quota
-      .totalRequests,
+    await s.t.run(async ctx => (await ctx.db.query('analyticsHistory').unique())?.totals.scraperRequests),
   ).toBe(2)
 })
 

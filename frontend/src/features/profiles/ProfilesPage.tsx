@@ -8,7 +8,7 @@ import { ProfileForm } from './components/ProfileForm'
 import { BatchCreateForm } from './components/BatchCreateForm'
 import { ProfilesList } from './components/ProfilesList'
 import { ProfileDetailsDialog } from './components/ProfileDetailsDialog'
-import type { Profile } from './types'
+import type { Profile, ProfileEditValues } from './types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -28,11 +28,7 @@ export function ProfilesPage() {
         isCreateOpen={s.isCreateOpen}
         editProfile={s.editProfile}
         saving={s.saving}
-        refreshProfiles={s.refreshProfiles}
-        onCreateOpenChange={(open) => {
-          s.setIsCreateOpen(open)
-          if (!open) s.handleCloseCreate()
-        }}
+        onCreateOpenChange={s.setIsCreateOpen}
         onCloseEdit={s.handleCloseEdit}
         onSaveProfile={s.handleSaveProfile}
         onCloseCreate={s.handleCloseCreate}
@@ -119,7 +115,6 @@ function ProfileFormDialogs({
   isCreateOpen,
   editProfile,
   saving,
-  refreshProfiles,
   onCreateOpenChange,
   onCloseEdit,
   onSaveProfile,
@@ -128,10 +123,9 @@ function ProfileFormDialogs({
   isCreateOpen: boolean
   editProfile: Profile | null
   saving: boolean
-  refreshProfiles: () => Promise<void>
   onCreateOpenChange: (open: boolean) => void
   onCloseEdit: () => void
-  onSaveProfile: (data: Partial<Profile>) => void
+  onSaveProfile: (data: ProfileEditValues) => void
   onCloseCreate: () => void
 }) {
   return (
@@ -143,10 +137,7 @@ function ProfileFormDialogs({
           </DialogHeader>
           <BatchCreateForm
             key={isCreateOpen ? 'profile-create-open' : 'profile-create-closed'}
-            onCreated={async () => {
-              await refreshProfiles()
-              onCloseCreate()
-            }}
+            onCreated={onCloseCreate}
             onCancel={onCloseCreate}
           />
         </DialogContent>

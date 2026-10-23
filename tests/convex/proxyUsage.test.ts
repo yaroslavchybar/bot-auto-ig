@@ -30,7 +30,7 @@ test('proxy usage follows create, rename, reassignment, direct connection and de
     const usage = async (proxy: string) =>
       (await t.query(api.proxies.listPage, pageArgs)).page.find((row) => row.proxy === proxy)!.usage
     expect(await usage(first.proxy!)).toEqual({ count: 2, profileNames: ['First', 'Second'] })
-    await t.mutation(api.profiles.mutations.updateById, { profileId: first._id, name: 'Renamed' })
+    await t.mutation(internal.profiles.mutations.updateByNameInternal, { oldName: (await t.run(ctx => ctx.db.get(first._id)))!.name, name: 'Renamed' })
     expect(await usage(first.proxy!)).toEqual({ count: 2, profileNames: ['Renamed', 'Second'] })
     await t.mutation(internal.profiles.mutations.finishRenameInternal, { profileId: first._id })
     await t.mutation(internal.profiles.mutations.updateByNameInternal, {
@@ -41,8 +41,8 @@ test('proxy usage follows create, rename, reassignment, direct connection and de
     })
     expect(await usage(first.proxy!)).toEqual({ count: 1, profileNames: ['Second'] })
     expect(await usage('http://next:8080')).toEqual({ count: 1, profileNames: ['Renamed'] })
-    await t.mutation(api.profiles.mutations.updateById, {
-      profileId: first._id,
+    await t.mutation(internal.profiles.mutations.updateByNameInternal, {
+      oldName: (await t.run(ctx => ctx.db.get(first._id)))!.name,
       name: 'Renamed',
       proxy: '',
     })

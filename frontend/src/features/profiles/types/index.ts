@@ -15,3 +15,5 @@ export type Profile = {
   status?: string
   inUse?: boolean
 }
+
+export type ProfileEditValues = Pick<Profile, 'name' | 'proxy' | 'proxyType' | 'fingerprintOs' | 'cookiesJson'>

@@ -7,7 +7,6 @@ import {
   numeric,
   random,
   type ActionLogger,
-  type StopCheck,
 } from './shared.js'
 import {
   driftMouse,
@@ -133,16 +132,14 @@ export async function visibleFeedPost(page: Page, seen: ReadonlySet<string>): Pr
 
 async function browseHomeFeedSession(
   page: Page,
-  minutes: number,
+  session: BrowseSession,
   config: Record<string, unknown>,
   log: ActionLogger,
-  shouldStop: StopCheck,
-  session: BrowseSession,
   budget?: WarmupActivityBudget,
   matchesTopic: TopicMatcher = topicContentMatches,
   seen: Set<string> = new Set(),
 ): Promise<'finished' | 'stopped' | 'stalled'> {
-  if (!(minutes > 0) || shouldStop()) return 'stopped'
+  if (session.stopped()) return 'stopped'
   if (config.browse_home_feed === false) return 'finished'
   const start = Date.now()
   const end = session.end
@@ -177,8 +174,8 @@ async function browseHomeFeedSession(
   let reloaded = false
   // Permalink ids already dwelled on; never read the same post twice.
   let feedEnds = 0
-  log({ event: 'automation.actions.feed.starting_feed_session_for', message: `Starting feed session for ${minutes} minute(s)` })
-  while (Date.now() < end && !shouldStop()) {
+  log({ event: 'automation.actions.feed.starting_feed_session_for', message: 'Starting feed session', remainingMs: end - start })
+  while (!session.stopped()) {
     session.check()
     await assertInstagramReady(page)
     if (await dismissPopups(page, session)) {
@@ -300,29 +297,28 @@ async function browseHomeFeedSession(
       await engagePost(page, target, context, topics, budget, session, log, matchesTopic)
     session.check()
     await assertInstagramReady(page)
-    if (Date.now() >= end || shouldStop()) break
+    if (session.stopped()) break
     await advanceFeedPost(page, target, session, budget)
 
 
   }
   log({ event: 'automation.actions.feed.feed_session_finished', message: 'Feed session finished' })
-  return shouldStop() ? 'stopped' : 'finished'
+  return session.cancelled() ? 'stopped' : 'finished'
 }
 
 export async function browseHomeFeed(
-  page: Page, minutes: number, config: Record<string, unknown>,
-  log: ActionLogger, shouldStop: StopCheck,
+  page: Page, session: BrowseSession, config: Record<string, unknown>,
+  log: ActionLogger,
   budget?: WarmupActivityBudget,
   matchesTopic: TopicMatcher = topicContentMatches,
   seen = new Set<string>(),
 ): Promise<'finished' | 'stopped' | 'stalled'> {
-  if (!(minutes > 0) || shouldStop()) return 'stopped'
-  const session = new BrowseSession(Date.now() + minutes * 60_000, shouldStop)
+  if (session.stopped()) return 'stopped'
   try {
-    return await browseHomeFeedSession(page, minutes, config, log, shouldStop, session, budget, matchesTopic, seen)
+    return await browseHomeFeedSession(page, session, config, log, budget, matchesTopic, seen)
   } catch (error) {
     if (error instanceof SessionEnded || session.stopped())
-      return shouldStop() ? 'stopped' : 'finished'
+      return session.cancelled() ? 'stopped' : 'finished'
     if (isTemporaryUiError(error)) {
       await assertInstagramReady(page, session)
       session.check()

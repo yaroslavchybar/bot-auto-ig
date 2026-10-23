@@ -3,280 +3,210 @@
     "id": "interests.post.rewrite",
     "method": "POST",
     "path": "/api/automations/interests/rewrite",
-    "body": "json",
-    "maxBody": 4096,
-    "imageRead": false
+    "maxBody": 4096
   },
   {
     "id": "profiles.get.list",
     "method": "GET",
     "path": "/api/profiles",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "profiles.get.by-id",
     "method": "GET",
     "path": "/api/profiles/by-id",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "profiles.post.list",
     "method": "POST",
     "path": "/api/profiles",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "profiles.put.name",
     "method": "PUT",
     "path": "/api/profiles/:name",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "profiles.delete.name",
     "method": "DELETE",
     "path": "/api/profiles/:name",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "profiles.post.name_start",
     "method": "POST",
     "path": "/api/profiles/:name/start",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "profiles.post.name_stop",
     "method": "POST",
     "path": "/api/profiles/:name/stop",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "profiles.post.reconcile-runtime",
     "method": "POST",
     "path": "/api/profiles/reconcile-runtime",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "profiles.post.sync-status",
     "method": "POST",
     "path": "/api/profiles/sync-status",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "automations.get.status",
     "method": "GET",
     "path": "/api/automations/status",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "automations.post.run",
     "method": "POST",
     "path": "/api/automations/run",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "automations.post.stop",
     "method": "POST",
     "path": "/api/automations/stop",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.list",
     "method": "GET",
     "path": "/api/ig-accounts",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.page",
     "method": "GET",
     "path": "/api/ig-accounts/page",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.available-count",
     "method": "GET",
     "path": "/api/ig-accounts/available-count",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.blacklist",
     "method": "GET",
     "path": "/api/ig-accounts/blacklist",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.warmup",
     "method": "GET",
     "path": "/api/ig-accounts/warmup",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.post.warmup_profileId_reconcile",
     "method": "POST",
     "path": "/api/ig-accounts/warmup/:profileId/reconcile",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.credentials_id",
     "method": "GET",
     "path": "/api/ig-accounts/credentials/:id",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.models_modelId_content",
     "method": "GET",
     "path": "/api/ig-accounts/models/:modelId/content",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.models_modelId_content_kind_contentId_image",
     "method": "GET",
     "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId/image",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": true
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.post.models_modelId_content_kind",
     "method": "POST",
     "path": "/api/ig-accounts/models/:modelId/content/:kind",
-    "body": "raw",
-    "maxBody": 15728640,
-    "imageRead": false
+    "maxBody": 15728640
   },
   {
     "id": "ig-accounts.post.models_modelId_content_kind_contentId_copies",
     "method": "POST",
     "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId/copies",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.models_modelId_content_kind_contentId_copies",
     "method": "GET",
     "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId/copies",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.get.models_modelId_content_kind_contentId_copies_variant_image",
     "method": "GET",
     "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId/copies/:variant/image",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": true
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.delete.models_modelId_content_kind_contentId",
     "method": "DELETE",
     "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.post.import",
     "method": "POST",
     "path": "/api/ig-accounts/import",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.post.create-batch",
     "method": "POST",
     "path": "/api/ig-accounts/create-batch",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "ig-accounts.post.profileId_connect",
     "method": "POST",
     "path": "/api/ig-accounts/:profileId/connect",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "displays.get.vncPort_clipboard",
     "method": "GET",
     "path": "/api/displays/:vncPort/clipboard",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "displays.post.vncPort_clipboard",
     "method": "POST",
     "path": "/api/displays/:vncPort/clipboard",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "displays.all.vncPort_file-picker",
     "method": "ALL",
     "path": "/api/displays/:vncPort/file-picker",
-    "body": "stream",
-    "maxBody": 53477376,
-    "imageRead": false
+    "maxBody": 53477376
   },
   {
     "id": "displays.get.vncPort_preview",
     "method": "GET",
     "path": "/api/displays/:vncPort/preview",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   },
   {
     "id": "displays.get.list",
     "method": "GET",
     "path": "/api/displays",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
+    "maxBody": 1048576
   }
 ]

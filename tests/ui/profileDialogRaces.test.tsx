@@ -6,11 +6,9 @@ import { mount } from './mount'
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   apiFetch: vi.fn().mockResolvedValue({}),
-  mutation: vi.fn(),
 }))
 vi.mock('convex/react', () => ({
   useConvex: () => ({ query: mocks.query }),
-  useMutation: () => mocks.mutation,
   useQuery: () => ({ page: [], isDone: true, continueCursor: '' }),
 }))
 vi.mock('@/lib/api', () => ({ apiFetch: mocks.apiFetch }))

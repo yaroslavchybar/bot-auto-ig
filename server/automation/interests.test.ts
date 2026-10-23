@@ -1,8 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { EventEmitter } from 'node:events'
 import { interestCommands, rewriteInterest, INTEREST_MODEL } from './interests.js'
-import type { CommandRequest, CommandResponse } from '../worker/commands.js'
 
 test('normal Luna rewrites an interest as reviewable content intent and preserves exclusions', async () => {
   const description =
@@ -67,22 +65,14 @@ test('the worker rejects invalid tags before AI, and returns only the rewritten 
     calls++
     assert.equal(label, 'fishing')
     return 'Fishing techniques and catches.'
-  }).operations[0]!
-  const response = Object.assign(new EventEmitter(), {
-    json: (value: unknown) => value,
-  }) as unknown as CommandResponse
+  })['interests.post.rewrite']!
+  const signal = new AbortController().signal
   for (const label of [null, '', ' ', 'x'.repeat(301)])
     await assert.rejects(async () =>
-      operation.handler({ body: { label } } as CommandRequest, response, () => {}),
+      operation({ body: { label }, signal }),
     )
   assert.equal(calls, 0)
-  let result: unknown
-  response.json = (value) => {
-    result = value
-    return response
-  }
-  await operation.handler({ body: { label: 'fishing' } } as CommandRequest, response, () => {})
+  const result = await operation({ body: { label: 'fishing' }, signal })
   assert.deepEqual(result, { description: 'Fishing techniques and catches.' })
   assert.equal(calls, 1)
-  assert.equal(response.listenerCount('close'), 0)
 })

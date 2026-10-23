@@ -67,15 +67,15 @@ test('syncs profile status', async () => {
   })
 })
 
-test('updates profile cookies by id and clears them when empty string is provided', async () => {
+test('updates profile cookies by name and clears them when empty string is provided', async () => {
   const t = createConvexTest()
   const profile = await seedProfile(t, {
     name: 'Profile C',
     cookiesJson: '[{"name":"csrftoken","value":"abc","domain":".instagram.com","path":"/"}]',
   })
 
-  const updated = await t.mutation(api.profiles.mutations.updateById, {
-    profileId: profile!._id,
+  const updated = await t.mutation(internal.profiles.mutations.updateByNameInternal, {
+    oldName: (await t.run(ctx => ctx.db.get(profile!._id)))!.name,
     name: 'Profile C',
     cookiesJson: '[{"name":"sessionid","value":"updated","domain":".instagram.com","path":"/"}]',
   })
@@ -83,8 +83,8 @@ test('updates profile cookies by id and clears them when empty string is provide
     cookiesJson: '[{"name":"sessionid","value":"updated","domain":".instagram.com","path":"/"}]',
   })
 
-  const cleared = await t.mutation(api.profiles.mutations.updateById, {
-    profileId: profile!._id,
+  const cleared = await t.mutation(internal.profiles.mutations.updateByNameInternal, {
+    oldName: (await t.run(ctx => ctx.db.get(profile!._id)))!.name,
     name: 'Profile C',
     cookiesJson: '   ',
   })

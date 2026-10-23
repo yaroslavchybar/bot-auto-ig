@@ -1,6 +1,7 @@
 import { DomainError } from './errors'
 import { v } from 'convex/values'
 import { internalMutation, mutation, query } from './_generated/server'
+import { normalizeModelUsername, isValidModelUsername, isValidModelFullName } from '../server/shared/modelIdentity'
 
 export const list = query({
   args: {},
@@ -51,18 +52,14 @@ export const update = mutation({
 })
 
 function cleanUsernames(input: string[] | undefined) {
-  const names = (input ?? []).map((name) => name.trim().replace(/^@/, '').toLowerCase())
-  if (names.some((name) => !/^[a-z0-9._]{1,30}$/.test(name)))
+  const names = (input ?? []).map(normalizeModelUsername)
+  if (names.some((name) => !isValidModelUsername(name)))
     throw new DomainError('VALIDATION', 'Invalid Instagram username')
   return [...new Set(names)]
 }
 function cleanFullNames(input: string[] | undefined) {
   const names = (input ?? []).map((name) => name.trim()).filter(Boolean)
-  if (
-    names.some(
-      (name) => !/^[\p{L}\p{M}\p{Extended_Pictographic}\p{Emoji_Component} .'-]{3,80}$/u.test(name),
-    )
-  )
+  if (names.some((name) => !isValidModelFullName(name)))
     throw new DomainError(
       'VALIDATION',
       'Full names must be 3–80 letters, emoji, or name punctuation',

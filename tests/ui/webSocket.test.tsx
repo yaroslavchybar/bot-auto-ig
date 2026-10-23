@@ -100,3 +100,19 @@ test('unexpected disconnects reconnect, while unmount cancels pending retries', 
   })
   expect(Socket.sockets).toHaveLength(2)
 })
+
+test('disabling and re-enabling during token lookup cannot create a stale socket', async () => {
+  vi.stubGlobal('WebSocket', Socket)
+  let finish!: (token: string) => void
+  getToken.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  view = mount()
+  await view.render(<Probe />)
+  expect(Socket.sockets).toHaveLength(0)
+  await view.render(<Probe enabled={false} />)
+  await view.render(<Probe />)
+  expect(Socket.sockets).toHaveLength(1)
+  await act(async () => { finish('old-token') })
+  expect(Socket.sockets).toHaveLength(1)
+  await act(async () => { Socket.sockets[0].open() })
+  expect(view.container.textContent).toBe('connected')
+})

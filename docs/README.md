@@ -36,7 +36,10 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
   Requests are limited to 64 in flight. Normal authenticated requests use 100/min per IP;
   model images use 600/min, Telegram links 10/min, and login polling 120/min.
   `/api/automations` also accepts `INTERNAL_API_KEY`.
-- `server/`: private named worker commands on loopback, authenticated with `INTERNAL_API_KEY`.
+- `server/`: four private JSON callbacks on loopback, authenticated with `INTERNAL_API_KEY`:
+  interest rewriting, browser login, login cancellation, and browser-login shutdown.
+  Handlers return JSON values and receive a disconnect signal; public native routes never
+  fall back to Bun. Request limits, request IDs and one completion event remain enforced.
   Playwright browser actions, browser login, and browser posting remain TypeScript.
   Rust owns the surrounding validation, retries and durable model setup state.
   Browser workers receive subscription updates and resource leases
@@ -49,6 +52,8 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
 - `server/automation/`: Bun workers and TypeScript Instagram actions
   (feed browsing, story watching). Automation workers
   emit `__EVENT__`-prefixed JSON for WebSocket propagation.
+  Browsing actions share `BrowseSession` deadlines and cancellation. Stories additionally
+  use a soft viewing cutoff to finish the current story within the hard session deadline.
 - `convex/`: schema, queries/mutations (`profiles`, `models`, `automations`,
   `leads`), HTTP actions. Generated code in
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.

@@ -1,3 +1,4 @@
+import { BrowseSession } from './session.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
@@ -30,12 +31,12 @@ test('prefers unread visible posts and never falls back to an offscreen article'
 
 test('zero budget never navigates the browser', async () => {
   const page = { mouse: { move: async () => {} }, goto: async () => { throw new Error('Must not navigate') } } as unknown as Page
-  assert.equal(await browseHomeFeed(page, 0, {}, () => {}, () => false), 'stopped')
+  assert.equal(await browseHomeFeed(page, new BrowseSession(Date.now()), {}, () => {}), 'stopped')
 })
 
 test('disabled home feed never navigates even with reels detours configured', async () => {
   const page = { goto: async () => { throw new Error('Must not navigate') } } as unknown as Page
-  assert.equal(await browseHomeFeed(page, 10, { browse_home_feed: false, reels_chance: 100 }, () => {}, () => false), 'finished')
+  assert.equal(await browseHomeFeed(page, new BrowseSession(Date.now() + (10) * 60_000, () => false), { browse_home_feed: false, reels_chance: 100 }, () => {}), 'finished')
 })
 
 test('temporary Home navigation failure stalls browsing without ending the reservation', async () => {
@@ -44,7 +45,7 @@ test('temporary Home navigation failure stalls browsing without ending the reser
     goto: async () => { throw new errors.TimeoutError('Home navigation timed out') },
     locator: () => ({ filter: () => ({ evaluateAll: async () => null }) }),
   } as unknown as Page
-  assert.equal(await browseHomeFeed(page, 1, {}, note => notes.push(note), () => false), 'stalled')
+  assert.equal(await browseHomeFeed(page, new BrowseSession(Date.now() + (1) * 60_000, () => false), {}, note => notes.push(note)), 'stalled')
   assert.equal(notes[0]?.event, 'automation.actions.feed.browsing_unavailable')
 })
 
@@ -54,7 +55,7 @@ test('Home navigation recovery still propagates checkpoints and lost browser con
     const page = { url: () => navigated && checkpoint ? 'https://www.instagram.com/challenge/' : 'https://www.instagram.com/reels/current/',
       goto: async () => { navigated = true; throw checkpoint ? new errors.TimeoutError('Navigation timed out') : new Error('Browser disconnected') },
     } as unknown as Page
-    await assert.rejects(browseHomeFeed(page, 1, {}, () => {}, () => false), checkpoint ? /checkpoint needs attention/ : /Browser disconnected/)
+    await assert.rejects(browseHomeFeed(page, new BrowseSession(Date.now() + (1) * 60_000, () => false), {}, () => {}), checkpoint ? /checkpoint needs attention/ : /Browser disconnected/)
   }
 })
 
@@ -70,6 +71,7 @@ test('Home feed always classifies content and never navigates to Reels', () => {
     mock.module('./server/automation/actions/session.ts', () => ({ ...session,
       BrowseSession: class {
         constructor(end, stop) { this.end = end; this.stop = stop }
+        cancelled() { return this.stop() }
         stopped() { return this.stop() || now >= this.end }
         check() { if (this.stopped()) throw new session.SessionEnded() }
         timeout(max) { this.check(); return Math.min(max, this.end - now) }
@@ -120,11 +122,12 @@ test('Home feed always classifies content and never navigates to Reels', () => {
         ? { first: () => empty, count: async () => 1, nth: () => post } : empty
     }
     const { browseHomeFeed } = await import('./server/automation/actions/home-feed.ts')
+    const { BrowseSession } = await import('./server/automation/actions/session.ts')
     for (mode of ['off-topic', 'ad', 'match', 'feed-end']) {
       now = 0; stopped = false; decisions = 0; reads = 0; reels = 0; skips = 0; aligns = 0; decisionWaits = []
       config = { warmup_topics: 'fitness', skip_post_chance: 100,
         skip_post_max: 2, own_profile_chance: 0, dm_chance: 0, reels_chance: 100 }
-      assert.equal(await browseHomeFeed(page, 2, config, () => {}, () => stopped, undefined, matcher), mode === 'feed-end' ? 'finished' : 'stopped')
+      assert.equal(await browseHomeFeed(page, new BrowseSession(now + 120_000, () => stopped), config, () => {}, undefined, matcher), mode === 'feed-end' ? 'finished' : 'stopped')
       if (mode === 'off-topic' || mode === 'ad') {
         assert.equal(decisions, mode === 'ad' ? 0 : 1, mode)
         assert.equal(aligns, mode === 'ad' ? 0 : 1, mode)

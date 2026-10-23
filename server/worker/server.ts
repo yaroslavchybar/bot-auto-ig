@@ -1,9 +1,9 @@
-import { createServer, type IncomingMessage } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { AppError } from '../shared/errors.js'
 import { LogScope, runInLogScope } from '../shared/logger.js'
 import { Sentry } from '../shared/sentry.js'
-import { Commands, commandResponse, type CommandRequest } from './commands.js'
+import type { Commands } from './commands.js'
 
 export function isWorkerAuthorized(request: IncomingMessage): boolean {
   const key = process.env.INTERNAL_API_KEY?.trim()
@@ -13,103 +13,79 @@ export function isWorkerAuthorized(request: IncomingMessage): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected)
 }
 
-/** Loopback-only browser action transport. Axum owns public HTTP policy. */
-export function createWorkerServer(groups: Commands[]) {
-  const operations = new Map(
-    groups.flatMap((group) => group.operations).map((operation) => [operation.id, operation]),
-  )
-  return createServer((incoming, outgoing) => {
-    const response = commandResponse(outgoing)
-    if (!isWorkerAuthorized(incoming)) {
-      response.status(401).json({ error: 'Unauthorized' })
-      return
-    }
-    const url = new URL(incoming.url || '/', 'http://127.0.0.1')
-    if (url.pathname === '/health') {
-      response.json({ ok: true })
-      return
-    }
-    if (incoming.method !== 'POST') {
-      response.sendStatus(405)
-      return
-    }
-    const operation = operations.get(url.pathname.slice('/commands/'.length))
-    if (!url.pathname.startsWith('/commands/') || !operation) {
-      response.status(404).json({ error: 'Unknown worker command' })
-      return
-    }
+function json(response: ServerResponse, status: number, value: unknown) {
+  response.statusCode = status
+  response.setHeader('Content-Type', 'application/json')
+  response.end(JSON.stringify(value))
+}
+
+/** Loopback-only JSON callbacks. Axum owns public routing and policy. */
+export function createWorkerServer(commands: Commands) {
+  return createServer((request, response) => {
+    if (!isWorkerAuthorized(request)) return json(response, 401, { error: 'Unauthorized' })
+    const path = new URL(request.url || '/', 'http://127.0.0.1').pathname
+    if (path === '/health') return json(response, 200, { ok: true })
+    if (request.method !== 'POST') return json(response, 405, { error: 'Method not allowed' })
+    const operation = path.slice('/commands/'.length)
+    const handler =
+      path.startsWith('/commands/') && Object.hasOwn(commands, operation)
+        ? commands[operation]
+        : undefined
+    if (!handler) return json(response, 404, { error: 'Unknown worker command' })
+    const controller = new AbortController()
     const scope = new LogScope('worker.command', {
-      operation: operation.id,
-      method: operation.method,
-      requestId: incoming.headers['x-request-id'],
+      operation,
+      method: 'POST',
+      requestId: request.headers['x-request-id'],
     })
-    const fail = (error: unknown) => {
-      scope.add({ error })
-      if (response.headersSent || response.destroyed) {
-        response.destroy()
-        return
-      }
-      if (error instanceof AppError)
-        response
-          .status(error.statusCode)
-          .json({ success: false, error: { code: error.code, message: error.message } })
-      else {
-        Sentry.captureException(error)
-        response.status(500).json({
-          success: false,
-          error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
-        })
-      }
-    }
     response.once('finish', () => {
       scope.add({ statusCode: response.statusCode })
       scope.finish(
         response.statusCode >= 500 ? 'error' : response.statusCode >= 400 ? 'rejected' : 'success',
       )
     })
-    // A disconnected client never emits finish. Keep its completion event without a false 200.
     response.once('close', () => {
       if (response.writableFinished) return
+      controller.abort(new Error('Worker client disconnected'))
       scope.add({ responseAborted: true, ...(response.headersSent ? { statusCode: response.statusCode } : {}) })
       scope.finish(scope.fields.error ? 'error' : 'cancelled')
     })
     runInLogScope(scope, () => {
       void (async () => {
-        const request = incoming as CommandRequest
-        const rawParams = incoming.headers['x-worker-params']
-        request.params =
-          typeof rawParams === 'string'
-            ? JSON.parse(Buffer.from(rawParams, 'base64url').toString('utf8'))
-            : {}
-        request.query = Object.fromEntries(url.searchParams)
-        request.method =
-          operation.method === 'ALL'
-            ? String(incoming.headers['x-worker-method'] || 'GET')
-            : operation.method
-        scope.add({ method: request.method })
-        // File picker routing retains its original query string; the command path is private.
-        request.url = '/' + url.search
-        if (operation.body !== 'stream') {
-          const chunks: Buffer[] = []
-          let size = 0
-          const limit = operation.body === 'raw' ? 15 * 1024 * 1024 : 1024 * 1024
-          for await (const chunk of incoming) {
-            size += chunk.length
-            if (size > limit) throw new AppError('Request body too large', 413, 'PAYLOAD_TOO_LARGE')
-            chunks.push(Buffer.from(chunk))
-          }
-          const bytes = Buffer.concat(chunks)
-          if (operation.body === 'raw') request.body = bytes
-          else {
-            try {
-              request.body = bytes.length ? JSON.parse(bytes.toString('utf8')) : {}
-            } catch {
-              throw new AppError('Invalid JSON body', 400, 'VALIDATION_ERROR')
-            }
-          }
+        const chunks: Buffer[] = []
+        let size = 0
+        for await (const chunk of request.iterator({ destroyOnReturn: false })) {
+          size += chunk.length
+          if (size > 1024 * 1024)
+            throw new AppError('Request body too large', 413, 'PAYLOAD_TOO_LARGE')
+          chunks.push(Buffer.from(chunk))
         }
-        await operation.handler(request, response, fail)
-      })().catch(fail)
+        let body: unknown
+        try {
+          body = size ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
+        } catch {
+          throw new AppError('Invalid JSON body', 400, 'VALIDATION_ERROR')
+        }
+        controller.signal.throwIfAborted()
+        const value = await handler({ body, signal: controller.signal })
+        if (!response.destroyed) json(response, 200, value)
+      })().catch((error) => {
+        scope.add({ error })
+        if (response.destroyed) return
+        if (error instanceof AppError) {
+          if (error.statusCode === 413) response.setHeader('Connection', 'close')
+          json(response, error.statusCode, {
+            success: false,
+            error: { code: error.code, message: error.message },
+          })
+        } else {
+          Sentry.captureException(error)
+          json(response, 500, {
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
+          })
+        }
+      })
     })
   })
 }

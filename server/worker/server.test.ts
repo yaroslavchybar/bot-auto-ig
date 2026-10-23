@@ -9,14 +9,13 @@ test('private browser transport validates requests', () => {
       '--eval',
       `
     import assert from 'node:assert/strict'
-    import { Commands } from './server/worker/commands.ts'
     import { createWorkerServer } from './server/worker/server.ts'
     import { ValidationError } from './server/shared/errors.ts'
     process.env.INTERNAL_API_KEY = 'fixture-key'
-    const commands = new Commands()
-    commands.register('echo','POST','/', async (req,res) => res.json({params:req.params,query:req.query,body:req.body}))
-    commands.register('reject','POST','/', () => { throw new ValidationError('fixture rejection') })
-    const server = createWorkerServer([commands])
+    const server = createWorkerServer({
+      echo: ({body}) => ({body}),
+      reject: () => { throw new ValidationError('fixture rejection') },
+    })
     await new Promise(resolve => server.listen(0,'127.0.0.1',resolve))
     const base = 'http://127.0.0.1:'+server.address().port
     const headers = {Authorization:'Bearer fixture-key','Content-Type':'application/json','x-worker-params':Buffer.from(JSON.stringify({name:'Profile A'})).toString('base64url')}
@@ -24,8 +23,10 @@ test('private browser transport validates requests', () => {
       assert.equal((await fetch(base+'/health')).status,401)
       assert.equal((await fetch(base+'/commands/echo',{headers})).status,405)
       const echo=await fetch(base+'/commands/echo?cursor=a%2Bb',{method:'POST',headers,body:JSON.stringify({value:42})})
-      assert.deepEqual(await echo.json(),{params:{name:'Profile A'},query:{cursor:'a+b'},body:{value:42}})
+      assert.deepEqual(await echo.json(),{body:{value:42}})
+      assert.equal((await fetch(base+'/commands/toString',{method:'POST',headers,body:'{}'})).status,404)
       assert.equal((await fetch(base+'/commands/echo',{method:'POST',headers,body:'invalid'})).status,400)
+      assert.equal((await fetch(base+'/commands/echo',{method:'POST',headers,body:JSON.stringify('x'.repeat(1024*1024))})).status,413)
       const rejection=await fetch(base+'/commands/reject',{method:'POST',headers,body:'{}'})
       assert.equal(rejection.status,400)
       assert.equal((await rejection.json()).error.message,'fixture rejection')
@@ -40,19 +41,20 @@ test('worker logs one completion for finished and disconnected responses', () =>
   const output = execFileSync('bun', ['--eval', `
     import assert from 'node:assert/strict'
     import { request } from 'node:http'
-    import { Commands } from './server/worker/commands.ts'
     import { createWorkerServer } from './server/worker/server.ts'
     process.env.INTERNAL_API_KEY = 'fixture-key'
-    const commands = new Commands()
     let started
     const pending = new Promise(resolve => { started = resolve })
-    commands.register('ok', 'POST', '/', (_req, res) => res.json({ok:true}))
-    commands.register('disconnect', 'POST', '/', (_req, _res) => { started() })
-    commands.register('broken-stream', 'POST', '/', (_req, res, fail) => {
-      res.write('partial')
-      fail(new Error('stream failed'))
+    const server = createWorkerServer({
+      ok: () => ({ok:true}),
+      disconnect: async ({signal}) => {
+        started()
+        await new Promise(resolve => signal.addEventListener('abort', resolve, {once:true}))
+        assert.equal(signal.aborted,true)
+        return {cancelled:true}
+      },
+      failed: () => { throw new Error('command failed') },
     })
-    const server = createWorkerServer([commands])
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     const base = 'http://127.0.0.1:' + server.address().port
     const headers = {authorization:'Bearer fixture-key', 'x-request-id':'worker-request-123'}
@@ -65,7 +67,7 @@ test('worker logs one completion for finished and disconnected responses', () =>
       const closed = new Promise(resolve => client.once('close', resolve))
       client.destroy()
       await closed
-      try { await (await fetch(base + '/commands/broken-stream', {method:'POST', headers})).text() } catch {}
+      assert.equal((await fetch(base + '/commands/failed', {method:'POST', headers})).status,500)
     } finally {
       await new Promise(resolve => server.close(resolve))
     }
@@ -80,9 +82,9 @@ test('worker logs one completion for finished and disconnected responses', () =>
   assert.equal(disconnected.outcome, 'cancelled')
   assert.equal(disconnected.context.responseAborted, true)
   assert.equal(disconnected.context.statusCode, undefined)
-  const failed = entries.find(entry => entry.context.operation === 'broken-stream')
+  const failed = entries.find(entry => entry.context.operation === 'failed')
   assert.equal(failed.outcome, 'error')
-  assert.equal(failed.error.message, 'stream failed')
+  assert.equal(failed.error.message, 'command failed')
   for (const entry of entries) {
     assert.equal(entry.requestId, 'worker-request-123')
     assert.equal(entry.context.method, 'POST')

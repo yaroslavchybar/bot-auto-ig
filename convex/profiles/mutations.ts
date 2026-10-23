@@ -76,7 +76,7 @@ export const finishRenameInternal = internalMutation({
 		await patchProfile(ctx, profileId, { pendingRenameFrom: undefined });
 	},
 });
-import { createProfileRow, insertProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkAddProfilesToModelRow, bulkRemoveProfilesFromModelRow } from "./helpers";
+import { createProfileRow, insertProfileRow, updateProfileByNameRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkAddProfilesToModelRow, bulkRemoveProfilesFromModelRow } from "./helpers";
 import { routineModels } from '../routinePolicy';
 
 /** Create a batch and reserve permanent proxies in one Convex transaction. */
@@ -172,18 +172,6 @@ export const updateByNameInternal = internalMutation({
 	args: updateByNameArgsShape,
 	handler: async (ctx, args) => {
 		return await updateProfileByNameRow(ctx, args);
-	},
-});
-
-const updateByIdArgsShape = {
-	profileId: v.id("profiles"),
-	...profileArgsShape,
-};
-
-export const updateById = mutation({
-	args: updateByIdArgsShape,
-	handler: async (ctx, args) => {
-		return await updateProfileByIdRow(ctx, args);
 	},
 });
 

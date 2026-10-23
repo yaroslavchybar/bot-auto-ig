@@ -4,7 +4,7 @@ import { proxyUsageKey } from '../../proxies/utils/proxyUsage'
 import { useCursorPage, useDebouncedSearch } from '@/hooks/use-cursor-page'
 import { TablePagination } from '@/components/shared/TablePagination'
 import { DEFAULT_PAGE_SIZE } from '../../../../../server/shared/pagination'
-import type { Profile } from '../types'
+import type { ProfileEditValues } from '../types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,17 +26,17 @@ import { stripScheme } from '../../proxies/utils/maskProxy'
 import { formatProxyForInput } from '../../proxies/utils/formatProxyForInput'
 
 interface ProfileFormProps {
-  initialData?: Partial<Profile>
+  initialData: ProfileEditValues
   saving: boolean
-  onSave: (data: Partial<Profile>) => void
+  onSave: (data: ProfileEditValues) => void
   onCancel: () => void
   className?: string
 }
 
 interface FieldProps {
-  draft: Partial<Profile>
+  draft: ProfileEditValues
   saving: boolean
-  setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
+  setDraft: React.Dispatch<React.SetStateAction<ProfileEditValues>>
   setLocalError: (error: string | null) => void
 }
 
@@ -190,7 +190,7 @@ function SavedProxyPicker({
   currentProxyType,
 }: {
   saving: boolean
-  setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
+  setDraft: React.Dispatch<React.SetStateAction<ProfileEditValues>>
   currentProxy?: string
   currentProxyType?: string
 }) {
@@ -276,9 +276,9 @@ function ProxyInputRow({
   saving,
   setDraft,
 }: {
-  draft: Partial<Profile>
+  draft: ProfileEditValues
   saving: boolean
-  setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
+  setDraft: React.Dispatch<React.SetStateAction<ProfileEditValues>>
 }) {
   return (
     <div>
@@ -395,9 +395,9 @@ function FingerprintFields({
   saving,
   setDraft,
 }: {
-  draft: Partial<Profile>
+  draft: ProfileEditValues
   saving: boolean
-  setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
+  setDraft: React.Dispatch<React.SetStateAction<ProfileEditValues>>
 }) {
   return (
     <div className="grid gap-4">
@@ -459,14 +459,12 @@ export function ProfileForm({
   onCancel,
   className,
 }: ProfileFormProps) {
-  const [draft, setDraft] = useState<Partial<Profile>>(() => ({
-    name: '',
-    inUse: false,
-    status: 'idle',
-    proxyType: 'http',
-    fingerprintOs: 'windows',
-    ...initialData,
-    proxy: formatProxyForInput(initialData?.proxy, initialData?.proxyType),
+  const [draft, setDraft] = useState<ProfileEditValues>(() => ({
+    name: initialData.name,
+    proxyType: initialData.proxyType ?? 'http',
+    fingerprintOs: initialData.fingerprintOs ?? 'windows',
+    cookiesJson: initialData.cookiesJson,
+    proxy: formatProxyForInput(initialData.proxy, initialData.proxyType),
   }))
 
   const [connection, setConnection] = useState<'direct' | 'proxy'>(

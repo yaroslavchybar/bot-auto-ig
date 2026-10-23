@@ -17,8 +17,8 @@ for (const [day, interests, home, reels, expected] of [
   const deps: NonNullable<Parameters<typeof runExploreWarmup>[6]> = {
     now: Date.now, random: min => min,
     terms: async topics => { assert.deepEqual(topics, ['Fishing']); return ['fishing'] },
-    posts: async (_page, query, count, _budget, _seen, session, _log, engage, _matcher, topics) => {
-      assert.equal(query, 'fishing'); assert.equal(count, Infinity); assert.equal(session.end, end)
+    posts: async (_page, query, _budget, _seen, session, _log, engage, _matcher, topics) => {
+      assert.equal(query, 'fishing'); assert.equal(session.end, end)
       assert.equal(engage, day >= 2); assert.deepEqual(topics, ['Fishing']); calls++
     },
   }
@@ -82,21 +82,20 @@ test('topic results scroll the grid between opened posts without direct URL navi
     keyboard: { press: async (key: string) => { assert.equal(key, 'Escape'); closed++; url = 'https://www.instagram.com/explore/' } },
   } as unknown as Page
   const session = new BrowseSession(Date.now() + 60_000)
-  session.wait = async () => {}
+  session.wait = async ms => { now += ms; session.check() }
   const seen = new Set<string>()
   Date.now = () => now
   try {
-    await watchTopicPosts(page, 'fitness', 2, new WarmupActivityBudget({ likes: 0, profiles: 2, reels: 20, stories: 2 }),
-      seen, session, () => {}, false, async (_context, topics) => {
+    await assert.rejects(watchTopicPosts(page, 'fitness', new WarmupActivityBudget({ likes: 0, profiles: 2, reels: 20, stories: 2 }), seen, session, () => {}, false, async (_context, topics) => {
         assert.deepEqual(topics, ['Fitness training, excluding competitions'])
         return true
       }, ['Fitness training, excluding competitions'], {
         search: async (_page, topic) => { assert.equal(topic, 'fitness'); return true },
         scroll: async () => { scrolls++ },
         grid: async (_page, tiles) => tiles.map(tile => tile.href),
-      })
+      }), SessionEnded)
   } finally { Date.now = originalNow }
-  assert.equal(scrolls, 1)
+  assert.ok(scrolls >= 1)
   assert.deepEqual([...seen], ['/p/one/', '/p/two/'])
   assert.equal(closed, 2)
 })
@@ -139,7 +138,7 @@ test('completed playback is recorded before optional comment reading expires', a
   session.wait = async ms => { now = Math.min(session.end, now + ms); session.check() }
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0, comments: 1 })
   try {
-    await assert.rejects(watchTopicPosts(page, 'fitness', 1, budget, new Set(), session, () => {}, true, async () => true, ['fitness'], {
+    await assert.rejects(watchTopicPosts(page, 'fitness', budget, new Set(), session, () => {}, true, async () => true, ['fitness'], {
       search: async () => true, scroll: async () => { throw new Error('No scrolling after final view') },
       grid: async (_page, tiles) => tiles.map(tile => tile.href),
     }), SessionEnded)
@@ -179,8 +178,7 @@ for (const gridMatch of [false, true]) test(`Explore requires both grid and open
   session.wait = async () => session.check()
   const budget = new WarmupActivityBudget({ likes: 2, profiles: 2, reels: 20, stories: 0 })
   try {
-    await assert.rejects(watchTopicPosts(page, 'fishing', 1, budget, new Set(), session, () => {}, true,
-      async () => { decisions++; return false }, ['Fishing'], {
+    await assert.rejects(watchTopicPosts(page, 'fishing', budget, new Set(), session, () => {}, true, async () => { decisions++; return false }, ['Fishing'], {
         search: async () => true, grid: async () => gridMatch ? ['/p/one/'] : [],
         skip: async () => { assert.equal(gridMatch, false); now = session.end; session.check() },
         scroll: async () => { now = session.end; session.check() },

@@ -100,10 +100,7 @@ async function fixture(options: { missing?: boolean; budgetMs?: number; hardMs?:
   }
   try {
     const notes: Record<string, unknown>[] = options.notes ?? []
-    const watched = await watchStories(page, Infinity, note => notes.push(note), () => stopped, {
-      deadline: start + budgetMs, sessionDeadline: start + (options.hardMs ?? 20_000),
-      budget,
-    }, deps)
+    const watched = await watchStories(page, new BrowseSession(start + (options.hardMs ?? 20_000), () => stopped), note => notes.push(note), { watchUntil: start + budgetMs, budget: budget }, deps)
     return { watched, nextClicks, closed, opened, plays, notes, visits, rolls, elapsed: now - start }
   } finally { Date.now = originalNow }
 }

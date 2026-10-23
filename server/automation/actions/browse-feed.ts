@@ -39,11 +39,10 @@ export async function browseContent(page: Page, end: number, config: Record<stri
     const before = budget.browsed
     try {
       if (surface === 'home') {
-        const result = await deps.home(page, (sliceEnd - deps.now()) / 60_000, config, log,
-          () => stopped() || deps.now() >= sliceEnd, budget, undefined, state.homeSeen)
+        const result = await deps.home(page, session, config, log, budget, undefined, state.homeSeen)
         if (result === 'stopped' && stopped()) return 'stopped'
       } else if (await deps.openReels(page, log, session)) {
-        await deps.reels(page, Infinity, config, log, stopped, sliceEnd, session, budget, undefined, state.reelsSeen)
+        await deps.reels(page, session, config, log, budget, undefined, state.reelsSeen)
       }
     } catch (error) {
       if (!(error instanceof SessionEnded)) {
@@ -103,8 +102,8 @@ export async function runBrowseFeedSession(page: Page, context: FeedSessionConte
   if (home || stories) await deps.home(page, log, session)
   if (stopped()) return 'stopped'
   if (stories) {
-    budget.used.stories += await deps.stories(page, Infinity, log, stopped, {
-      deadline: Math.min(deadline, deps.now() + deps.random(60_000, 180_000)), sessionDeadline: deadline, budget })
+    budget.used.stories += await deps.stories(page, session, log, {
+      watchUntil: Math.min(deadline, deps.now() + deps.random(60_000, 180_000)), budget })
     if (!stopped()) await deps.check(page, session)
   }
   if (stopped()) return 'stopped'

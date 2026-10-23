@@ -6,7 +6,8 @@ export class SessionEnded extends Error {}
 export class BrowseSession {
   constructor(readonly end = Infinity, private readonly shouldStop: StopCheck = () => false) {}
 
-  stopped(): boolean { return this.shouldStop() || Date.now() >= this.end }
+  cancelled(): boolean { return this.shouldStop() }
+  stopped(): boolean { return this.cancelled() || Date.now() >= this.end }
   check(): void { if (this.stopped()) throw new SessionEnded('Browsing session ended') }
   timeout(max: number): number {
     this.check()

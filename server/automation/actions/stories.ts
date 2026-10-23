@@ -79,27 +79,25 @@ async function closeStoryViewer(page: Page, click: typeof clickLiveAction, shoul
 
 export async function watchStories(
   page: Page,
-  maxStories: number,
+  session: BrowseSession,
   log: ActionLogger,
-  shouldStop: StopCheck,
-  timing: { deadline?: number; sessionDeadline?: number; budget?: WarmupActivityBudget } = {},
+  timing: { watchUntil: number; budget?: WarmupActivityBudget },
   deps = dependencies,
 ): Promise<number> {
-  const watchUntil = timing.deadline ?? Infinity
-  const session = new BrowseSession(timing.sessionDeadline ?? watchUntil, shouldStop)
-  const unlimited = maxStories === Infinity
-  if (unlimited && !Number.isFinite(session.end)) throw new Error('Watching all stories requires a deadline')
+  const { watchUntil } = timing
+  if (!Number.isFinite(session.end)) throw new Error('Watching stories requires a deadline')
   let watched = 0, opened = false
   try {
     session.check()
+    if (Date.now() >= watchUntil) return 0
     if (!isInstagramHome(page)) await page.goto('https://www.instagram.com/', {
       waitUntil: 'domcontentloaded', timeout: session.timeout(45_000),
     })
     await focusPageContent(page)
-    await dismissPopups(page, new BrowseSession(Math.min(session.end, Date.now() + 15_000), shouldStop))
+    await dismissPopups(page, new BrowseSession(Math.min(session.end, Date.now() + 15_000), () => session.stopped()))
     const unseen = page.locator(UNSEEN_STORY_SELECTOR)
     const story = page.locator(`${UNSEEN_STORY_SELECTOR}:visible`).first()
-    const opening = new BrowseSession(Math.min(Date.now() + 15_000, session.end), shouldStop)
+    const opening = new BrowseSession(Math.min(Date.now() + 15_000, session.end), () => session.stopped())
     try {
       await story.waitFor({ state: 'visible', timeout: opening.timeout(2000) })
       opening.check()
@@ -113,15 +111,16 @@ export async function watchStories(
       return 0
     }
     opening.check()
-    const owners = maxStories > 0 ? new Set(await unseen.evaluateAll(nodes => nodes.flatMap(node => {
+    const owners = new Set(await unseen.evaluateAll(nodes => nodes.flatMap(node => {
       const owner = /^Story by ([\w.]+), not seen$/.exec(node.getAttribute('aria-label') ?? '')?.[1]
       return owner ? [owner.toLowerCase()] : []
-    }))) : new Set<string>()
+    })))
     opened = true
     await (await actionLocator(story, opening.timeout(5_000))).click({ timeout: opening.timeout(5_000) })
-    if (maxStories > 0) await page.waitForURL(url => /^\/stories\/[\w.]+\//.test(url.pathname), { timeout: session.timeout(5000) })
+    session.check()
+    await page.waitForURL(url => /^\/stories\/[\w.]+\//.test(url.pathname), { timeout: session.timeout(5000) })
     const seen = new Set<string>(), profileChecked = new Set<string>()
-    while (watched < Math.max(0, maxStories) && Date.now() < watchUntil && !shouldStop()) {
+    while (Date.now() < watchUntil && !session.stopped()) {
       await assertInstagramReady(page, session)
       const current = storyPath(page)
       if (!current || !owners.has(current.owner)) break
@@ -171,10 +170,10 @@ export async function watchStories(
         session.check()
         log({ event: 'automation.actions.stories.skipped', reason: 'playback_stalled', owner: current.owner })
       }
-      if (shouldStop()) break
+      if (session.cancelled()) break
       if (complete) watched++
       seen.add(key)
-      if (watched >= maxStories || Date.now() >= watchUntil) break
+      if (Date.now() >= watchUntil) break
       // Give autoplay a chance before using Next, so a completed segment cannot skip the following one.
       let state = await deps.progress(page)
       for (let tries = 0; complete && tries < 5 && storyPath(page)?.owner === current.owner && state?.index === progress.index; tries++) {
@@ -201,7 +200,7 @@ export async function watchStories(
       log({ event: 'automation.actions.stories.skipped', error })
     }
   } finally {
-    if (opened) await closeStoryViewer(page, deps.click, shouldStop, log)
+    if (opened) await closeStoryViewer(page, deps.click, () => session.cancelled(), log)
   }
   log({ event: 'automation.stories_result', watchedCount: watched })
   return watched

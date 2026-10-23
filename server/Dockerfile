@@ -100,9 +100,6 @@ RUN --mount=type=secret,id=cloak_key \
 
 FROM browser-deps AS bun-build-deps
 WORKDIR /app
-COPY --from=repo_root package.json bun.lock ./
-COPY --from=repo_root server/package.json ./server/package.json
-COPY --from=repo_root frontend/package.json ./frontend/package.json
 # Full workspace install: the build script runs root typescript and tsc
 # typechecks dev dependencies. Scripts are skipped for a fast hermetic build;
 # runtime stays minimal (browser-deps).
@@ -116,11 +113,6 @@ RUN bun run --filter anti-server build
 FROM browser-deps AS server-runtime
 COPY --from=rust-build /build/target/release/ig-runtime /usr/local/bin/ig-runtime
 COPY --chmod=755 scripts/seed-cloak-cache.sh /app/server/scripts/seed-cloak-cache.sh
-COPY --from=browser-deps /app/node_modules /app/node_modules
-COPY --from=browser-deps /app/server /app/server
-COPY --from=browser-deps /app/package.json /app/package.json
-COPY --from=browser-deps /app/bun.lock /app/bun.lock
-COPY --from=browser-deps /app/frontend/package.json /app/frontend/package.json
 COPY --from=app-build /app/server/dist /app/server/dist
 COPY --from=app-build /app/server/package.json /app/server/package.json
 WORKDIR /app/server

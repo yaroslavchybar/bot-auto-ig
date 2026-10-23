@@ -11,7 +11,7 @@ import { liveLikeSelector } from './engagement.js'
 import { reelEngagementCount } from './reel-counts.js'
 
 test('disabled reels never access the browser', async () => {
-  await watchReels({} as Page, 5, { scroll_reels: false }, () => {}, () => false, Date.now() + 60_000)
+  await watchReels({} as Page, new BrowseSession(Date.now() + 60_000, () => false), { scroll_reels: false }, () => {})
 })
 
 for (const mode of ['muted', 'unmuted', 'missing', 'timeout', 'probe-timeout', 'disconnected'] as const)
@@ -119,8 +119,7 @@ for (const player of ['sibling', 'ancestor', 'missing'] as const)
     session.wait = async ms => { now += Math.max(1, Math.ceil(ms)); session.check() }
     const budget = new WarmupActivityBudget({ likes: 1, profiles: 0, reels: 0, stories: 0 })
     try {
-      await watchReels(page, 1, { warmup_day: 2, warmup_topics: ['fitness'] }, () => {}, () => false,
-        session.end, session, budget, async () => true)
+      await watchReels(page, session, { warmup_day: 2, warmup_topics: ['fitness'] }, () => {}, budget, async () => true)
       assert.equal(budget.used.likes, 1)
       assert.equal(doubleTaps, 0)
       assert.equal(buttonClicks, 1)
@@ -384,7 +383,7 @@ for (const moved of [true, false]) test(`skipping a changing reel counts browsin
   const f = reelAdvanceFixture(1024, 600, { changeOnClick: moved, contextFailure: new Error('Element is not attached to the DOM') })
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0 })
   try {
-    await watchReels(f.page, 1, {}, () => {}, () => false, f.session.end, f.session, budget)
+    await watchReels(f.page, f.session, {}, () => {}, budget)
     assert.equal(budget.browsed, moved ? 1 : 0)
     assert.equal(budget.used.reels, 0, 'skipping is progress but does not claim a watched reel')
   } finally { await f.window.happyDOM.close() }
@@ -395,8 +394,7 @@ test('off-topic reels can make browsing progress without any completed watches',
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0 })
   const notes: Record<string, unknown>[] = []
   try {
-    await watchReels(f.page, 1, { warmup_topics: 'fitness', reels_skip_chance: 0 }, note => notes.push(note),
-      () => false, f.session.end, f.session, budget, async () => false)
+    await watchReels(f.page, f.session, { warmup_topics: 'fitness', reels_skip_chance: 0 }, note => notes.push(note), budget, async () => false)
     assert.equal(budget.browsed, 1)
     assert.equal(budget.used.reels, 0)
     assert.ok(notes.some(note => note.event === 'automation.warmup.reel_off_topic'))
@@ -424,12 +422,11 @@ for (const mode of ['related', 'unrelated', 'empty', 'ad'] as const)
     }
     f.session.wait = async ms => { now += Math.max(1, Math.ceil(ms)); f.session.check() }
     try {
-      await watchReels(f.page, 1, { warmup_topics: mode === 'empty' ? [] : ['Fishing'] }, () => {},
-        () => f.stats().clicks >= 1, f.session.end, f.session, undefined, async () => {
+      await assert.rejects(watchReels(f.page, Object.assign(f.session, { cancelled: () => f.stats().clicks >= 1 }), { warmup_topics: mode === 'empty' ? [] : ['Fishing'] }, () => {}, undefined, async () => {
           events.push('classify'); return mode === 'related'
-        })
+        }), SessionEnded)
       assert.deepEqual(events, mode === 'related' ? ['classify', 'sound'] : mode === 'unrelated' ? ['classify'] : [])
-      assert.equal(f.stats().clicks, mode === 'unrelated' || mode === 'ad' ? 1 : 0)
+      assert.equal(f.stats().clicks, 1)
     } finally { Date.now = originalNow; await f.window.happyDOM.close() }
   })
 
@@ -446,17 +443,16 @@ for (const ad of [false, true]) test(`Reels pause before classification and skip
   }
   f.session.wait = async ms => { waits.push(ms); f.session.check() }
   try {
-    await watchReels(f.page, 1, { warmup_topics: ['Fishing'] }, () => {}, () => f.stats().clicks >= 1,
-      f.session.end, f.session, budget, async () => {
+    await assert.rejects(watchReels(f.page, Object.assign(f.session, { cancelled: () => f.stats().clicks >= 1 }), { warmup_topics: ['Fishing'] }, () => {}, budget, async () => {
         assert.equal(waits.length, 1, 'pause happens before the screenshot/classification')
         assert.ok(waits[0] >= 500 && waits[0] <= 1200)
         decisions.push(1); return false
-      })
+      }), SessionEnded)
     assert.equal(f.stats().clicks, 1)
-    if (ad) assert.deepEqual(waits, [100], 'ads only wait for frame stability after advancing')
+    if (ad) assert.deepEqual(waits, [], 'cancellation prevents a settling wait after advancing')
     else {
       assert.ok(waits[0] >= 500 && waits[0] <= 1200, 'capture waits 0.5–1.2 seconds')
-      assert.deepEqual(waits.slice(1), [100], 'rejected content only waits for frame stability after advancing')
+      assert.deepEqual(waits.slice(1), [], 'cancellation prevents a settling wait after advancing')
     }
     assert.equal(decisions.length, ad ? 0 : 1, 'ads skip before any AI request')
     assert.equal(budget.used.reels, 0); assert.equal(budget.used.likes, 0)
@@ -477,8 +473,7 @@ test('unlimited Reels continue past an old count cap and stop at the browsing de
   session.wait = async ms => { now += Math.min(Math.max(1, Math.ceil(ms)), session.end - now); session.check() }
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0 })
   try {
-    await assert.rejects(watchReels(f.page, Infinity, { reels_min: 1, reels_max: 1 }, () => {},
-      () => false, session.end, session, budget), SessionEnded)
+    await assert.rejects(watchReels(f.page, session, { reels_min: 1, reels_max: 1 }, () => {}, budget), SessionEnded)
     assert.ok(budget.used.reels > 1, 'the old daily and min/max counts cannot stop viewing')
     assert.ok(f.stats().clicks > 1)
     assert.equal(now, session.end)
@@ -489,7 +484,7 @@ test('a detached reel caption skips that reel instead of ending the session', as
   const f = reelAdvanceFixture(1024, 600, { changeOnClick: false, contextFailure: new Error('Element is not attached to the DOM') })
   const notes: Record<string, unknown>[] = []
   try {
-    await watchReels(f.page, 1, {}, note => notes.push(note), () => false, f.session.end, f.session)
+    await watchReels(f.page, f.session, {}, note => notes.push(note))
     assert.equal(f.stats().clicks, 1, 'try the next reel after losing caption context')
     assert.ok(notes.some(note => note.event === 'automation.actions.reels.context_unavailable'))
   } finally { await f.window.happyDOM.close() }
@@ -498,7 +493,7 @@ test('a detached reel caption skips that reel instead of ending the session', as
 test('reel caption recovery still stops on visible Instagram limits', async () => {
   const f = reelAdvanceFixture(1024, 600, { contextFailure: new errors.TimeoutError('Caption changed'), warningAfterFailure: true })
   try {
-    await assert.rejects(watchReels(f.page, 1, {}, () => {}, () => false, f.session.end, f.session), /limit needs attention/)
+    await assert.rejects(watchReels(f.page, f.session, {}, () => {}), /limit needs attention/)
     assert.equal(f.stats().clicks, 0)
   } finally { await f.window.happyDOM.close() }
 })
@@ -729,8 +724,7 @@ for (const followed of [false, true]) test(followed
     session.wait = async ms => { now += Math.max(1, Math.ceil(ms)); session.check() }
     const budget = new WarmupActivityBudget({ likes: 6, profiles: 2, reels: 0, stories: 0 })
     let decisions = 0
-    await watchReels(page, 1, { soft_warmup: false, warmup_topics: 'fitness', like_chance: 100, reels_skip_chance: followed ? 100 : 0 },
-      () => {}, () => false, session.end, session, budget, async (context, _topics, _session, _log, screenshotTarget) => {
+    await watchReels(page, session, { soft_warmup: false, warmup_topics: 'fitness', like_chance: 100, reels_skip_chance: followed ? 100 : 0 }, () => {}, budget, async (context, _topics, _session, _log, screenshotTarget) => {
         decisions++
         assert.equal(screenshotTarget, post, 'topic screenshot must include the reel frame and its caption')
         await post.evaluate(node => {

@@ -1,4 +1,4 @@
-import { Commands } from '../worker/commands.js'
+import type { Commands } from '../worker/commands.js'
 import { AppError, ValidationError } from '../shared/errors.js'
 import { addLogContext, logOperation } from '../shared/logger.js'
 import { MAX_INTEREST_LABEL, MAX_INTEREST_DESCRIPTION } from '../shared/interests.js'
@@ -95,26 +95,14 @@ export async function rewriteInterest(
 }
 
 export function interestCommands(rewrite = rewriteInterest): Commands {
-  const commands = new Commands()
-  commands.register(
-    'interests.post.rewrite',
-    'POST',
-    '/api/automations/interests/rewrite',
-    async (req, res) => {
-      const label: unknown = req.body?.label
+  return {
+    'interests.post.rewrite': async ({ body, signal }) => {
+      const label = body && typeof body === 'object' && 'label' in body ? body.label : undefined
       if (typeof label !== 'string' || !label.trim() || label.length > MAX_INTEREST_LABEL)
         throw new ValidationError('Interest must be 1–300 characters')
-      const controller = new AbortController()
-      const disconnected = () => controller.abort()
-      res.once('close', disconnected)
-      try {
-        const description = await rewrite(label, { signal: controller.signal })
-        addLogContext({ interestModel: INTEREST_MODEL })
-        res.json({ description })
-      } finally {
-        res.off('close', disconnected)
-      }
+      const description = await rewrite(label, { signal })
+      addLogContext({ interestModel: INTEREST_MODEL })
+      return { description }
     },
-  )
-  return commands
+  }
 }

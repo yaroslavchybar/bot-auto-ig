@@ -10,32 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import type { Model } from '../types'
-
-// Mirrors the rules in convex/models.ts so bad entries are flagged before saving.
-const USERNAME_PATTERN = /^[a-z0-9._]{1,30}$/
-const FULL_NAME_PATTERN = /^[\p{L}\p{M}\p{Extended_Pictographic}\p{Emoji_Component} .'-]{3,80}$/u
-
-type ParsedList = { items: string[]; duplicates: number }
-
-// Splits pasted usernames on spaces, commas, or new lines, then strips "@", lowercases, and dedupes.
-function parseUsernames(text: string): ParsedList {
-  const all = text
-    .split(/[\s,]+/)
-    .map((name) => name.trim().replace(/^@/, '').toLowerCase())
-    .filter(Boolean)
-  const items = [...new Set(all)]
-  return { items, duplicates: all.length - items.length }
-}
-
-// Reads one full name per line, dropping blank lines and duplicates.
-function parseFullNames(text: string): ParsedList {
-  const all = text
-    .split(/\r?\n/)
-    .map((name) => name.trim())
-    .filter(Boolean)
-  const items = [...new Set(all)]
-  return { items, duplicates: all.length - items.length }
-}
+import { parseModelUsernames, parseModelFullNames, isValidModelUsername, isValidModelFullName } from '../../../../../server/shared/modelIdentity'
 
 // Edits a model's name, usernames, and full names. All fields save together.
 export function ModelIdentityPanel({ model }: { model: Model }) {
@@ -48,10 +23,10 @@ export function ModelIdentityPanel({ model }: { model: Model }) {
   const [error, setError] = useState('')
 
   const trimmedName = name.trim()
-  const usernameList = parseUsernames(usernames)
-  const fullNameList = parseFullNames(fullNameVariations)
-  const invalidUsernames = usernameList.items.filter((n) => !USERNAME_PATTERN.test(n))
-  const invalidFullNames = fullNameList.items.filter((n) => !FULL_NAME_PATTERN.test(n))
+  const usernameList = parseModelUsernames(usernames)
+  const fullNameList = parseModelFullNames(fullNameVariations)
+  const invalidUsernames = usernameList.items.filter((n) => !isValidModelUsername(n))
+  const invalidFullNames = fullNameList.items.filter((n) => !isValidModelFullName(n))
   const hasInvalid = invalidUsernames.length > 0 || invalidFullNames.length > 0
   const changed =
     trimmedName !== model.name ||

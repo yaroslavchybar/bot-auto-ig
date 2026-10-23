@@ -57,8 +57,8 @@ test('updating a profile with a new proxy auto-saves it', async () => {
   const t = createConvexTest()
   const profile = await seedProfile(t, { name: 'Profile A' })
 
-  await t.mutation(api.profiles.mutations.updateById, {
-    profileId: profile!._id,
+  await t.mutation(internal.profiles.mutations.updateByNameInternal, {
+    oldName: (await t.run(ctx => ctx.db.get(profile!._id)))!.name,
     name: 'Profile A',
     proxy: 'socks5://host-b:1080:user:pass',
     proxyType: 'socks5',
@@ -166,8 +166,8 @@ test('edits that keep the current proxy pass even at the limit', async () => {
     maxProfiles: 1,
   })
 
-  const updated = await t.mutation(api.profiles.mutations.updateById, {
-    profileId: firstId as never,
+  const updated = await t.mutation(internal.profiles.mutations.updateByNameInternal, {
+    oldName: 'Legacy A',
     name: 'Legacy A renamed',
   })
   expect(updated).toMatchObject({ name: 'Legacy A renamed' })

@@ -235,57 +235,6 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	return await ctx.db.get(existing._id);
 }
 
-export async function updateProfileByIdRow(ctx: any, args: any) {
-	const name = String(args.name || "").trim();
-	if (!name) throw new DomainError('VALIDATION', "name is required");
-	const existing = await ctx.db.get(args.profileId);
-	if (!existing) throw new DomainError('NOT_FOUND', "Profile not found");
-	if (typeof args.cookiesJson === 'string' && (existing.inUse || existing.status === 'running'))
-		throw new DomainError('CONFLICT', 'Close the browser before importing cookies');
-	assertProfileEditable(existing);
-	args = { ...args, ...cleanProxyFields(args.proxy ?? existing.proxy, args.proxyType ?? existing.proxyType) };
-
-	const next: Record<string, unknown> = { name };
-	if (name !== existing.name) await assertProfileNameAvailable(ctx, name, existing._id);
-	if (name !== existing.name) next.pendingRenameFrom = existing.name;
-
-	if (typeof args.proxy === "string") {
-		next.proxy = args.proxy;
-	}
-	if (typeof args.proxyType === "string") {
-		next.proxyType = args.proxyType;
-	}
-	if (typeof args.fingerprintOs === "string") {
-		next.fingerprintOs = args.fingerprintOs;
-	}
-	if (typeof args.fingerprintOs === "string" && fingerprintPlatform(args.fingerprintOs) !== fingerprintPlatform(existing.fingerprintOs)) {
-		next.fingerprintSeed = undefined;
-	} else if (typeof args.fingerprintSeed === "number" && Number.isSafeInteger(args.fingerprintSeed)) {
-		next.fingerprintSeed = args.fingerprintSeed;
-	}
-	if (typeof args.cookiesJson === "string") {
-		const cleaned = args.cookiesJson.trim();
-		next.cookiesJson = cleaned ? cleaned : undefined;
-		next.instagramSessionId = sessionIdFromCookies(cleaned);
-		next.browserSessionRevision = (existing.browserSessionRevision ?? 0) + 1;
-	}
-	const effectiveProxyById = typeof args.proxy === "string" ? args.proxy : existing.proxy;
-	const effectiveTypeById = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
-	if (proxyKey(effectiveProxyById, effectiveTypeById) !== proxyKey(existing.proxy, existing.proxyType)) {
-		await assertProxyLimit(ctx, effectiveProxyById, effectiveTypeById, args.profileId);
-	}
-	if (Object.entries(next).some(([key, value]) => existing[key] !== value))
-    await patchProfile(ctx, args.profileId, next as any);
-	await syncProxyUsage(ctx, { _id: args.profileId, name, proxy: effectiveProxyById, proxyType: effectiveTypeById });
-	await ensureProxySaved(
-		ctx,
-		typeof args.proxy === "string" ? args.proxy : existing.proxy,
-		typeof args.proxyType === "string" ? args.proxyType : existing.proxyType,
-		name,
-	);
-	return await ctx.db.get(args.profileId);
-}
-
 export async function removeProfileByNameRow(ctx: MutationCtx, name: string) {
   const cleaned = String(name || '').trim()
   if (!cleaned) throw new DomainError('VALIDATION', 'name is required')

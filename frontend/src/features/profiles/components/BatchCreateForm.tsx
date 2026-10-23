@@ -17,7 +17,7 @@ export function BatchCreateForm({
   onCreated,
   onCancel,
 }: {
-  onCreated: () => Promise<void>
+  onCreated: () => void | Promise<void>
   onCancel: () => void
 }) {
   const models = useQuery(api.models.list, {})

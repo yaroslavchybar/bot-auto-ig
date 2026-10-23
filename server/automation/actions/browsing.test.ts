@@ -206,8 +206,9 @@ test('stories wait for the button tray and honor a stop while it loads', async (
       ...visibleActionGeometry, hover: async () => {},
       dispose: async () => {},
       waitFor: async () => { loaded = true; stopped = stopWhileLoading },
+      evaluateAll: async () => ['alice'],
       isVisible: async () => loaded,
-      click: async () => { assert.equal(loaded, true); clicks++ },
+      click: async () => { assert.equal(loaded, true); clicks++; stopped = true },
     }
     const page = {
       goto: async () => { throw new Error('Stories must reuse the already-open Home page') },
@@ -215,7 +216,7 @@ test('stories wait for the button tray and honor a stop while it loads', async (
       keyboard: { press: async () => {} },
       locator: (selector: string) => selector.includes('Story by') ? story : absentControl,
     } as unknown as Page
-    assert.equal(await watchStories(page, 0, () => {}, () => stopped), 0)
+    assert.equal(await watchStories(page, new BrowseSession(Date.now() + 60_000, () => stopped), () => {}, { watchUntil: Date.now() + 60_000 }), 0)
     assert.equal(clicks, stopWhileLoading ? 0 : 1)
   }
 })
@@ -239,7 +240,7 @@ test('story navigation and opening expiry stay local to the optional story chunk
       locator: (selector: string) => selector.includes('Story by') ? story : absentControl,
     } as unknown as Page
     try {
-      assert.equal(await watchStories(page, 1, () => {}, () => false, { deadline }), 0)
+      assert.equal(await watchStories(page, new BrowseSession(deadline, () => false), () => {}, { watchUntil: deadline }), 0)
       assert.equal(clicks, 0)
     } finally { Date.now = originalNow }
   }
@@ -247,7 +248,7 @@ test('story navigation and opening expiry stay local to the optional story chunk
 
 test('unexpected story failures still propagate', async () => {
   const page = { goto: async () => { throw new Error('Browser connection lost') } } as unknown as Page
-  await assert.rejects(watchStories(page, 1, () => {}, () => false), /Browser connection lost/)
+  await assert.rejects(watchStories(page, new BrowseSession(Date.now() + 60_000, () => false), () => {}, { watchUntil: Date.now() + 60_000 }), /Browser connection lost/)
 })
 
 for (const stage of ['open', 'next']) test(`temporary story ${stage} failure skips stories while browsing time remains`, async () => {
@@ -270,8 +271,7 @@ for (const stage of ['open', 'next']) test(`temporary story ${stage} failure ski
       ? { count: async () => 1, nth: () => next }
       : { filter() { return this }, first() { return this }, count: async () => 0, isVisible: async () => false, evaluateAll: async () => null },
   } as unknown as Page
-  const watched = await watchStories(page, 2, note => notes.push(note), () => false,
-    { deadline: Date.now() + 60_000 }, completedStory)
+  const watched = await watchStories(page, new BrowseSession(Date.now() + 60_000, () => false), note => notes.push(note), { watchUntil: Date.now() + 60_000 }, completedStory)
   assert.equal(watched, stage === 'open' ? 0 : 1)
   assert.ok(notes.some(note => note.event === 'automation.actions.stories.skipped'))
 })
@@ -279,6 +279,7 @@ for (const stage of ['open', 'next']) test(`temporary story ${stage} failure ski
 test('stories skip hidden or already-seen controls before choosing an unseen story', async () => {
   for (const skipped of ['hidden', 'seen']) {
     const window = new Window()
+    let stopped = false
     try {
       window.document.body.innerHTML = `<main><div role="button" aria-label="Story by old, ${skipped === 'seen' ? 'seen' : 'not seen'}" ${skipped === 'hidden' ? 'style="display:none"' : ''}></div>
         <div id="visible-story" role="button" aria-label="Story by alice, not seen"></div></main>`
@@ -290,14 +291,14 @@ test('stories skip hidden or already-seen controls before choosing an unseen sto
           if (selector.includes('Your Meta Account is here')) return absentControl
           const nodes = [...window.document.querySelectorAll(selector.replaceAll(':visible', ''))]
             .filter(node => !selector.includes(':visible') || node.getAttribute('style') !== 'display:none')
-          return { count: async () => nodes.length, first: () => ({
+          return { count: async () => nodes.length, evaluateAll: async () => ['alice'], first: () => ({
             waitFor: async () => { assert.ok(nodes[0]) },
             isVisible: async () => !!nodes[0] && nodes[0].getAttribute('style') !== 'display:none',
-            ...visibleActionGeometry, hover: async () => {}, click: async () => { clicked = nodes[0]!.id },
+            ...visibleActionGeometry, hover: async () => {}, click: async () => { clicked = nodes[0]!.id; stopped = true },
           }) }
         },
       } as unknown as Page
-      assert.equal(await watchStories(page, 0, () => {}, () => false), 0)
+      assert.equal(await watchStories(page, new BrowseSession(Date.now() + 60_000, () => stopped), () => {}, { watchUntil: Date.now() + 60_000 }), 0)
       assert.equal(clicked, 'visible-story')
     } finally { await window.happyDOM.close() }
   }
@@ -328,8 +329,7 @@ test('stories return zero for missing trays and only completed views after an ea
       locator: (selector: string) => selector.includes('Story by') ? control
         : selector.includes('Next') ? next : absentControl,
     } as unknown as Page
-    const watched = await watchStories(page, mode === 'stop on next' ? 3 : 1, () => {}, () => stopped,
-      {}, completedStory)
+    const watched = await watchStories(page, new BrowseSession(Date.now() + 60_000, () => stopped), () => {}, { watchUntil: Date.now() + 60_000 }, completedStory)
     assert.equal(watched, mode === 'full' || mode === 'stop on next' ? 1 : 0)
   }
 })
