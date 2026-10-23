@@ -40,6 +40,9 @@ jobs:
         with:
           node-version-file: .node-version
       - uses: oven-sh/setup-bun@v2
+        with:
+          # Parallel jobs otherwise race to save the same Bun executable cache.
+          no-cache: true
       - run: bun install --frozen-lockfile
       - run: bun run lint
       - run: bun test ./.github/scripts
@@ -89,6 +92,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - run: bun install --frozen-lockfile
       # The deploy key scopes this push to production.
       - run: bunx convex deploy --check-build-environment disable
@@ -118,6 +123,8 @@ jobs:
         uses: actions/checkout@v6
 
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -273,23 +280,13 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock:ro \
             -v "$HOME/ig-bot/secrets/axiom-token:/run/secrets/axiom_token:ro" \
             timberio/vector:0.58.0-debian validate /etc/vector/vector.toml
+          # This persistent buffer is managed outside Compose and survives app replacement.
+          docker volume create ig-bot-vector-data > /dev/null
           docker compose -f docker-compose.prod.yml up -d --remove-orphans
           cp deploy/ig-bot.caddy ~/caddy/conf.d/ig-bot.caddy
           docker exec caddy caddy reload --config /etc/caddy/Caddyfile
           sleep 5
           # Health through the frontend proxy; proves nginx + server are up.
           curl -sf http://127.0.0.1:3101/api/health > /dev/null
-          # Auto-prune old images: keep 2 newest revisions per service.
-          KEEP_IDS=$( ( (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' server-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' frontend-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' spoofer-' || true) | sort -r | head -n 2 ) | awk '{print $5}' | sort -u)
-          if [ -z "$KEEP_IDS" ]; then
-            echo "prune skipped: empty keep list"
-          else
-            for id in $(docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.ID}}' | sort -u); do
-              case " $KEEP_IDS " in
-                *" $id "*) echo "keep $id" ;;
-                *) docker rmi "$id" || true ;;
-              esac
-            done
-            docker image prune -f || true
-          fi
+          sh .github/scripts/prune-images.sh
           EOF

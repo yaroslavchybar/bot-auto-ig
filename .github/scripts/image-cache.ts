@@ -4,6 +4,7 @@ import { appendFileSync, readFileSync } from 'node:fs'
 const commonInputs = ['.dockerignore', '.github/workflows', '.github/scripts/image-cache.ts']
 const jsInputs = ['package.json', 'bun.lock', 'server/package.json', 'frontend/package.json']
 const rustInputs = [
+  '.github/scripts/normalize-chef-recipe.ts',
   'Cargo.toml',
   'Cargo.lock',
   '.cargo',

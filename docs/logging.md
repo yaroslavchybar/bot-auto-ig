@@ -92,6 +92,10 @@ only through that workflow; do not deploy manually or delete the buffer volume.
 The collector needs Docker socket access to discover/follow the application containers;
 the read-only socket mount does not restrict Docker API permissions.
 
+The buffer volume is external to Compose. CI idempotently creates
+`ig-bot-vector-data` before `compose up`; existing buffer data is reused.
+See [Docker external volumes](https://docs.docker.com/reference/compose-file/volumes/#external).
+
 ## Convex
 
 Convex runs outside Docker. Its native Axiom log stream requires Convex Pro,

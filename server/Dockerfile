@@ -2,11 +2,14 @@
 FROM rust:1.98.1-bookworm AS chef
 WORKDIR /build
 RUN cargo install cargo-chef --version 0.1.78 --locked
+COPY --from=oven/bun:1.4.4-debian /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=repo_root .github/scripts/normalize-chef-recipe.ts /normalize-chef-recipe.ts
 
 FROM chef AS rust-planner
 COPY --from=repo_root Cargo.toml Cargo.lock ./
 COPY --from=repo_root tools ./tools
-RUN cargo chef prepare --recipe-path recipe.json
+RUN cargo chef prepare --recipe-path recipe.json \
+  && bun /normalize-chef-recipe.ts recipe.json
 
 FROM chef AS rust-build
 COPY --from=rust-planner /build/recipe.json recipe.json

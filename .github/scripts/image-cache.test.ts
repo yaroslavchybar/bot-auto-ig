@@ -44,6 +44,7 @@ describe('image reuse', () => {
     ])
     expect(baseImages(readFileSync('tools/spoofer/Dockerfile', 'utf8'))).toEqual([
       'rust:1.98.1-bookworm',
+      'oven/bun:1.4.4-debian',
       'debian:bookworm-slim',
     ])
   })
@@ -96,6 +97,7 @@ describe('image reuse', () => {
     expect(imageInputs.spoofer).not.toContain('tools/runtime')
     expect(imageInputs.spoofer).toContain('tools/runtime/Cargo.toml')
     expect(imageInputs.spoofer).toContain('tools/service-common')
+    expect(imageInputs.spoofer).toContain('.github/scripts/normalize-chef-recipe.ts')
     expect(imageInputs.frontend).toContain('convex')
     expect(imageInputs.frontend).toContain('server/shared')
     expect(imageInputs.server).toContain('frontend/package.json')

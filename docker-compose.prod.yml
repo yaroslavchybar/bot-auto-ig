@@ -105,4 +105,5 @@ secrets:
 
 volumes:
   vector_data:
+    external: true
     name: ig-bot-vector-data
