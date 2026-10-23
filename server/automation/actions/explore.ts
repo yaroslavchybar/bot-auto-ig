@@ -1,4 +1,5 @@
 import type { Page } from 'playwright-core'
+import { withUiDiagnosticContext } from './ui-diagnostics.js'
 import { errors } from 'playwright-core'
 import { actionLocator, clickAction } from './action-locator.js'
 import { assertInstagramReady } from './instagram-state.js'
@@ -27,7 +28,7 @@ export async function openTopicResults(page: Page, topic: string, session: Brows
   const tag = topic.replace(/[^\p{L}\p{N}_]/gu, '').toLowerCase()
   if (!tag || !await searchExplore(page, `#${tag}`, session)) return false
   const suggestions = page.locator('main a[href^="/explore/tags/"]').filter({ visible: true })
-  try { await suggestions.first().waitFor({ state: 'visible', timeout: session.timeout(6000) }) }
+  try { await withUiDiagnosticContext({ expectedTimeout: true, session }, () => suggestions.first().waitFor({ state: 'visible', timeout: session.timeout(6000) })) }
   catch (error) {
     if (!(error instanceof errors.TimeoutError)) throw error
     session.check(); await assertInstagramReady(page)
@@ -54,7 +55,7 @@ export async function openProfileThroughSearch(page: Page, username: string, ses
   if (!await searchExplore(page, username, session)) return false
   const result = page.locator(`main a[href=${JSON.stringify(`/${username}/`)}]`)
     .filter({ visible: true }).filter({ hasText: username }).first()
-  try { await result.waitFor({ state: 'visible', timeout: session.timeout(6000) }) }
+  try { await withUiDiagnosticContext({ expectedTimeout: true, session }, () => result.waitFor({ state: 'visible', timeout: session.timeout(6000) })) }
   catch (error) {
     if (!(error instanceof errors.TimeoutError)) throw error
     session.check(); await assertInstagramReady(page)

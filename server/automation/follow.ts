@@ -1,5 +1,6 @@
 import { errors, type Page } from 'playwright-core';
 import { actionLocator, clickAction } from './actions/action-locator.js';
+import { withUiDiagnosticContext } from './actions/ui-diagnostics.js';
 
 export const profileControls = (page: Page) => page.locator('main header');
 // Suggested accounts can appear inside the header; exclude their list controls.
@@ -47,8 +48,8 @@ export async function outreachProfileState(page: Page, username: string, timeout
 const blockedMessageText = "This account can't receive your message because they don't allow new message requests from everyone.";
 
 export async function messageWasBlocked(page: Page) {
-  return page.getByText(blockedMessageText, { exact: true })
-    .waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
+  return withUiDiagnosticContext({ expectedTimeout: true }, () => page.getByText(blockedMessageText, { exact: true })
+    .waitFor({ state: 'visible', timeout: 5_000 })).then(() => true, () => false);
 }
 
 /** Wait for relationship controls and recognize both follows and pending requests. */

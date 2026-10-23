@@ -37,6 +37,8 @@ export class LogScope {
   private stepCounts: Record<string, number> = Object.create(null)
   private hasErrors = false
   private lastError: unknown
+  private diagnostics: Record<string, unknown>[] = []
+  private diagnosticCount = 0
   private redactions: string[] = []
   private cookieRedactions: string[] = []
   completed = false
@@ -88,6 +90,21 @@ export class LogScope {
     if (this.notes.length > 20) this.notes.shift()
   }
 
+  /** Handled action failures stay visible without changing the owning operation's outcome. */
+  diagnostic(fields: LogFields): void {
+    const clean = this.safeFields(fields)
+    this.diagnosticCount++
+    this.diagnostics.push(clean)
+    if (this.diagnostics.length > 5) this.diagnostics.shift()
+    emit('error', this.safeFields({
+      profileId: this.fields.profileId, profileName: this.fields.profileName,
+      automationId: this.fields.automationId, nodeId: this.fields.nodeId,
+      jobId: this.fields.jobId, taskId: this.fields.taskId, targetUsername: this.fields.targetUsername,
+      ...clean, outcome: 'error', operationId: randomUUID(),
+      parentOperationId: this.operationId, requestId: this.requestId,
+    }) as LogFields)
+  }
+
   finish(outcome: LogOutcome = 'success'): void {
     if (this.completed) return
     this.completed = true
@@ -98,6 +115,7 @@ export class LogScope {
       operationId: this.operationId, parentOperationId: this.parentOperationId,
       outcome: finalOutcome, durationMs: Math.round(performance.now() - this.startedAt),
       ...(this.noteCount ? { notes: this.notes, noteCount: this.noteCount, stepCounts: this.stepCounts } : {}),
+      ...(this.diagnosticCount ? { diagnosticCount: this.diagnosticCount, diagnostics: this.diagnostics } : {}),
     }) as LogFields)
   }
 }
@@ -117,6 +135,13 @@ export function addLogContext(fields: Record<string, unknown>): void {
 }
 export function redactLogValues(...values: string[]): void { scopes.getStore()?.redact(values) }
 export function redactCookieLogValues(...values: string[]): void { scopes.getStore()?.redactCookies(values) }
+
+/** Emit actionable failures immediately, even when the caller can recover and continue. */
+export function logDiagnostic(fields: LogFields): void {
+  const scope = scopes.getStore()
+  if (scope && !scope.completed) scope.diagnostic(fields)
+  else emit('error', { ...(scope ? scope.safeFields(fields) : fields), event: fields.event, outcome: 'error', operationId: randomUUID() })
+}
 
 /** Emit once when a request/job finishes; nested operations keep the same request ID. */
 export async function logOperation<T>(event: string, fields: Record<string, unknown>, action: (scope: LogScope) => Promise<T>): Promise<T> {

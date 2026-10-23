@@ -9,6 +9,7 @@ import { actionLocator, clickLiveAction } from './action-locator.js'
 import { assertInstagramReady } from './instagram-state.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { visitStoryProfile } from './story-profile.js'
+import { withUiDiagnosticContext } from './ui-diagnostics.js'
 
 export const UNSEEN_STORY_SELECTOR = 'main [role="button"][aria-label^="Story by "][aria-label$=", not seen"]:not([aria-disabled="true"])'
 
@@ -16,9 +17,9 @@ export const UNSEEN_STORY_SELECTOR = 'main [role="button"][aria-label^="Story by
 export async function hasUnseenStories(page: Page, session: BrowseSession): Promise<boolean> {
   session.check()
   try {
-    await page.locator(`${UNSEEN_STORY_SELECTOR}:visible`).first().waitFor({
+    await withUiDiagnosticContext({ expectedTimeout: true, session }, () => page.locator(`${UNSEEN_STORY_SELECTOR}:visible`).first().waitFor({
       state: 'visible', timeout: session.timeout(2000),
-    })
+    }))
     session.check()
     return true
   } catch (error) {

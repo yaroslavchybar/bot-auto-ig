@@ -39,6 +39,7 @@ import logger, { logOperation, addLogContext, currentLogScope, type LogScope } f
 import type { ActionLogger } from './actions/shared.js'
 import { captureConsole } from '../logs/console.js'
 import { attachSessionDecisions } from './actions/session-decision.js'
+import { observeAutomationUi } from './actions/observe-ui.js'
 import { routineDueAt, loadFullRuntimeSnapshot } from './readiness.js'
 export { loadFullRuntimeSnapshot } from './readiness.js'
 
@@ -268,11 +269,13 @@ async function withProfile(
     let failure: unknown
     let markedRunning = false
     let detachDecisions = () => {}
+    let stopUiDiagnostics = () => {}
     const close = () => session ? (closing ??= Promise.resolve().then(() => session!.close())) : Promise.resolve()
     try {
       session = await (options.openSession ?? openBrowserSession)(profile.name, {
         headless: options.headless ?? true,
       })
+      stopUiDiagnostics = observeAutomationUi(session.page, shouldStop)
       await profilesSyncStatus(profile.name, 'running', true)
       markedRunning = true
       await event('profile_started', {
@@ -317,6 +320,7 @@ async function withProfile(
         await profilesSyncStatus(profile.name, 'idle', false).catch(
           error => log({ event: 'automation.profile_idle_save_failed', error, outcome: 'error' }),
         )
+      stopUiDiagnostics()
     }
 
   }).finally(() => {

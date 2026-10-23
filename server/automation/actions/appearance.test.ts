@@ -22,26 +22,41 @@ function fixture(dark: boolean, time = '2026-10-15T12:00:00Z', panelVisible = tr
   let now = Date.parse(time)
   let opened = false, submenu = false, stopped = false
   const clicks: string[] = [], notes: Record<string, unknown>[] = []
-  type Target = 'menu' | 'panel' | 'dialogs' | 'appearance' | 'switch' | 'dark' | 'root-light' | 'root-dark'
+  type Target = 'menu' | 'panel' | 'dialogs' | 'appearance' | 'switch' | 'buttons' | 'dark' | 'missing' | 'root-light' | 'root-dark'
   const visible = (kind: Target) => kind === 'menu' || kind === 'root-light' && !dark || kind === 'root-dark' && dark ||
     opened && (kind === 'panel' && panelVisible || kind === 'dialogs' || kind === 'appearance' && !submenu || submenu && (kind === 'dark' || kind === 'switch'))
   const locate = (kind: Target): Locator => ({
     kind, first() { return this }, last() { return this },
-    filter: (options: { hasText?: string }) => locate(options.hasText ? 'panel' : kind),
+    filter: (options: { hasText?: string, has?: Locator }) => {
+      if (options.has) {
+        assert.equal(kind, 'buttons')
+        assert.equal((options.has as unknown as { kind: Target }).kind, 'switch')
+        return locate('dark')
+      }
+      return locate(options.hasText ? 'panel' : kind)
+    },
     isVisible: async () => visible(kind), count: async () => Number(visible(kind)),
-    getByRole: (role: string, options?: { name?: unknown }) => locate(role === 'switch' ? 'switch' : options?.name === 'Dark mode' ? 'dark' : 'appearance'),
+    getByRole: (role: string, options?: { name?: string | RegExp, exact?: boolean }) => {
+      if (role === 'switch') return locate('switch')
+      if (!options?.name) return locate('buttons')
+      // Live Instagram includes both the row text and its nested switch label in the name.
+      const name = 'Dark mode Dark mode'
+      if (typeof options.name === 'string') return locate((options.exact ? name === options.name : name.includes(options.name)) ? 'dark' : 'missing')
+      return locate('appearance')
+    },
     getAttribute: async (name: string) => { assert.equal(kind, 'switch'); assert.equal(name, 'aria-checked'); return String(dark) },
     waitFor: async ({ state }: { state: string }) => {
       if (visible(kind) !== (state === 'visible')) throw new errors.TimeoutError('Control state did not settle')
     },
   }) as unknown as Locator
   const page = { locator: (selector: string) => locate(selector.startsWith('html.__fb-') ? selector.includes('dark') ? 'root-dark' : 'root-light' : 'menu'),
-    getByRole: () => locate('dialogs'),
+    getByRole: (role: string) => locate(role === 'switch' ? 'switch' : 'dialogs'),
   } as unknown as Page
   const deps: NonNullable<Parameters<typeof setSessionAppearance>[4]> = {
     now: () => now, check: async () => {},
     click: async (_page, target) => {
       const kind = (target as unknown as { kind: Target }).kind
+      if (!visible(kind)) throw new errors.TimeoutError('Control not found')
       clicks.push(kind)
       if (kind === 'menu') opened = !opened
       else if (kind === 'appearance') submenu = true
@@ -60,7 +75,7 @@ function fixture(dark: boolean, time = '2026-10-15T12:00:00Z', panelVisible = tr
     opened: () => opened, dark: () => dark, stop: () => { stopped = true } }
 }
 
-for (const dark of [false, true]) test(`startup sets the desired saved theme and closes its menu (${dark})`, async () => {
+for (const dark of [false, true]) test(`startup switches through a row named Dark mode Dark mode and closes its menu (${dark})`, async () => {
   const s = fixture(dark, dark ? '2026-10-15T12:00:00Z' : '2026-10-15T20:00:00Z')
   await s.run()
   assert.deepEqual(s.clicks, ['menu', 'appearance', 'dark', 'menu'])

@@ -100,6 +100,65 @@ test('completion is idempotent and notes are bounded while retaining total count
   assert.equal(logs[0].context.stepCounts['job.step'], 100)
 })
 
+test('handled diagnostics emit immediately and survive later notes without failing the operation', () => {
+  const logs = events(`
+    import logger, { logOperation, logDiagnostic, redactLogValues, redactCookieLogValues } from './server/shared/logger.ts';
+    await logOperation('automation.profile_session', { profileId: 'alice', profileName: 'Alice', automationId: 'routine-1' }, async scope => {
+      redactLogValues('account-password');
+      redactCookieLogValues('private-cookie-value');
+      for (let index = 0; index < 7; index++) logDiagnostic({ event: 'automation.ui_failure', index,
+        error: new Error('account-password private-cookie-value'), expectedSelector: 'account-password' });
+      if (scope.failed) throw new Error('A recoverable diagnostic must not fail the session');
+      for (let index = 0; index < 30; index++) logger.info({ event: 'routine.step', index });
+    });
+  `)
+  assert.equal(logs.length, 8)
+  const completion = logs.at(-1)
+  assert.equal(completion.event, 'automation.profile_session')
+  assert.equal(completion.outcome, 'success')
+  assert.equal(completion.level, 'info')
+  assert.equal(completion.context.notes.length, 20)
+  assert.equal(completion.context.diagnosticCount, 7)
+  assert.deepEqual(completion.context.diagnostics.map((entry: { index: number }) => entry.index), [2, 3, 4, 5, 6])
+  for (const diagnostic of logs.slice(0, -1)) {
+    assert.equal(diagnostic.level, 'error')
+    assert.equal(diagnostic.outcome, 'error')
+    assert.equal(diagnostic.parentOperationId, completion.operationId)
+    assert.equal(diagnostic.requestId, completion.requestId)
+    assert.equal(diagnostic.profileName, 'Alice')
+    assert.equal(diagnostic.automationId, 'routine-1')
+  }
+  assert.equal(new Set(logs.map(log => log.operationId)).size, logs.length)
+  assert.ok(logs.every(isLogEntry))
+  assert.ok(!JSON.stringify(logs).includes('account-password'))
+  assert.ok(!JSON.stringify(logs).includes('private-cookie-value'))
+})
+
+test('concurrent diagnostic summaries stay isolated and completed scopes are not reused', () => {
+  const logs = events(`
+    import { logOperation, logDiagnostic } from './server/shared/logger.ts';
+    await Promise.all(['alice', 'bob'].map(profileId => logOperation('job', { profileId }, async () => {
+      await Promise.resolve();
+      logDiagnostic({ event: 'automation.ui_failure', action: profileId });
+    })));
+    await logOperation('finished', {}, async scope => {
+      scope.finish();
+      logDiagnostic({ event: 'automation.ui_failure', action: 'late' });
+    });
+  `)
+  for (const profileId of ['alice', 'bob']) {
+    const completion = logs.find(log => log.event === 'job' && log.profileId === profileId)
+    const diagnostic = logs.find(log => log.event === 'automation.ui_failure' && log.profileId === profileId)
+    assert.equal(completion.context.diagnosticCount, 1)
+    assert.equal(completion.context.diagnostics[0].action, profileId)
+    assert.equal(diagnostic.parentOperationId, completion.operationId)
+  }
+  const finished = logs.find(log => log.event === 'finished'), late = logs.at(-1)
+  assert.equal(late.context.action, 'late')
+  assert.equal(late.parentOperationId, undefined)
+  assert.notEqual(late.requestId, finished.requestId)
+})
+
 test('invalid request IDs cannot break worker event recognition or parent correlation', () => {
   const logs = events(`
     import logger, { logOperation, currentRequestId } from './server/shared/logger.ts';

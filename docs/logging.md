@@ -49,6 +49,56 @@ which preserves their original identity and deployment context. Account login
 attempts and their cleanup requests share the login completion's request ID. Scraper completion
 events include a failed final save without hiding the original task result.
 
+## Automation UI failures
+
+Automation leases observe the public Page, Frame, Locator, mouse and keyboard
+APIs. Rejected clicks, typing, scrolling, navigation, screenshots and selector
+waits emit an immediate `automation.ui_failure` event, even when a caller handles
+the failure and continues. Successful actions and probes returning false/zero
+emit no extra events. The observer retains the original Page/Frame/input object
+identity, Cloak options and method receivers; it restores methods at lease end.
+
+Each failure is an error for that UI operation, with its own operation ID and
+the profile session as `parentOperationId`. It retains the session's request ID,
+profile and automation IDs, deployment revision, action, stage, phase, expected
+selector, page path (without query/fragment), elapsed time and explicit timeout
+when supplied. A timeout describes a failed operation, not proof of a renamed
+Instagram control. Account/browser failures continue to propagate normally.
+
+The profile completion keeps a separate `context.diagnosticCount` and its latest
+five `context.diagnostics`, independent of the 20 rolling notes. A handled failure
+does not change a successful profile's outcome. An unhandled failure still fails
+the profile through the existing error path. Nested wrappers report the same
+error only once; user cancellation and known session expiry are excluded. Explicit
+absence probes (unseen Stories, blocked-message notices and missing search
+results) suppress only their expected timeout; other failures still produce logs.
+
+Only explicitly selected small settings/control regions contribute nearby ARIA
+control roles/names (at most 12 names, 100 characters each). Appearance stages
+include menu opening, switch lookup/change, theme verification and menu cleanup.
+The read is capped at 500 ms and the remaining session deadline. Do not pass feed
+or message containers as diagnostic regions. Full DOM, screenshot data, input
+arguments, input values and Playwright's value-echoing call log are excluded;
+the shared credential/cookie redaction still applies. Diagnostic failures never
+replace the original UI error. No alert monitors are configured by this change.
+
+Find these failures immediately, without expanding session notes:
+
+```apl
+['ig-bot-prod']
+| where event == "automation.ui_failure"
+| project _time, profileName, requestId, parentOperationId,
+    action=tostring(context['action']), stage=tostring(context['stage']),
+    phase=tostring(context['phase']), selector=tostring(context['expectedSelector']),
+    pagePath=tostring(context['pagePath']), controls=context['controls'], ['error.message']
+| order by _time desc
+```
+
+See [Playwright ARIA snapshots](https://playwright.dev/docs/api/class-locator#locator-aria-snapshot-json)
+and [Axiom map fields](https://axiom.co/docs/apl/data-types/map-fields). UI-specific
+details stay under the existing `context` map, so new selectors/stages do not
+expand the dataset schema.
+
 ## Dataset schema
 
 Configure `context` as an Axiom **map field** in `ig-bot-prod`. This is a
