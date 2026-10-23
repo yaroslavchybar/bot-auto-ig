@@ -3,7 +3,7 @@ use crate::api::Api;
 use axum::{extract::Request, response::IntoResponse, Json};
 use axum::{
     extract::{
-        ws::{Message, WebSocketUpgrade},
+        ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
     response::Response,
@@ -72,6 +72,7 @@ impl Profiles {
             }
             "profiles.post.sync-status" => {
                 let body = super::body(request).await?;
+                let _locks = self.locks(vec![text(&body, "name").into()]).await?;
                 self.sync(
                     text(&body, "name"),
                     text(&body, "status"),
@@ -121,10 +122,7 @@ impl Profiles {
         Ok(self.api.convex(Method::GET, "/api/profiles", None).await?)
     }
     async fn locks(&self, names: Vec<String>) -> Result<Vec<Connection>> {
-        let root = self.root.clone();
-        tokio::task::spawn_blocking(move || lock_names(&root, names))
-            .await
-            .map_err(|_| Failure::unavailable("Profile lock task failed"))?
+        acquire_locks(self.root.clone(), names).await
     }
     pub async fn create(&self, body: Value) -> Result<Value> {
         let body = normalize_input(body)?;
@@ -306,6 +304,11 @@ pub fn validate_name(name: &str) -> Result<()> {
     }
     Ok(())
 }
+pub(crate) async fn acquire_locks(root: PathBuf, names: Vec<String>) -> Result<Vec<Connection>> {
+    tokio::task::spawn_blocking(move || lock_names(&root, names))
+        .await
+        .map_err(|_| Failure::unavailable("Profile lock task failed"))?
+}
 // Keep the SQLite files permanently: unlinking one would create a second lock inode.
 fn lock_names(root: &Path, mut names: Vec<String>) -> Result<Vec<Connection>> {
     for name in &names {
@@ -412,28 +415,58 @@ pub async fn lease(State(state): State<Arc<Profiles>>, ws: WebSocketUpgrade) -> 
                 if profile["status"] == "deleting" || profile["pendingRenameFrom"].is_string() {
                     return Err(conflict("Profile maintenance is in progress"));
                 }
-                Ok(locks)
+                Ok((locks, name.to_owned(), profile))
             }
             .await;
             match result {
-                Ok(_locks) => {
-                    if socket
-                        .send(Message::Text(json!({"ready":true}).to_string().into()))
-                        .await
-                        .is_ok()
-                    {
-                        super::displays::lifetime(&mut socket).await;
+                Ok((locks, name, profile)) => {
+                    let browser_session_id = uuid::Uuid::new_v4().to_string();
+                    let mut status = json!({"name":name,"status":"running","inUse":true,
+                        "browserSessionId":browser_session_id,"profileId":profile["id"],
+                        "previousBrowserSessionRevision":profile["browserSessionRevision"].as_u64().unwrap_or(0)});
+                    // One owner performs claim, readiness and release in order, under the same lock.
+                    let startup_error = match state.api.convex_retry(Method::POST, "/api/profiles/sync-status", Some(&status)).await {
+                        Ok(response) if response["ok"] == true => None,
+                        Ok(_) => Some("Browser ownership changed during startup".to_owned()),
+                        Err(error) => Some(error.to_owned()),
+                    };
+                    let graceful = if startup_error.is_none() && matches!(tokio::time::timeout(Duration::from_secs(5),
+                        socket.send(Message::Text(json!({"ready":true,"browserSessionId":browser_session_id}).to_string().into()))).await, Ok(Ok(()))) {
+                        super::displays::lifetime(&mut socket).await
+                    } else { false };
+                    // Also retire uncertain claims: an HTTP timeout may precede its database commit.
+                    status["status"] = json!("idle");
+                    status["inUse"] = json!(false);
+                    let recovery_error = state.api.convex_retry(Method::POST, "/api/profiles/sync-status", Some(&status)).await.err();
+                    if let Some(error) = recovery_error {
+                        ig_service_common::service_error("browser.status_recovery_failed", error);
+                    }
+                    drop(locks);
+                    if graceful {
+                        close_lease(&mut socket, json!({"released":true,"error":recovery_error})).await;
+                    } else if let Some(error) = startup_error {
+                        close_lease(&mut socket, json!({"error":error})).await;
                     }
                 }
                 Err(error) => {
-                    let _ = socket
-                        .send(Message::Text(
-                            json!({"error":error.message}).to_string().into(),
-                        ))
-                        .await;
+                    close_lease(&mut socket, json!({"error":error.message})).await;
                 }
             }
         })
+}
+async fn close_lease(socket: &mut WebSocket, reply: Value) {
+    // Drain the close handshake so unread pongs cannot reset the acknowledgement on Windows.
+    let _ = tokio::time::timeout(Duration::from_secs(5), async {
+        socket.send(Message::Text(reply.to_string().into())).await?;
+        socket.send(Message::Close(None)).await?;
+        while let Some(Ok(message)) = socket.recv().await {
+            if matches!(message, Message::Close(_)) {
+                break;
+            }
+        }
+        Ok::<(), axum::Error>(())
+    })
+    .await;
 }
 pub fn normalize_input(mut body: Value) -> Result<Value> {
     if !body.is_object() {
@@ -538,6 +571,247 @@ fn cookies(input: &Value) -> Result<Value> {
 
 #[cfg(test)]
 mod tests {
+    #[derive(Clone, Copy, PartialEq)]
+    enum LeaseEnd {
+        Disconnect,
+        Graceful,
+        DuringClaim,
+    }
+    #[tokio::test]
+    async fn disconnected_browser_recovers_only_its_session_before_unlocking() {
+        release_browser_lease(LeaseEnd::Disconnect).await;
+    }
+    #[tokio::test]
+    async fn graceful_release_waits_for_recovery_and_unlock_before_acknowledging() {
+        release_browser_lease(LeaseEnd::Graceful).await;
+    }
+    #[tokio::test]
+    async fn disconnected_startup_drains_its_claim_before_recovery_and_unlocking() {
+        release_browser_lease(LeaseEnd::DuringClaim).await;
+    }
+    async fn release_browser_lease(ending: LeaseEnd) {
+        use crate::test_support::{body, Fixture};
+        use futures_util::{SinkExt, StreamExt};
+        let root = tempfile::tempdir().unwrap();
+        let lock_root = root.path().to_path_buf();
+        let recovered = Arc::new(tokio::sync::Notify::new());
+        let observed = recovered.clone();
+        let proceed = Arc::new(tokio::sync::Notify::new());
+        let response_gate = proceed.clone();
+        let owner = Arc::new(tokio::sync::Mutex::new(None::<String>));
+        let observed_owner = owner.clone();
+        let claim_entered = Arc::new(tokio::sync::Notify::new());
+        let observed_claim = claim_entered.clone();
+        let finish_claim = Arc::new(tokio::sync::Notify::new());
+        let claim_gate = finish_claim.clone();
+        let fixture = Fixture::start(move |request| {
+            let observed = observed.clone(); let lock_root = lock_root.clone();
+            let response_gate = response_gate.clone();
+            let observed_owner = observed_owner.clone();
+            let observed_claim = observed_claim.clone(); let claim_gate = claim_gate.clone();
+            async move {
+                if request.uri().path() == "/api/profiles/by-name" {
+                    return Json(json!({"id":"p","name":"fixture","browserSessionRevision":7})).into_response();
+                }
+                let value = body(request).await;
+                let token = value["browserSessionId"].as_str().unwrap();
+                assert!(uuid::Uuid::parse_str(token).is_ok());
+                assert!(lock_names(&lock_root, vec!["fixture".into()]).is_err(), "all status writes must retain ownership");
+                if value["status"] == "running" {
+                    *observed_owner.lock().await = Some(token.to_owned());
+                    assert_eq!(value, json!({"name":"fixture","status":"running","inUse":true,"browserSessionId":token,
+                        "profileId":"p","previousBrowserSessionRevision":7}));
+                    observed_claim.notify_one();
+                    if ending == LeaseEnd::DuringClaim { claim_gate.notified().await; }
+                    return Json(json!({"ok":true})).into_response();
+                }
+                assert_eq!(Some(token), observed_owner.lock().await.as_deref());
+                assert_eq!(value, json!({"name":"fixture","status":"idle","inUse":false,"browserSessionId":token,
+                    "profileId":"p","previousBrowserSessionRevision":7}));
+                observed.notify_one();
+                response_gate.notified().await;
+                Json(json!({"ok":true})).into_response()
+            }
+        }).await;
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.key = "fixture".into();
+        let api = Arc::new(api);
+        let processes = Processes::new(api.clone(), root.path().into());
+        let profiles = Profiles::new(api, processes, root.path().into());
+        let endpoint = Fixture::router(
+            axum::Router::new()
+                .route("/lease", axum::routing::get(lease))
+                .with_state(profiles),
+        )
+        .await;
+        let (mut socket, _) = tokio_tungstenite::connect_async(format!(
+            "{}/lease",
+            endpoint.url.replace("http://", "ws://")
+        ))
+        .await
+        .unwrap();
+        socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                json!({"profileName":"fixture"}).to_string().into(),
+            ))
+            .await
+            .unwrap();
+        let mut socket = Some(socket);
+        if ending == LeaseEnd::DuringClaim {
+            tokio::time::timeout(Duration::from_secs(2), claim_entered.notified())
+                .await
+                .unwrap();
+            drop(socket.take());
+            assert!(lock_names(root.path(), vec!["fixture".into()]).is_err());
+            assert!(
+                tokio::time::timeout(Duration::from_millis(25), recovered.notified())
+                    .await
+                    .is_err(),
+                "recovery cannot overtake a pending startup claim"
+            );
+            finish_claim.notify_one();
+        } else {
+            let first = socket.as_mut().unwrap().next().await.unwrap().unwrap();
+            assert_eq!(
+                serde_json::from_str::<Value>(first.to_text().unwrap()).unwrap(),
+                json!({"ready":true,"browserSessionId":owner.lock().await.as_deref().unwrap()})
+            );
+            if ending == LeaseEnd::Graceful {
+                socket
+                    .as_mut()
+                    .unwrap()
+                    .send(tokio_tungstenite::tungstenite::Message::Text(
+                        json!({"release":true}).to_string().into(),
+                    ))
+                    .await
+                    .unwrap();
+            } else {
+                drop(socket.take());
+            }
+        }
+        tokio::time::timeout(Duration::from_secs(2), recovered.notified())
+            .await
+            .unwrap();
+        assert!(lock_names(root.path(), vec!["fixture".into()]).is_err());
+        if let Some(mut socket) = socket {
+            let acknowledgement = async {
+                loop {
+                    let message = socket.next().await.unwrap().unwrap();
+                    if let tokio_tungstenite::tungstenite::Message::Text(text) = message {
+                        break serde_json::from_str::<Value>(&text).unwrap();
+                    }
+                }
+            };
+            tokio::pin!(acknowledgement);
+            assert!(
+                tokio::time::timeout(Duration::from_millis(25), &mut acknowledgement)
+                    .await
+                    .is_err(),
+                "blocked recovery must not acknowledge release"
+            );
+            proceed.notify_one();
+            let response = tokio::time::timeout(Duration::from_secs(2), &mut acknowledgement)
+                .await
+                .unwrap();
+            assert_eq!(response, json!({"released":true,"error":null}));
+            assert!(
+                lock_names(root.path(), vec!["fixture".into()]).is_ok(),
+                "acknowledgement must follow unlock"
+            );
+        } else {
+            proceed.notify_one();
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while lock_names(root.path(), vec!["fixture".into()]).is_err() {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+        }
+    }
+    #[tokio::test]
+    async fn rejected_or_uncertain_claims_release_before_reporting_failure() {
+        use crate::test_support::{body, Fixture};
+        use futures_util::{SinkExt, StreamExt};
+        for response in [
+            r#"{"ok":false}"#,
+            r#"{"ok":"true"}"#,
+            "true",
+            "{}",
+            "null",
+            "not-json",
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let calls = Arc::new(tokio::sync::Mutex::new(Vec::<Value>::new()));
+            let observed = calls.clone();
+            let fixture = Fixture::start(move |request| {
+                let observed = observed.clone();
+                async move {
+                    if request.uri().path() == "/api/profiles/by-name" {
+                        return Json(json!({"id":"p","name":"fixture"})).into_response();
+                    }
+                    let value = body(request).await;
+                    let running = value["status"] == "running";
+                    observed.lock().await.push(value);
+                    if running {
+                        response.into_response()
+                    } else {
+                        Json(json!({"ok":true})).into_response()
+                    }
+                }
+            })
+            .await;
+            let mut api = Api::from_env().unwrap();
+            api.convex_url = fixture.url.clone();
+            api.key = "fixture".into();
+            let api = Arc::new(api);
+            let processes = Processes::new(api.clone(), root.path().into());
+            let profiles = Profiles::new(api, processes, root.path().into());
+            let endpoint = Fixture::router(
+                axum::Router::new()
+                    .route("/lease", axum::routing::get(lease))
+                    .with_state(profiles),
+            )
+            .await;
+            let (mut socket, _) = tokio_tungstenite::connect_async(format!(
+                "{}/lease",
+                endpoint.url.replace("http://", "ws://")
+            ))
+            .await
+            .unwrap();
+            socket
+                .send(tokio_tungstenite::tungstenite::Message::Text(
+                    json!({"profileName":"fixture"}).to_string().into(),
+                ))
+                .await
+                .unwrap();
+            let reply = tokio::time::timeout(Duration::from_secs(2), socket.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            let reply: Value = serde_json::from_str(reply.to_text().unwrap()).unwrap();
+            assert!(
+                reply["error"].is_string(),
+                "invalid claim response must not grant a lease: {response}"
+            );
+            assert!(reply["ready"].is_null());
+            assert!(
+                lock_names(root.path(), vec!["fixture".into()]).is_ok(),
+                "failure is reported after unlocking"
+            );
+            let calls = calls.lock().await;
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0]["status"], "running");
+            assert_eq!(calls[1]["status"], "idle");
+            assert_eq!(calls[0]["browserSessionId"], calls[1]["browserSessionId"]);
+            assert_eq!(
+                calls[0]["previousBrowserSessionRevision"],
+                calls[1]["previousBrowserSessionRevision"]
+            );
+        }
+    }
     use super::*;
     #[tokio::test]
     async fn failed_rename_keeps_destination_browser_running() {
@@ -590,9 +864,9 @@ mod tests {
         drop(lock);
         assert!(profiles.update("A", json!({"name":"B"})).await.is_err());
         assert_eq!(processes.ownership().await["manuals"], json!(["B"]));
-        assert_eq!(
-            statuses.lock().await.as_slice(),
-            [json!({"name":"B","status":"running","inUse":true})]
+        assert!(
+            statuses.lock().await.is_empty(),
+            "only the browser lease owner publishes status"
         );
         processes.shutdown().await.unwrap();
     }

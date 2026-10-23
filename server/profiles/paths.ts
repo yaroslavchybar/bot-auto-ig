@@ -29,13 +29,14 @@ export function profileDirectory(name: string): string {
   return target
 }
 
-/** Rust holds the OS lock until browser cleanup releases this socket. */
+/** Rust claims the session before granting the lease and acknowledges release after unlocking. */
 export async function acquireProfileLock(
   name: string,
   signal: AbortSignal,
   onLost: () => void,
-): Promise<() => void> {
+) {
   validateProfileName(name)
-  const lease = await nativeLease('/profiles/lease', { profileName: name }, signal, onLost)
-  return lease.release
+  return nativeLease<{ browserSessionId: string }>(
+    '/profiles/lease', { profileName: name }, signal, onLost, true,
+  )
 }

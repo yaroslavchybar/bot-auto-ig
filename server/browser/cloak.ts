@@ -66,7 +66,7 @@ function storedCookies(profile: DbProfileRow): Cookie[] {
   }
 }
 
-async function saveSession(profile: DbProfileRow, context: BrowserContext): Promise<void> {
+async function saveSession(profile: DbProfileRow, context: BrowserContext, browserSessionId: string): Promise<void> {
   let stage = 'read cookies from browser'
   try {
     const cookies = await context.cookies()
@@ -76,6 +76,7 @@ async function saveSession(profile: DbProfileRow, context: BrowserContext): Prom
     await profilesUpdateByName(profile.name, {
       name: profile.name,
       cookiesJson,
+      browserSessionId,
     })
     profile.cookiesJson = cookiesJson
   } catch (error) {
@@ -259,7 +260,7 @@ export async function openBrowserSession(
   const devToolsPortFile = path.join(profileDir, 'DevToolsActivePort')
   let profileLockLost = false
   let closeAfterLockLoss = () => {}
-  const releaseLock = await acquireProfileLock(profileName, signal, () => {
+  const { release: releaseLock, value: { browserSessionId } } = await acquireProfileLock(profileName, signal, () => {
     profileLockLost = true
     closeAfterLockLoss()
   })
@@ -279,7 +280,11 @@ export async function openBrowserSession(
     clearSavedWindowPlacement(profileDir)
     await pruneProfileCache(profileDir)
   } catch (error) {
-    releaseLock()
+    try {
+      await releaseLock()
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'Browser startup and cleanup failed')
+    }
     throw error
   }
   addLogContext({ browserRuntime: cloakBinaryNote() })
@@ -287,6 +292,7 @@ export async function openBrowserSession(
   let display: Display | undefined
   let context: BrowserContext | undefined
   let launch: Promise<BrowserContext> | undefined
+  let initialCookieSave: Promise<void> | undefined
   let stopFilePicker: (() => void) | undefined
   let stopDomInspector: (() => Promise<void>) | undefined
   let stopDesktopPointer: (() => void) | undefined
@@ -318,12 +324,15 @@ export async function openBrowserSession(
       }
       const errors: unknown[] = []
       const steps = [
+        // Cancellation may close the browser while its first database write is still in flight.
+        // Drain that write before the profile lease can admit a replacement session.
+        () => initialCookieSave?.catch(() => undefined),
         () => ready && !browserClosed && profile && context ? saveUnreadChatsAtClose(context, profile.id) : undefined,
         () => stopDomInspector?.(),
         () => stopDesktopPointer?.(),
         () => stopFilePicker?.(),
         () =>
-          ready && !browserClosed && profile && context ? saveSession(profile, context) : undefined,
+          ready && !browserClosed && profile && context ? saveSession(profile, context, browserSessionId) : undefined,
         () => (!browserClosed ? context?.close() : undefined),
         () => fs.rmSync(devToolsPortFile, { force: true }),
         () => display?.close(),
@@ -353,9 +362,11 @@ export async function openBrowserSession(
     signal.throwIfAborted()
     if (budgetLost) throw new Error('Browser resource budget disconnected')
     if (browserClosed) throw new Error('Browser closed during startup')
+    if (closing) throw new Error('Browser is closing during startup')
   }
 
   try {
+    checkStartup()
     releaseSlot = await acquireBrowserSlot(signal, () => {
       budgetLost = true
       if (context) requestClose()
@@ -427,10 +438,13 @@ export async function openBrowserSession(
     // Best effort: close persists cookies again, so a refresh failure here
     // must not abort the session launch.
     try {
-      await saveSession(profile, context)
+      checkStartup()
+      initialCookieSave = saveSession(profile, context, browserSessionId)
+      await initialCookieSave
     } catch {
       logger.info({ event: 'browser.cookies_refresh', outcome: 'skipped', retryAtClose: true })
     }
+    checkStartup()
     if (options.inspect) {
       try {
         const inspector = await startDomInspector(context, profileDir)

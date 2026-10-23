@@ -184,6 +184,10 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 		.withIndex("by_name", (q: any) => q.eq("name", oldClean))
 		.first();
 	if (!existing) throw new DomainError('NOT_FOUND', "Profile not found");
+	if (args.browserSessionId !== undefined && (existing.browserSessionId !== args.browserSessionId || !existing.inUse || existing.status !== 'running'))
+		throw new DomainError('CONFLICT', 'Browser session no longer owns this profile');
+	if (typeof args.cookiesJson === 'string' && args.browserSessionId === undefined && (existing.inUse || existing.status === 'running'))
+		throw new DomainError('CONFLICT', 'Close the browser before importing cookies');
 	assertProfileEditable(existing);
 	args = { ...args, ...cleanProxyFields(args.proxy ?? existing.proxy, args.proxyType ?? existing.proxyType) };
 
@@ -212,6 +216,7 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 		const cleaned = args.cookiesJson.trim();
 		next.cookiesJson = cleaned ? cleaned : undefined;
 		next.instagramSessionId = sessionIdFromCookies(cleaned);
+		if (args.browserSessionId === undefined) next.browserSessionRevision = (existing.browserSessionRevision ?? 0) + 1;
 	}
 	const effectiveProxyByName = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 	const effectiveTypeByName = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
@@ -235,6 +240,8 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	if (!name) throw new DomainError('VALIDATION', "name is required");
 	const existing = await ctx.db.get(args.profileId);
 	if (!existing) throw new DomainError('NOT_FOUND', "Profile not found");
+	if (typeof args.cookiesJson === 'string' && (existing.inUse || existing.status === 'running'))
+		throw new DomainError('CONFLICT', 'Close the browser before importing cookies');
 	assertProfileEditable(existing);
 	args = { ...args, ...cleanProxyFields(args.proxy ?? existing.proxy, args.proxyType ?? existing.proxyType) };
 
@@ -260,6 +267,7 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 		const cleaned = args.cookiesJson.trim();
 		next.cookiesJson = cleaned ? cleaned : undefined;
 		next.instagramSessionId = sessionIdFromCookies(cleaned);
+		next.browserSessionRevision = (existing.browserSessionRevision ?? 0) + 1;
 	}
 	const effectiveProxyById = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 	const effectiveTypeById = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
@@ -298,7 +306,8 @@ export async function removeProfileByIdRow(ctx: MutationCtx, profileId: Id<'prof
   return true
 }
 
-export async function syncProfileStatusRow(ctx: any, name: string, status: string, inUse?: boolean) {
+export async function syncProfileStatusRow(ctx: any, name: string, status: string, inUse?: boolean, browserSessionId?: string,
+  claim?: { profileId?: Id<'profiles'>; previousBrowserSessionRevision: number }) {
 	const cleanedName = String(name || "").trim();
 	const cleanedStatus = String(status || "").trim();
 	if (!cleanedName || !cleanedStatus) throw new DomainError('VALIDATION', "name and status are required");
@@ -306,10 +315,21 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 		.query("profiles")
 		.withIndex("by_name", (q: any) => q.eq("name", cleanedName))
 		.first();
-	if (!existing) return true;
-	if (existing.status === 'deleting') return true;
+	if (!existing) return !claim;
+	if (existing.status === 'deleting') return !claim;
+	const alreadyOwned = existing.browserSessionId === browserSessionId && existing.inUse && existing.status === 'running';
+	if (cleanedStatus === 'running' && claim && (existing._id !== claim.profileId ||
+		((existing.browserSessionRevision ?? 0) !== claim.previousBrowserSessionRevision && !alreadyOwned))) return false;
+	// A disconnected lease can precede its initial claim. Retire that revision
+	// atomically so the delayed running request cannot revive the dead worker.
+	const retirePendingClaim = cleanedStatus === 'idle' && browserSessionId !== undefined && claim !== undefined &&
+		existing._id === claim.profileId && (existing.browserSessionRevision ?? 0) === claim.previousBrowserSessionRevision;
+	if (cleanedStatus !== 'running' && claim && existing._id !== claim.profileId) return false;
+	if (cleanedStatus !== 'running' && browserSessionId !== undefined && existing.browserSessionId !== browserSessionId && !retirePendingClaim) return false;
 	const next: Record<string, unknown> = { status: cleanedStatus, inUse: Boolean(inUse) };
-  if (existing.status === cleanedStatus && existing.inUse === Boolean(inUse)) return true;
+	next.browserSessionId = cleanedStatus === 'running' || retirePendingClaim ? browserSessionId : existing.browserSessionId;
+	if ((cleanedStatus === 'running' && !alreadyOwned) || retirePendingClaim) next.browserSessionRevision = (existing.browserSessionRevision ?? 0) + 1;
+  if (existing.status === cleanedStatus && existing.inUse === Boolean(inUse) && existing.browserSessionId === next.browserSessionId && next.browserSessionRevision === undefined) return true;
 	if (cleanedStatus.toLowerCase() === "running") {
 		next.lastOpenedAt = Date.now();
 	}

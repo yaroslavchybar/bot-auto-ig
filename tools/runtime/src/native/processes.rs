@@ -246,7 +246,6 @@ impl Processes {
         {
             return Err(Failure::invalid("Profile maintenance is in progress"));
         }
-        self.profile_status(name, "running", true).await?;
         if let Err(error) = self
             .spawn(
                 false,
@@ -261,7 +260,6 @@ impl Processes {
             )
             .await
         {
-            let _ = self.profile_status(name, "idle", false).await;
             return Err(error);
         }
         Ok(())
@@ -504,10 +502,6 @@ impl Processes {
                 {
                     ig_service_common::service_error("automation.status_failed", &error.message);
                 }
-            } else {
-                if let Err(error) = owner.profile_status(&job.id, "idle", false).await {
-                    ig_service_common::service_error("browser.status_failed", &error.message);
-                }
             }
             owner.jobs.lock().await.remove(&key);
             {
@@ -714,16 +708,6 @@ impl Processes {
                 axum::http::Method::POST,
                 "/api/automations/update-status",
                 Some(&body),
-            )
-            .await?;
-        Ok(())
-    }
-    async fn profile_status(&self, name: &str, status: &str, in_use: bool) -> Result<()> {
-        self.api
-            .convex_retry(
-                axum::http::Method::POST,
-                "/api/profiles/sync-status",
-                Some(&json!({"name": name, "status": status, "inUse": in_use})),
             )
             .await?;
         Ok(())

@@ -384,12 +384,14 @@ pub async fn display_lease(State(state): State<Arc<Displays>>, ws: WebSocketUpgr
             }
         })
 }
-pub(super) async fn lifetime(socket: &mut WebSocket) {
+pub(super) async fn lifetime(socket: &mut WebSocket) -> bool {
     let mut heartbeat = tokio::time::interval(Duration::from_secs(20));
     let mut last_message = Instant::now();
     loop {
         tokio::select! {
             incoming = socket.recv() => match incoming {
+                Some(Ok(Message::Text(text))) if serde_json::from_str::<Value>(&text)
+                    .is_ok_and(|value| value["release"] == true) => return true,
                 Some(Ok(Message::Pong(_))) => { last_message = Instant::now(); },
                 Some(Ok(Message::Ping(bytes))) => {
                     last_message = Instant::now();
@@ -402,6 +404,7 @@ pub(super) async fn lifetime(socket: &mut WebSocket) {
             }
         }
     }
+    false
 }
 #[cfg(target_os = "linux")]
 async fn linux_lease(

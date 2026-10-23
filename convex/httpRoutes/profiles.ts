@@ -124,6 +124,7 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
       const body = await parseBody(request);
       const updated = await ctx.runMutation(internal.profiles.mutations.updateByNameInternal, {
         oldName: body?.oldName ?? body?.old_name,
+        browserSessionId: body?.browserSessionId ?? undefined,
         name: body?.name,
         proxy: body?.proxy ?? undefined,
         proxyType: body?.proxyType ?? undefined,

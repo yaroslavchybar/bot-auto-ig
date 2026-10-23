@@ -14,26 +14,22 @@ async fn wait_for(mut condition: impl AsyncFnMut() -> bool) {
 }
 
 #[tokio::test]
-async fn concurrent_manual_starts_have_one_owner_until_idle_status_is_saved() {
+async fn concurrent_manual_starts_do_not_publish_status_without_browser_ownership() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("server/browser");
     tokio::fs::create_dir_all(&dir).await.unwrap();
     tokio::fs::write(dir.join("manual.ts"), "process.stdin.on('data', data => { if (data.toString().includes('stop')) process.exit(0) });").await.unwrap();
     let idle = Arc::new(AtomicUsize::new(0));
-    let release = Arc::new(tokio::sync::Notify::new());
     let seen = idle.clone();
-    let finish = release.clone();
     let fixture = Fixture::start(move |request| {
         let seen = seen.clone();
-        let finish = finish.clone();
         async move {
             if request.uri().path() == "/api/profiles/by-name" {
                 return Json(json!({"id":"p", "name":"test", "status":"idle"})).into_response();
             }
             let data = body(request).await;
-            if data["status"] == "idle" {
+            if !data["status"].is_null() {
                 seen.fetch_add(1, Ordering::Relaxed);
-                finish.notified().await;
             }
             Json(json!({})).into_response()
         }
@@ -45,15 +41,14 @@ async fn concurrent_manual_starts_have_one_owner_until_idle_status_is_saved() {
     let owner = Processes::new(Arc::new(api), root.path().into());
     let (a, b) = tokio::join!(owner.start_manual("test"), owner.start_manual("test"));
     assert_eq!([a.is_ok(), b.is_ok()].iter().filter(|v| **v).count(), 1);
-    let stopping = {
-        let owner = owner.clone();
-        tokio::spawn(async move { owner.stop(false, "test", false).await.unwrap() })
-    };
-    wait_for(async || idle.load(Ordering::Relaxed) == 1).await;
     assert_eq!(owner.ownership().await["processCount"], 1);
     assert!(owner.start_manual("test").await.is_err());
-    release.notify_one();
-    assert!(stopping.await.unwrap());
+    assert!(owner.stop(false, "test", false).await.unwrap());
+    assert_eq!(
+        idle.load(Ordering::Relaxed),
+        0,
+        "process lifecycle cannot clear an existing browser owner's status"
+    );
     assert_eq!(owner.ownership().await["processCount"], 0);
     assert!(owner.registry.lock().await.is_empty());
     owner.shutdown().await.unwrap();

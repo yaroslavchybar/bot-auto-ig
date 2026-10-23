@@ -7,7 +7,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { shouldStop, shutdownSignal, requestStop, releaseStdin } from '../browser/lifecycle.js'
 import {
-  profilesSyncStatus,
   warmupGetByProfile,
   type DbProfileRow,
   type DbAutomationRow,
@@ -267,7 +266,6 @@ async function withProfile(
     let session: BrowserSession | undefined
     let closing: Promise<void> | undefined
     let failure: unknown
-    let markedRunning = false
     let detachDecisions = () => {}
     let stopUiDiagnostics = () => {}
     const close = () => session ? (closing ??= Promise.resolve().then(() => session!.close())) : Promise.resolve()
@@ -276,8 +274,6 @@ async function withProfile(
         headless: options.headless ?? true,
       })
       stopUiDiagnostics = observeAutomationUi(session.page, shouldStop)
-      await profilesSyncStatus(profile.name, 'running', true)
-      markedRunning = true
       await event('profile_started', {
         profileName: profile.name,
         profileId: profile.id,
@@ -316,10 +312,6 @@ async function withProfile(
       await close().catch(error => {
         if (error !== failure) log({ event: 'automation.profile_cleanup_failed', error, outcome: 'error' })
       })
-      if (markedRunning)
-        await profilesSyncStatus(profile.name, 'idle', false).catch(
-          error => log({ event: 'automation.profile_idle_save_failed', error, outcome: 'error' }),
-        )
       stopUiDiagnostics()
     }
 

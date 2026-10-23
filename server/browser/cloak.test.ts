@@ -14,7 +14,7 @@ for (const wrapped of [false, true]) test(`stored cookie redactions preserve log
     cookies.push({name:'theme', value:'ordinary-cookie-value'})
     mock.module('./server/profiles/paths.ts', () => ({
       profileDirectory: () => 'unused-profile-directory',
-      acquireProfileLock: async () => () => {},
+      acquireProfileLock: async () => ({value:{browserSessionId:'owner'},release:async()=>{}}),
     }))
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetByName: async () => ({name:'fixture', status:'deleting',
@@ -53,7 +53,7 @@ test('missing and pending profiles cannot recreate folders and always release th
     import os from 'node:os'
     import path from 'node:path'
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-launch-'))
-    let row
+    let row, setupFailure, releaseFailure
     const heldLocks = new Set()
     const lockProfile = (name) => {
       if (heldLocks.has(name)) throw new Error('Profile is already open')
@@ -62,11 +62,17 @@ test('missing and pending profiles cannot recreate folders and always release th
     }
     mock.module('./server/profiles/paths.ts', () => ({
       profileDirectory: name => path.join(root, 'data/profiles', name),
-      acquireProfileLock: async name => lockProfile(name),
+      acquireProfileLock: async name => {
+        const release = lockProfile(name)
+        return {value:{browserSessionId:'owner'},release:async()=>{
+          await new Promise(resolve=>setTimeout(resolve,10));release()
+          if (releaseFailure) throw releaseFailure
+        }}
+      },
     }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
     mock.module('./server/shared/convexClient.ts', () => ({
-      profilesGetByName: async () => row,
+      profilesGetByName: async () => { if (setupFailure) throw setupFailure; return row },
       profilesUpdateByName: async () => undefined,
       profilesSaveUnreadChats: async () => undefined,
     }))
@@ -80,6 +86,19 @@ test('missing and pending profiles cannot recreate folders and always release th
       for (const value of [null, { name: 'test', status: 'deleting' }, { name: 'test', pendingRenameFrom: 'old' }]) {
         row = value
         await assert.rejects(openBrowserSession('test'), /not found|maintenance/)
+        assert.equal(fs.existsSync(path.join(root, 'data/profiles/test')), false)
+        lockProfile('test')()
+      }
+      setupFailure = new Error('Profile setup failed')
+      for (const failure of [undefined, new Error('Lease release failed')]) {
+        releaseFailure = failure
+        await assert.rejects(openBrowserSession('test'), error => {
+          if (releaseFailure) {
+            assert.ok(error instanceof AggregateError)
+            assert.deepEqual(error.errors, [setupFailure, releaseFailure])
+          } else assert.equal(error, setupFailure)
+          return true
+        })
         assert.equal(fs.existsSync(path.join(root, 'data/profiles/test')), false)
         lockProfile('test')()
       }
@@ -257,7 +276,7 @@ for (const scenario of [
       profileDirectory: name => path.join(root, 'data/profiles', name),
       acquireProfileLock: async (name, _signal, onLost) => {
         loseProfileLock = onLost
-        return lockProfile(name)
+        return {value:{browserSessionId:'owner'},release:lockProfile(name)}
       },
     }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
@@ -430,7 +449,7 @@ test('cloak seed is stable per profile and platform', () => {
     }
     mock.module('./server/profiles/paths.ts', () => ({
       profileDirectory: name => path.join(root, 'data/profiles', name),
-      acquireProfileLock: async name => lockProfile(name),
+      acquireProfileLock: async name => ({value:{browserSessionId:'owner'},release:lockProfile(name)}),
     }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
       mock.module('./server/shared/convexClient.ts', () => ({

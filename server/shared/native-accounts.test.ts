@@ -289,9 +289,11 @@ test('Rust owns profile locks, rename, restart cleanup and reconciliation withou
       body: JSON.stringify({ name: 'New' }),
     })
     expect(renamedWhileOpen.status).toBe(409)
-    const ended = new Promise((resolve) => owner.socket.once('close', resolve))
+    const released = owner.next()
+    owner.socket.send(JSON.stringify({ release: true }))
+    expect((await released).released).toBe(true)
     owner.socket.close()
-    await ended
+    expect(native.profile!.status).toBe('idle')
     let response: Response
     for (let tries = 0; ; tries++) {
       response = await fetch(native.publicUrl + '/api/profiles/Old', {
@@ -307,7 +309,7 @@ test('Rust owns profile locks, rename, restart cleanup and reconciliation withou
     )
     expect(native.profile!.pendingRenameFrom).toBeUndefined()
     expect(await (await native.internal('/profiles/reconcile')).json()).toEqual({
-      cleared: 1,
+      cleared: 0,
       errors: [],
     })
     native.failFinalize()

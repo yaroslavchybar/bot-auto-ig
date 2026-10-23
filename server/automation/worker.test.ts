@@ -249,7 +249,7 @@ test('automation action failures reject the run and close the browser', async ()
       /Feed content failed/,
     )
     assert.equal(closed, true)
-    assert.deepEqual(statuses, ['running', 'idle'])
+    assert.deepEqual(statuses, [], 'the browser lease publishes status; the automation finalizer cannot clear another owner')
   } finally {
     globalThis.fetch = originalFetch
   }

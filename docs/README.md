@@ -147,16 +147,48 @@ folders are removed before the database row. Failures remain visible as
 Deleting and retry at startup and every 30 seconds. Browser launches and folder
 maintenance share process locks in `data/profile-locks/`; pending profiles cannot
 launch or be edited. Names remain reserved until cleanup finishes.
-Locks use Bun's built-in SQLite writer transactions, backed by OS file locks.
-They release on normal close or process death without PID checks or stale-file
+Locks use Rust's SQLite writer transactions, backed by OS file locks.
+They release after cleanup or owner-disconnect recovery, without PID checks or stale-file
 reclamation. Their `.sqlite` files stay in place, including during startup;
 never remove them while workers may be running. Windows device names such as
 `CON`, `NUL.txt`, and `COM1` are rejected on all platforms.
+
+Rust owns browser session status: it locks the profile, creates a session token,
+and claims `running` before granting the lease. Bun only saves cookies and releases
+the lease after browser cleanup; cancelled startup drains its cookie write too.
+Rust publishes `idle` before unlocking on graceful release or worker disconnect.
+Graceful cleanup waits for its unlock acknowledgement. Convex rejects cookie writes
+and idle updates from replaced owners. Worker-process finalizers never clear profile
+status themselves. Administrative reconciliation also requires the profile lock.
+Cookie imports require a closed browser and invalidate former ownership.
+
+`browserSessionId` is an optional ownership field, replaced on launch and retained
+after close as a stale-request fence. Rust compares the profile ID and previous
+`browserSessionRevision` atomically before claiming ownership. New claims and cookie
+imports advance that revision; release also retires an uncertain claim so a timed-out
+request cannot revive a closed session. Existing rows need no backfill or
+temporary migration. The field is checked
+inside the same Convex mutation that writes cookies/status; transaction ordering
+alone does not establish ownership of an external browser.
+
+Source liker scraping takes the same profile lock, refreshes the profile under it,
+and holds it through HTTP requests, response parsing and database checkpoints. A busy
+profile consumes no request quota. Own-post scans already run under their browser's
+ownership and deliberately do not reacquire that lock.
 
 UI edits go through the backend. Renames persist `renameFrom` until the browser
 folder has moved; partial moves resume through the same retry loop.
 Both names stay reserved meanwhile. Existing orphan folders are not automatically
 deleted: missing database rows alone are not treated as permission to wipe data.
+
+Profile editor loads/saves carry a dialog generation. Selecting another profile,
+opening Create, closing or unmounting invalidates older callbacks. Pending work is
+counted per generation, so an old save cannot close or disable a newer editor.
+
+References: [SQLite transactions](https://www.sqlite.org/lang_transaction.html),
+[Convex atomicity](https://docs.convex.dev/database/advanced/occ),
+[Tokio graceful shutdown](https://tokio.rs/tokio/topics/shutdown),
+[React refs](https://react.dev/reference/react/useRef).
 
 ## Commands
 

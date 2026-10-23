@@ -164,6 +164,7 @@ export const createInternal = internalMutation({
 
 const updateByNameArgsShape = {
 	oldName: v.string(),
+	browserSessionId: v.optional(v.string()),
 	...profileArgsShape,
 };
 
@@ -209,9 +210,11 @@ export const cleanupDeletedProfileReferencesInternal = internalMutation({
 })
 
 export const syncStatusInternal = internalMutation({
-	args: { name: v.string(), status: v.string(), inUse: v.optional(v.boolean()) },
+	args: { name: v.string(), status: v.string(), inUse: v.optional(v.boolean()), browserSessionId: v.optional(v.string()),
+		profileId: v.optional(v.id('profiles')), previousBrowserSessionRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		return await syncProfileStatusRow(ctx, args.name, args.status, args.inUse);
+		return await syncProfileStatusRow(ctx, args.name, args.status, args.inUse, args.browserSessionId,
+			args.previousBrowserSessionRevision !== undefined ? { profileId: args.profileId, previousBrowserSessionRevision: args.previousBrowserSessionRevision } : undefined);
 	},
 });
 

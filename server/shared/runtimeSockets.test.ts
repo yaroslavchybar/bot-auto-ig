@@ -4,6 +4,9 @@ import { spawnSync } from 'node:child_process'
 
 for (const scenario of [
   'lease',
+  'graceful release',
+  'lost during release',
+  'failed recovery',
   'already aborted',
   'pending initial',
   'active subscription',
@@ -63,6 +66,33 @@ for (const scenario of [
           const closed = once(sockets[0], 'close')
           lease.release()
           await closed
+          assert.equal(lost, 0)
+        } else if (['graceful release', 'lost during release', 'failed recovery'].includes(scenario)) {
+          const pending = nativeLease('/profiles/lease', {profileName:'fixture'}, controller.signal, () => lost++, true)
+          await until(() => messages.length === 1)
+          sockets[0].send(JSON.stringify({ready:true,browserSessionId:'owner'}))
+          const lease = await pending
+          assert.equal(lease.value.browserSessionId, 'owner')
+          let finished = false
+          const releasing = lease.release()
+          assert.equal(lease.release(), releasing, 'release is idempotent')
+          void releasing.then(() => { finished = true }, () => { finished = true })
+          await until(() => messages.length === 2)
+          assert.deepEqual(messages[1], {release:true})
+          await Bun.sleep(20)
+          assert.equal(finished, false, 'cleanup must wait for the native unlock acknowledgement')
+          if (scenario === 'lost during release') {
+            const rejected = assert.rejects(releasing, /before acknowledging/)
+            sockets[0].terminate()
+            await rejected
+          } else if (scenario === 'failed recovery') {
+            const rejected = assert.rejects(releasing, /Recovery failed/)
+            sockets[0].send(JSON.stringify({released:true,error:'Recovery failed'}))
+            await rejected
+          } else {
+            sockets[0].send(JSON.stringify({released:true}))
+            await releasing
+          }
           assert.equal(lost, 0)
         } else if (scenario === 'stalled handshake') {
           const safety = AbortSignal.timeout(8000)

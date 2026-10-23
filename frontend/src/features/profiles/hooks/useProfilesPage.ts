@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
 import { apiFetch } from '@/lib/api'
 import { api } from '../../../../../convex/_generated/api'
@@ -9,9 +9,20 @@ import { mapProfileRecord } from '../utils/mapProfile'
 import { getCookieUpdate } from '../utils/cookieJson'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 
+type SetSaving = (active: boolean, generation?: number) => void
+
 /* ── Dialog state management ── */
 
 function useProfileDialogState(profiles: Profile[]) {
+  const generationRef = useRef(0)
+  const [generation, setGeneration] = useState(0)
+  const beginDialog = useCallback(() => {
+    const next = ++generationRef.current
+    setGeneration(next)
+    return next
+  }, [])
+  const ownsDialog = useCallback((value: number) => generationRef.current === value, [])
+  useEffect(() => () => { generationRef.current++ }, [])
   const [editProfile, setEditProfile] = useState<Profile | null>(null)
   const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -21,6 +32,9 @@ function useProfileDialogState(profiles: Profile[]) {
     [deleteProfileId, profiles],
   )
   return {
+    generation,
+    beginDialog,
+    ownsDialog,
     editProfile,
     setEditProfile,
     deleteProfileId,
@@ -41,12 +55,23 @@ function useProfileSave(
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const createProfile = useMutation(api.profiles.mutations.create)
-  const [saving, setSaving] = useState(false)
+  const [pending, setPending] = useState(new Map<number, number>())
+  // Page-wide work uses -1; an older editor's work cannot disable a newer dialog.
+  const setSaving: SetSaving = useCallback((active, generation = -1) => setPending(current => {
+    const next = new Map(current)
+    const count = Math.max(0, (next.get(generation) ?? 0) + (active ? 1 : -1))
+    if (count) next.set(generation, count)
+    else next.delete(generation)
+    return next
+  }), [])
 
   const handleSaveProfile = useCallback(
     async (data: Partial<Profile>) => {
+      const generation = dialogState.generation
+      const ownsDialog = () => dialogState.ownsDialog(generation)
+      if (!ownsDialog()) return
       const name = String(data.name ?? '').trim()
-      setSaving(true)
+      setSaving(true, generation)
       try {
         const payload = {
           name,
@@ -60,25 +85,25 @@ function useProfileSave(
         if (dialogState.isCreateOpen) {
           await createProfile(payload)
           await refreshProfiles()
-          dialogState.setIsCreateOpen(false)
+          if (ownsDialog()) dialogState.setIsCreateOpen(false)
         } else if (dialogState.editProfile) {
           await apiFetch(`/api/profiles/${encodeURIComponent(dialogState.editProfile.name)}`, {
             method: 'PUT',
             body: payload,
           })
           await refreshProfiles()
-          dialogState.setEditProfile(null)
+          if (ownsDialog()) dialogState.setEditProfile(null)
         }
       } catch (e) {
-        handleError(e, 'Save profile')
+        if (ownsDialog()) handleError(e, 'Save profile')
       } finally {
-        setSaving(false)
+        setSaving(false, generation)
       }
     },
-    [createProfile, dialogState, handleError, refreshProfiles],
+    [createProfile, dialogState, handleError, refreshProfiles, setSaving],
   )
 
-  return { saving, setSaving, handleSaveProfile }
+  return { saving: (pending.get(-1) ?? 0) > 0 || (pending.get(dialogState.generation) ?? 0) > 0, setSaving, handleSaveProfile }
 }
 
 /* ── CRUD: Delete + Toggle ── */
@@ -86,7 +111,7 @@ function useProfileSave(
 function useProfileCrud(
   dialogState: ReturnType<typeof useProfileDialogState>,
   refreshProfiles: () => Promise<void>,
-  setSaving: (v: boolean) => void,
+  setSaving: SetSaving,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const handleDeleteConfirm = useCallback(async () => {
@@ -142,28 +167,32 @@ function useProfileCrud(
 function useProfilePageActions(
   convex: ReturnType<typeof useConvex>,
   dialogState: ReturnType<typeof useProfileDialogState>,
-  setSaving: (v: boolean) => void,
+  setSaving: SetSaving,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
+  const renderedGeneration = dialogState.generation
   const handleCreate = useCallback(() => {
+    dialogState.beginDialog()
     dialogState.setEditProfile(null)
     dialogState.setIsCreateOpen(true)
   }, [dialogState])
 
   const handleEdit = useCallback(
     async (profile: Profile) => {
-      setSaving(true)
+      const generation = dialogState.beginDialog()
+      dialogState.setIsCreateOpen(false)
+      dialogState.setEditProfile(null)
+      setSaving(true, generation)
       try {
         const fullProfile = await convex.query(api.profiles.queries.getById, {
           profileId: profile.id as Id<'profiles'>,
         })
-        dialogState.setEditProfile(
-          fullProfile ? mapProfileRecord(fullProfile, { includeCookies: true }) : null,
-        )
+        if (dialogState.ownsDialog(generation))
+          dialogState.setEditProfile(fullProfile ? mapProfileRecord(fullProfile, { includeCookies: true }) : null)
       } catch (e) {
-        handleError(e, 'Load profile')
+        if (dialogState.ownsDialog(generation)) handleError(e, 'Load profile')
       } finally {
-        setSaving(false)
+        setSaving(false, generation)
       }
     },
     [convex, dialogState, handleError, setSaving],
@@ -177,12 +206,16 @@ function useProfilePageActions(
   )
 
   const handleCloseCreate = useCallback(() => {
+    if (!dialogState.ownsDialog(renderedGeneration)) return
+    dialogState.beginDialog()
     dialogState.setIsCreateOpen(false)
-  }, [dialogState])
+  }, [dialogState, renderedGeneration])
 
   const handleCloseEdit = useCallback(() => {
+    if (!dialogState.ownsDialog(renderedGeneration)) return
+    dialogState.beginDialog()
     dialogState.setEditProfile(null)
-  }, [dialogState])
+  }, [dialogState, renderedGeneration])
 
   return {
     handleCreate,
@@ -262,7 +295,7 @@ export function useProfilesPage() {
     editProfile: dialogState.editProfile,
     deleteProfile: dialogState.deleteProfile,
     setSearchQuery,
-    setIsCreateOpen: dialogState.setIsCreateOpen,
+    setIsCreateOpen: (open: boolean) => open ? actions.handleCreate() : actions.handleCloseCreate(),
     setDeleteProfileId: dialogState.setDeleteProfileId,
     handleCreate: actions.handleCreate,
     handleEdit: actions.handleEdit,

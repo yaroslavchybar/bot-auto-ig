@@ -243,6 +243,8 @@ export default defineSchema({
     proxyType: v.optional(v.string()),
     status: v.optional(v.string()),
     inUse: v.boolean(),
+    browserSessionId: v.optional(v.string()), // Fences cookie/status writes from replaced browser workers.
+    browserSessionRevision: v.optional(v.number()),
     fingerprintOs: v.optional(v.string()),
     fingerprintSeed: v.optional(v.number()),
     cookiesJson: v.optional(v.string()),

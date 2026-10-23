@@ -7,12 +7,15 @@ use std::sync::{
 };
 
 fn scraper_fixture(fixture: &Fixture) -> Scraper {
+    let profile_dir = tempfile::tempdir().unwrap();
     let mut api = Api::from_env().unwrap();
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
     let api = Arc::new(api);
     let (work, _) = watch::channel((0, Work::default()));
     Scraper {
+        profile_root: profile_dir.path().into(),
+        _profile_dir: profile_dir,
         api,
         work,
         cache: Mutex::new(cache::Cache::open(std::path::Path::new(":memory:")).unwrap()),
@@ -33,6 +36,81 @@ fn task(run_kind: TaskKind) -> Task {
         run_kind,
         post: Some(json!({"id":"1","code":"one"})),
     }
+}
+
+#[tokio::test]
+async fn source_requests_share_browser_lock_through_http_and_batch_commit() {
+    let http_entered = Arc::new(tokio::sync::Notify::new());
+    let http_release = Arc::new(tokio::sync::Notify::new());
+    let batch_entered = Arc::new(tokio::sync::Notify::new());
+    let batch_release = Arc::new(tokio::sync::Notify::new());
+    let charged = Arc::new(AtomicUsize::new(0));
+    let signals = (
+        http_entered.clone(),
+        http_release.clone(),
+        batch_entered.clone(),
+        batch_release.clone(),
+        charged.clone(),
+    );
+    let fixture = Fixture::start(move |request| {
+        let (http_entered, http_release, batch_entered, batch_release, charged) = signals.clone();
+        async move {
+            match request.uri().path() {
+                "/api/profiles/by-id" => Json(json!({"id":"profile","name":"shared","instagramSessionId":"fixture-cookie"})).into_response(),
+                "/api/scraper/heartbeat" => Json(json!(true)).into_response(),
+                "/api/scraper/requests/reserve" => { charged.fetch_add(1, Ordering::SeqCst); Json(json!({"allowed":true})).into_response() },
+                "/api/v1/media/1/likers/" => {
+                    http_entered.notify_one(); http_release.notified().await;
+                    Json(json!({"status":"ok","users":[{"pk":"123","username":"lead","is_private":false}]})).into_response()
+                },
+                "/api/scraper/batch" => {
+                    batch_entered.notify_one(); batch_release.notified().await;
+                    Json(json!({"processed":1})).into_response()
+                },
+                path => panic!("Unexpected source request: {path}"),
+            }
+        }
+    }).await;
+    let service = Arc::new(scraper_fixture(&fixture));
+    let root = service.profile_root.clone();
+    let acquire = || crate::native::profiles::acquire_locks(root.clone(), vec!["shared".into()]);
+    let browser = acquire().await.unwrap();
+    assert!(
+        service
+            .run_task(&task(TaskKind::Likers))
+            .await
+            .unwrap_err()
+            .paused
+    );
+    assert_eq!(
+        charged.load(Ordering::SeqCst),
+        0,
+        "busy profiles must not consume request quota"
+    );
+    drop(browser);
+    let running = {
+        let service = service.clone();
+        tokio::spawn(async move { service.run_task(&task(TaskKind::Likers)).await })
+    };
+    tokio::time::timeout(Duration::from_secs(2), http_entered.notified())
+        .await
+        .unwrap();
+    assert!(
+        acquire().await.is_err(),
+        "browser cannot enter during the HTTP request"
+    );
+    http_release.notify_one();
+    tokio::time::timeout(Duration::from_secs(2), batch_entered.notified())
+        .await
+        .unwrap();
+    assert!(
+        acquire().await.is_err(),
+        "browser cannot enter before the checkpoint is saved"
+    );
+    batch_release.notify_one();
+    running.await.unwrap().unwrap();
+    let _replacement = acquire().await.unwrap();
+    assert_eq!(charged.load(Ordering::SeqCst), 1);
 }
 
 #[test]
@@ -325,7 +403,7 @@ async fn liker_checks_cache_only_acknowledged_prefix_and_scope_dedupe_to_list() 
             let path = request.uri().path().to_string();
 
             if path == "/api/profiles/by-id" {
-                return Json(json!({"id":"profile","instagramSessionId":"browser-cookie"}))
+                return Json(json!({"id":"profile","name":"scraper-profile","instagramSessionId":"browser-cookie"}))
                     .into_response();
             }
             if path == "/api/scraper/requests/reserve" {
@@ -452,7 +530,7 @@ async fn likers_use_browser_cookies_and_charge_every_attempt_without_rate_limit_
     let charged = reservations.clone();
     let fixture=Fixture::start(move|request|{let mode=current.load(Ordering::SeqCst);let reads=requested.clone();let reservations=charged.clone();async move {
         match request.uri().path() {
-            "/api/profiles/by-id"=>Json(json!({"id":"profile","instagramSessionId":"browser-cookie","paused":mode==3})).into_response(),
+            "/api/profiles/by-id"=>Json(json!({"id":"profile","name":"scraper-profile","instagramSessionId":"browser-cookie","paused":mode==3})).into_response(),
             "/api/scraper/requests/reserve"=>{reservations.fetch_add(1,Ordering::SeqCst);let value=body(request).await;assert_eq!(value["sourceId"],"source");assert_eq!(value["runId"],"run");Json(json!({"allowed":mode!=2,"reason":"Hourly scraper request limit reached"})).into_response()},
             "/api/v1/media/1/likers/"=>{
                 reads.fetch_add(1,Ordering::SeqCst);assert_eq!(request.headers()["cookie"],"sessionid=browser-cookie;");assert!(!request.headers().contains_key("authorization"));

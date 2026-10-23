@@ -47,6 +47,9 @@ pub struct Work {
     task_key: Option<String>,
 }
 pub struct Scraper {
+    profile_root: std::path::PathBuf,
+    #[cfg(test)]
+    _profile_dir: tempfile::TempDir,
     api: Arc<Api>,
     apify_key: String,
     work: watch::Sender<(u64, Work)>,
@@ -99,8 +102,17 @@ impl Scraper {
         #[cfg(test)]
         let file = std::path::PathBuf::from(":memory:");
         let cache = cache::Cache::open(&file)?;
+        #[cfg(test)]
+        let profile_dir = tempfile::tempdir()?;
+        #[cfg(test)]
+        let profile_root = profile_dir.path().to_path_buf();
+        #[cfg(not(test))]
+        let profile_root = crate::native::project_root();
         let (work, _) = watch::channel((0, Work::default()));
         let service = Arc::new(Self {
+            profile_root,
+            #[cfg(test)]
+            _profile_dir: profile_dir,
             api,
             work,
             cache: Mutex::new(cache),
@@ -240,7 +252,9 @@ impl Scraper {
             .ok_or_else(|| Error::failed("Missing post to scrape"))?;
         self.request("heartbeat", json!({"sourceId":job.id,"runId":job.run_id}))
             .await?;
-        let snapshot = self.likers(job, post, &mut None).await?;
+        // Retain profile ownership through both the HTTP response and its database checkpoints.
+        let mut web = None;
+        let snapshot = self.likers(job, post, &mut web).await?;
         let mut seen = HashSet::new();
         let mut fresh = Vec::new();
         {
@@ -339,6 +353,37 @@ impl Scraper {
             if profile.is_null() {
                 return Err(Error::failed("Scraper profile was deleted"));
             }
+            let name = profile["name"]
+                .as_str()
+                .ok_or_else(|| Error::failed("Scraper profile has no name"))?;
+            let locks = crate::native::profiles::acquire_locks(
+                self.profile_root.clone(),
+                vec![name.into()],
+            )
+            .await
+            .map_err(|error| Error {
+                message: error.message,
+                paused: error.status == axum::http::StatusCode::CONFLICT,
+                retry_after_ms: None,
+            })?;
+            // Cookies, pause state or the profile name may have changed before acquisition.
+            let current = self
+                .api
+                .convex(
+                    Method::GET,
+                    &format!("/api/profiles/by-id?{}", query.query().unwrap()),
+                    None,
+                )
+                .await
+                .map_err(Error::failed)?;
+            if current["name"] != profile["name"] {
+                return Err(Error {
+                    message: "Scraper profile changed before acquisition".into(),
+                    paused: true,
+                    retry_after_ms: None,
+                });
+            }
+            let profile = current;
             if profile["paused"] == true
                 || profile["pendingRenameFrom"].is_string()
                 || profile["status"] == "deleting"
@@ -351,12 +396,9 @@ impl Scraper {
                     retry_after_ms: None,
                 });
             }
-            let fallback = instagram::Web::new(&profile)?.with_budget(
-                self.api.clone(),
-                &job.profile_id,
-                &job.id,
-                &job.run_id,
-            );
+            let fallback = instagram::Web::new(&profile)?
+                .with_profile_lock(locks)
+                .with_budget(self.api.clone(), &job.profile_id, &job.id, &job.run_id);
             #[cfg(test)]
             let fallback = fallback.with_base(self.provider_url.clone());
             *web = Some(fallback);

@@ -26,6 +26,7 @@ export type DbProfileRow = ProfileRecord
 
 export type ProfileInput = {
   name: string
+  browserSessionId?: string
   proxy?: string
   proxyType?: string
   fingerprintOs?: string
@@ -216,6 +217,7 @@ export async function profilesUpdateByName(
     method: 'POST',
     body: {
       oldName: oldClean,
+      browserSessionId: profile.browserSessionId,
       name,
       proxy: profile.proxy,
       proxyType: profile.proxyType,
@@ -224,21 +226,6 @@ export async function profilesUpdateByName(
       cookiesJson: profile.cookiesJson,
     },
   })
-}
-
-export async function profilesSyncStatus(
-  name: string,
-  status: string,
-  inUse: boolean = false,
-): Promise<true> {
-  const cleanedName = String(name || '').trim()
-  const cleanedStatus = String(status || '').trim()
-  if (!cleanedName || !cleanedStatus) throw new Error('name and status are required')
-  await convexFetch<any>('/api/profiles/sync-status', {
-    method: 'POST',
-    body: { name: cleanedName, status: cleanedStatus, inUse },
-  })
-  return true
 }
 
 // ==================== AUTOMATIONS ====================

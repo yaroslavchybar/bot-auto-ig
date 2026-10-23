@@ -41,6 +41,8 @@ impl RequestBudget {
     }
 }
 pub struct Web {
+    // Retain shared profile ownership for the complete source task, including its checkpoints.
+    _profile_lock: Option<std::sync::Mutex<Vec<rusqlite::Connection>>>,
     client: reqwest::Client,
     cookies: String,
     csrf: String,
@@ -93,6 +95,7 @@ impl Web {
         )
         .map_err(|error| Error::failed(&error))?;
         Ok(Self {
+            _profile_lock: None,
             client: instagram::transport_client(&proxy).map_err(|error| Error::failed(&error))?,
             cookies: cookie,
             csrf,
@@ -101,6 +104,10 @@ impl Web {
             #[cfg(test)]
             base: None,
         })
+    }
+    pub fn with_profile_lock(mut self, locks: Vec<rusqlite::Connection>) -> Self {
+        self._profile_lock = Some(std::sync::Mutex::new(locks));
+        self
     }
     pub fn with_budget(
         mut self,
