@@ -6,6 +6,8 @@ A session has one reservation, deadline, and shared activity budget. On days 1â€
 
 Three consecutive stalled browsing attempts end the session as stalled, preserving unused daily minutes for a later session. Successful browsing resets this limit. AI decisions may retry one temporary network, timeout, rate-limit, or gateway failure using the same model and screenshot. Both attempts share the original deadline, including the five-second interest-check limit; refusals, invalid responses, and authentication errors are not retried.
 
+Reels opening shares one 15-second budget across navigation, settling, and one recovery. Missing video reopens the Reels feed rather than reloading the same unavailable permalink. A visible but unsettled frame gets one reload. Account warnings and browser connection failures propagate; recovery does not reset the session deadline. Navigation uses Playwright's [bounded `goto` API](https://playwright.dev/docs/api/class-page#page-goto) and then checks the visible frame.
+
 ```mermaid
 flowchart TD
   Sessions --> Warmup[Explore warm-up]

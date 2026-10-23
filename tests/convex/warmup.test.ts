@@ -1,6 +1,6 @@
 import { expect, test, vi, afterEach } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
-import { createConvexTest, seedProfile, seedModel, seedAutomation } from './helpers'
+import { advanceTestClock, createConvexTest, seedProfile, seedModel, seedAutomation } from './helpers'
 import { defaultRoutine } from '../../convex/routinePolicy'
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
@@ -171,10 +171,11 @@ test('fractional rest durations produce integer deadlines without permitting ear
   vi.useFakeTimers()
   const now = Date.parse('2026-10-09T12:00:00Z')
   vi.setSystemTime(now)
-  const { begin, finish, state } = await setup({ restMinMinutes: 1.000001, restMaxMinutes: 1.000001 })
+  const { t, begin, finish, state } = await setup({ restMinMinutes: 1.000001, restMaxMinutes: 1.000001 })
   const plan = await begin()
+  const finishedAt = await advanceTestClock(t)
   await finish(plan.date, 5)
-  const deadline = now + 60_001
+  const deadline = finishedAt + 60_001
   expect((await state())?.nextRunAt).toBe(deadline)
   vi.setSystemTime(deadline - 1)
   expect((await begin('two')).minutes).toBe(0)
@@ -192,9 +193,10 @@ test('restart recovery rounds rest deadlines and preserves a later stored deadli
     await begin()
     const row = (await t.run(ctx => ctx.db.query('warmupStates').collect()))[0]
     await t.run(ctx => ctx.db.patch(row._id, { nextRunAt: previous }))
+    const recoveredAt = await advanceTestClock(t)
     await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})
     await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})
-    expect((await state())?.nextRunAt).toBe(previous ? now + 120_001 : now + 60_001)
+    expect((await state())?.nextRunAt).toBe(previous ? now + 120_001 : recoveredAt + 60_001)
     expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals.warmupMinutes).toBe(40)
   }
 })
@@ -307,8 +309,10 @@ test('final session is capped to the remaining budget and rest can cross midnigh
   const resting = await setup({ restMinMinutes: 120, restMaxMinutes: 120 })
   const plan = await resting.begin()
   await resting.finish(plan.date, 5)
+  const deadline = (await resting.state())!.nextRunAt!
   vi.setSystemTime(new Date('2026-09-20T00:30:00Z'))
   expect((await resting.begin('tomorrow')).minutes).toBe(0)
-  vi.setSystemTime(new Date('2026-09-20T01:00:00Z'))
+  expect(deadline).toBeGreaterThanOrEqual(Date.parse('2026-09-20T01:00:00Z'))
+  vi.setSystemTime(deadline)
   expect((await resting.begin('tomorrow')).minutes).toBe(40)
 })

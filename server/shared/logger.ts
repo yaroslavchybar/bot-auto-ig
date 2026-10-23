@@ -54,6 +54,13 @@ export class LogScope {
 
   add(fields: Record<string, unknown>): void { Object.assign(this.fields, fields) }
 
+  get failed(): boolean {
+    const requested = this.fields.outcome || 'success'
+    return requested === 'error' || requested === 'success' && this.hasErrors
+  }
+
+  get error(): unknown { return this.fields.error ?? this.lastError }
+
   /** Register account credentials before using libraries that may quote arguments in errors. */
   redact(values: string[]): void {
     this.redactions = [...new Set([...this.redactions, ...values.filter(value => value.length >= 4)])].slice(-20)
@@ -87,7 +94,7 @@ export class LogScope {
     const requestedOutcome = this.fields.outcome || outcome
     const finalOutcome = this.hasErrors && requestedOutcome === 'success' ? 'error' : requestedOutcome
     emit(this.hasErrors || finalOutcome === 'error' ? 'error' : 'info', this.safeFields({
-      ...this.fields, error: this.fields.error ?? this.lastError, event: this.event, requestId: this.requestId,
+      ...this.fields, error: this.error, event: this.event, requestId: this.requestId,
       operationId: this.operationId, parentOperationId: this.parentOperationId,
       outcome: finalOutcome, durationMs: Math.round(performance.now() - this.startedAt),
       ...(this.noteCount ? { notes: this.notes, noteCount: this.noteCount, stepCounts: this.stepCounts } : {}),

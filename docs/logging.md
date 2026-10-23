@@ -27,6 +27,13 @@ in `finally`, including duration, outcome, deployment details, and correlation.
 It keeps the latest 20 notes and total counts per step, so add important totals
 directly to the completion context instead of relying on the note history.
 
+Failed profile scopes add a redacted `automation.profile_failed` note to their
+parent session, including the child operation ID. A handled profile failure
+therefore remains an error in the session and native process completion logs,
+even when the worker exits with code 0. Process `context.workerStatus` records
+the scheduling status separately: a pending retry stays pending. Stderr warnings
+alone do not fail a process, and explicit cancellation keeps its cancelled outcome.
+
 Request IDs must contain 8–128 ASCII letters, digits, underscores, or hyphens.
 Invalid IDs are replaced; nested operations retain a valid parent ID. Propagate
 `currentRequestId()` to service and worker boundaries rather than starting a

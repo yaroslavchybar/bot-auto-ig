@@ -18,7 +18,7 @@ COPY --from=repo_root tools/runtime ./tools/runtime
 COPY --from=repo_root tools/service-common ./tools/service-common
 RUN cargo build --release --locked -p ig-runtime
 
-FROM oven/bun:1.4.2-debian AS system-base
+FROM oven/bun:1.4.4-debian AS system-base
 
 WORKDIR /app
 ENV DEBIAN_FRONTEND=noninteractive

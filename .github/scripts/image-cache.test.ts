@@ -35,11 +35,11 @@ describe('image reuse', () => {
   test('finds all current base images without inspecting local stages or contexts', () => {
     expect(baseImages(readFileSync('server/Dockerfile', 'utf8'))).toEqual([
       'rust:1.98.1-bookworm',
-      'oven/bun:1.4.2-debian',
+      'oven/bun:1.4.4-debian',
     ])
     expect(baseImages(readFileSync('frontend/Dockerfile', 'utf8'))).toEqual([
       'node:24.21.0-bookworm-slim',
-      'oven/bun:1.4.2-slim',
+      'oven/bun:1.4.4-slim',
       'nginx:alpine',
     ])
     expect(baseImages(readFileSync('tools/spoofer/Dockerfile', 'utf8'))).toEqual([

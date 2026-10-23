@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vite-plus/test';
 import { api, internal } from '../../convex/_generated/api';
 import { defaultRoutine, dayKey, validateRoutine } from '../../convex/routinePolicy';
 import { ROUTINE_RETRY_MS } from '../../convex/routineErrors';
-import { createConvexTest, seedModel, seedProfile } from './helpers';
+import { advanceTestClock, createConvexTest, seedModel, seedProfile } from './helpers';
 import type { Id, Doc } from '../../convex/_generated/dataModel';
 import type { MutationCtx } from '../../convex/_generated/server';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -464,6 +464,7 @@ test('follows become due after seven days and unfollowing never requeues the lea
   const { t, args, loggedIn, profile } = await setup(); await loggedIn();
   const claim = (await reserveFollow(t, args))!;
   const follow = { profileId: profile._id, leadId: claim.leadId, followed: true };
+  await advanceTestClock(t);
   await t.mutation(internal.routines.recordFollow, follow);
   const followDate = Date.now();
   vi.setSystemTime(followDate + 7 * 86400000 - 1);
@@ -488,17 +489,18 @@ test.each([0, 0.999])('random unfollow deadlines are saved and enforced (random=
   rng.mockRestore();
   const days = random === 0 ? 3 : 10;
   const follow = { profileId: profile._id, leadId: claim.leadId, followed: true };
+  await advanceTestClock(t);
   await t.mutation(internal.routines.recordFollow, follow);
   const followDate = Date.now();
   const unfollowAt = followDate + days * 86_400_000;
   await t.run(ctx => ctx.db.patch(automation._id, { routine: {
     ...automation.routine!, unfollowMinDays: 1, unfollowMaxDays: 1, } }));
-  vi.setSystemTime(unfollowAt - 1);
   await t.mutation(internal.routines.recordFollow, follow);
   expect((await readLeads(t)).find(l => l._id === claim.leadId))
     .toMatchObject({ followDate, unfollowDays: days, unfollowAt });
-  expect(await t.query(internal.routines.followTasks, args)).toEqual([]);
+  vi.setSystemTime(unfollowAt - 1);
   await expect(t.mutation(internal.routines.recordFollow, { ...follow, followed: false })).rejects.toThrow('not due');
+  expect(await t.query(internal.routines.followTasks, args)).toEqual([]);
   vi.setSystemTime(unfollowAt);
   expect(await t.query(internal.routines.followTasks, args)).toEqual([{ leadId: claim.leadId, username: claim.username }]);
   await t.mutation(internal.routines.recordFollow, { ...follow, followed: false });
@@ -540,7 +542,7 @@ test('a pending request waits until the next day and stays claimed after unfollo
   expect(await t.mutation(internal.routines.beginSend, check)).toBe(false);
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
 
-  vi.setSystemTime(Date.now() + 7 * 86400000);
+  vi.setSystemTime((await t.run(ctx => ctx.db.get(claim.leadId)))!.unfollowAt!);
   await t.mutation(internal.routines.recordFollow, {
     profileId: profile._id, leadId: claim.leadId, followed: false, });
   const lead = (await readLeads(t)).find(l => l._id === claim.leadId)!;
@@ -680,7 +682,7 @@ test.each([
     await t.run(ctx => putWarmup(ctx, {
       profileId: profile._id, day: 16, date: '2026-10-08', runsToday: 3,
       todayMinutes: 25, minutesUsedToday: 25, nextRunAt: Date.now() - 60_000, }));
-    const retryAt = Date.now() + ROUTINE_RETRY_MS;
+    const retryAt = await advanceTestClock(t) + ROUTINE_RETRY_MS;
     await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false, issue });
     const row = (await t.query(api.routines.accounts, { automationId: args.automationId }))[0];
     expect(row.issue).toBeUndefined();
@@ -728,8 +730,8 @@ test.each(['goto: Timeout 45000ms exceeded.',
     vi.stubGlobal('process', { env: { INTERNAL_API_KEY: 'bridge-secret' } });
     const { t, args, profile, list, loggedIn } = await setup();
     await loggedIn();
+    const retryAt = await advanceTestClock(t) + ROUTINE_RETRY_MS;
     await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false });
-    const retryAt = Date.now() + ROUTINE_RETRY_MS;
     await t.run(async ctx => {
       const state = (await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique())!;
       await ctx.db.patch(state._id, { issue, nextRunAt: Date.now() - 60_000 });
@@ -994,7 +996,7 @@ test('a lost follow confirmation retains cleanup intent and is never followed tw
     expect(await t.mutation(internal.routines.beginFollow, input)).toBe(false);
     expect((await readLeads(t)).find(lead => lead._id === claim.leadId)?.followed).toBe(false);
     expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
-    vi.setSystemTime(Date.now() + 7 * 86_400_000);
+    vi.setSystemTime((await t.run(ctx => ctx.db.get(claim.leadId)))!.unfollowAt!);
     expect(await t.query(internal.routines.followTasks, args)).toEqual([{ leadId: claim.leadId, username: claim.username }]);
     await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: false });
     expect(await t.query(internal.routines.followTasks, args)).toEqual([]);
@@ -1007,6 +1009,7 @@ test('follow confirmation is idempotent and retains the deadline saved before th
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
     const { t, args, loggedIn } = await setup(); await loggedIn();
     const claim = (await reserveFollow(t, args))!;
+    await advanceTestClock(t);
     await t.mutation(internal.routines.beginFollow, { ...args, leadId: claim.leadId, date: claim.date });
     const started = Date.now();
     vi.setSystemTime(started + 5000);
@@ -1291,7 +1294,7 @@ test('screening failures back off, preserve decisions, and stop automatic retrie
   await t.finishAllScheduledFunctions(vi.runAllTimers)
   for (let attempt = 1; attempt <= 3; attempt++) {
     const failure = { ...args, leadId, date: claim.date, screeningToken: claim.screeningToken }
-    const failedAt = Date.now()
+    const failedAt = await advanceTestClock(t)
     expect(await t.mutation(internal.leadScreening.finish, failure)).toBe(false)
     expect(await t.mutation(internal.leadScreening.finish, failure)).toBe(false)
     const lead = (await t.run(ctx => ctx.db.get(leadId)))!

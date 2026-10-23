@@ -16,18 +16,23 @@ pub(super) fn diagnostic(text: &str, stderr: bool, secrets: &[String]) -> Value 
         "level":if stderr && !benign_stderr(text) { "error" } else { "info" }})
 }
 
-/// Stderr is diagnostic context, not evidence that a successfully completed worker failed.
-pub(super) fn completion(status: &str, diagnostic_error: Option<Value>) -> Value {
+/// Stderr alone cannot fail a worker; an explicit session failure can, even after a clean exit.
+pub(super) fn completion(
+    status: &str,
+    diagnostic_error: Option<Value>,
+    session_error: Option<Value>,
+) -> Value {
     let outcome = match status {
         "cancelled" => "cancelled",
         "failed" => "error",
+        _ if session_error.is_some() => "error",
         _ => "success",
     };
     json!({
         "level": if outcome == "error" { "error" } else { "info" },
         "outcome": outcome,
         "error": if outcome == "error" {
-            diagnostic_error.map(|note| json!({"type":"WorkerOutput", "message":note["message"]}))
+            session_error.or_else(|| diagnostic_error.map(|note| json!({"type":"WorkerOutput", "message":note["message"]})))
         } else { None },
     })
 }
@@ -65,7 +70,7 @@ mod tests {
             &[],
         );
         for status in ["completed", "pending", "cancelled"] {
-            let result = completion(status, Some(warning.clone()));
+            let result = completion(status, Some(warning.clone()), None);
             assert_eq!(result["level"], "info");
             assert!(result["error"].is_null());
             assert_eq!(
@@ -77,10 +82,28 @@ mod tests {
                 }
             );
         }
-        let result = completion("failed", Some(diagnostic("Import failed", true, &[])));
+        let result = completion("failed", Some(diagnostic("Import failed", true, &[])), None);
         assert_eq!(result["outcome"], "error");
         assert_eq!(result["error"]["message"], "Import failed");
-        assert_eq!(completion("failed", None)["outcome"], "error");
+        assert_eq!(completion("failed", None, None)["outcome"], "error");
+    }
+
+    #[test]
+    fn session_failure_is_visible_after_clean_exit_without_overriding_cancellation() {
+        let error = json!({"type":"AutomationSession", "message":"Profile browsing stalled"});
+        for status in ["completed", "pending", "failed"] {
+            let result = completion(
+                status,
+                Some(diagnostic("Unrelated stderr", true, &[])),
+                Some(error.clone()),
+            );
+            assert_eq!(result["level"], "error");
+            assert_eq!(result["outcome"], "error");
+            assert_eq!(result["error"], error);
+        }
+        let cancelled = completion("cancelled", None, Some(error));
+        assert_eq!(cancelled["outcome"], "cancelled");
+        assert!(cancelled["error"].is_null());
     }
 
     #[test]

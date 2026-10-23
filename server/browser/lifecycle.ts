@@ -37,6 +37,8 @@ for (const signal of process.platform === 'win32'
 
 export function sleep(ms: number): Promise<void> {
   shutdownSignal.throwIfAborted()
+  // A deadline can pass between clock reads; an expired wait needs no timer.
+  if (ms <= 0) return Promise.resolve()
   return new Promise((resolve, reject) => {
     const onAbort = () => {
       clearTimeout(timer)

@@ -241,6 +241,50 @@ fn encryption_is_random_and_authenticated_to_the_username() {
     let bad = json!({"_id":"bad","createdAt":1,"ciphertext":"v1.corrupt"});
     assert_eq!(public_row(&bad, &key)["status"], "invalid");
 }
+
+#[test]
+fn legacy_v1_ciphertext_and_username_hash_remain_decryptable() {
+    use aes_gcm::{
+        aead::{Aead, KeyInit, Payload},
+        Aes256Gcm, Nonce,
+    };
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    let key = [0x11; 32];
+    let credentials = parse_credentials("legacy_user:legacy-password:JBSWY3DPEHPK3PXP").unwrap();
+    let hash = username_hash(&key, &credentials.username);
+    let iv = [0x22; 12];
+    let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
+    let payload = serde_json::to_vec(&credentials).unwrap();
+    let sealed = cipher
+        .encrypt(
+            &Nonce::try_from(iv.as_slice()).unwrap(),
+            Payload {
+                msg: &payload,
+                aad: &unhex(&hash).unwrap(),
+            },
+        )
+        .unwrap();
+    let (encrypted, tag) = sealed.split_at(sealed.len() - 16);
+    let row = Encrypted {
+        username_hash: hash,
+        ciphertext: format!(
+            "v1.{}.{}.{}",
+            URL_SAFE_NO_PAD.encode(iv),
+            URL_SAFE_NO_PAD.encode(tag),
+            URL_SAFE_NO_PAD.encode(encrypted),
+        ),
+    };
+    assert_eq!(
+        row.username_hash,
+        "0d35c8b3d142e372ad6714d8a8211fb384831e50c391955bebcc30e0ade7cc7b"
+    );
+    assert_eq!(
+        row.ciphertext,
+        "v1.IiIiIiIiIiIiIiIi.ymQL4zcn_BorpSOPj_LMZg.bNVyOqW98T6IWvwGasqMsn7wtL0f8sk5cGMomGiSFnQqDc8gaYqVuyk5jlTLKChGwKXxEPFQVtzVAZ6RhwWb2xvtaFcjzjRryVsU21W6qVXW-fN7S76QYAlZgYhD"
+    );
+    assert_eq!(decrypt(&key, &row).unwrap(), credentials);
+}
 #[test]
 fn setup_days_follow_kyiv_midnight_and_dst() {
     let at = |raw: &str| {

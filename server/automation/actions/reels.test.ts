@@ -264,6 +264,56 @@ test('a stop during settling prevents the Reels recovery reload', async () => {
   finally { await f.window.happyDOM.close() }
 })
 
+for (const recovery of ['settled', 'unavailable', 'timeout', 'stopped', 'deadline', 'account warning'] as const)
+  test(`a missing Reel requests a fresh feed within the original budget (${recovery})`, async () => {
+    const f = reelAdvanceFixture(1024, 600), originalNow = Date.now
+    let now = originalNow(), navigations = 0, stopped = false
+    const start = now, notes: Record<string, unknown>[] = []
+    Date.now = () => now
+    const session = new BrowseSession(now + (recovery === 'deadline' ? 5500 : 60_000), () => stopped)
+    session.wait = async ms => { now += ms; session.check() }
+    f.boxes.forEach(box => { box.x = -2000 })
+    f.page.reload = async () => { throw new Error('An unavailable permalink must not be reloaded') }
+    f.page.goto = async (url, options) => {
+      navigations++
+      assert.equal(url, 'https://www.instagram.com/reels/')
+      assert.equal(options?.waitUntil, 'domcontentloaded')
+      assert.equal(options?.timeout, recovery === 'deadline' ? 500 : 5000)
+      if (recovery === 'timeout' || recovery === 'deadline') {
+        now += options!.timeout!
+        throw new errors.TimeoutError('Feed navigation timed out')
+      }
+      if (recovery === 'stopped') stopped = true
+      if (recovery === 'settled') { f.boxes[1].x = 256; f.navigate('https://www.instagram.com/reels/fresh/') }
+      return null
+    }
+    if (recovery === 'account warning') {
+      const locator = f.page.locator.bind(f.page)
+      f.page.locator = ((selector: string) => selector === '[role="dialog"], [role="alertdialog"], [role="alert"]'
+        ? { filter: () => ({ evaluateAll: async () => 'limit' }) } : locator(selector)) as Page['locator']
+    }
+    try {
+      const run = openReels(f.page, note => notes.push(note), session)
+      if (recovery === 'stopped' || recovery === 'deadline') await assert.rejects(run, SessionEnded)
+      else if (recovery === 'account warning') await assert.rejects(run, /limit needs attention/)
+      else assert.equal(await run, recovery === 'settled')
+      assert.equal(navigations, recovery === 'account warning' ? 0 : 1)
+      assert.ok(now - start <= 15_000, 'recovery must share the original opening deadline')
+      assert.equal(notes.find(note => note.event === 'automation.actions.reels.settle_failed')?.reason, 'video_unavailable')
+      if (navigations) assert.equal(notes.find(note => note.event === 'automation.actions.reels.viewer_reload')?.recovery, 'fresh_feed')
+    } finally { Date.now = originalNow; await f.window.happyDOM.close() }
+  })
+
+test('video lookup transport failures propagate instead of masquerading as missing media', async () => {
+  const f = reelAdvanceFixture(1024, 600)
+  const locator = f.page.locator.bind(f.page)
+  f.page.locator = ((selector: string) => selector === 'video'
+    ? { count: async () => { throw new Error('Browser disconnected') } } : locator(selector)) as Page['locator']
+  f.page.goto = async () => { throw new Error('Transport failures must not retry navigation') }
+  try { await assert.rejects(openReels(f.page, () => {}, f.session), /Browser disconnected/) }
+  finally { await f.window.happyDOM.close() }
+})
+
 test('a failed Reels sidebar click does not wait for navigation or retry the click', async () => {
   let clicks = 0, waits = 0
   const button = { ...visibleActionGeometry, filter() { return this }, first() { return this }, isVisible: async () => true,

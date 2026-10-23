@@ -52,7 +52,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - run: cargo build --workspace --locked
-      - run: bun test server
+      - run: bun run test:server
       - run: bun run test:convex
       - run: bun run --filter frontend test:ui
       # Push builds compile release Rust in the production Bookworm images.

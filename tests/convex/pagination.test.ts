@@ -52,17 +52,15 @@ test('profile and proxy searches return partial cursors before distant matches',
     }
   })
   for (const query of [api.profiles.queries.listPage, api.proxies.listPage]) {
-    const first = await t.query(query, { search: 'distant-target', cursor: null, pageSize: 50 })
-    expect(first.page).toEqual([])
-    expect(first.isDone).toBe(false)
-    expect(first.continueCursor).toBeTruthy()
-    const second = await t.query(query, {
-      search: 'distant-target',
-      cursor: first.continueCursor,
-      pageSize: 50,
-    })
-    expect(second.page.map((row) => row.name)).toEqual(['distant-target'])
-    expect(second.isDone).toBe(true)
+    let cursor: string | null = null
+    const pages = []
+    for (;;) {
+      const page = await t.query(query, { search: 'distant-target', cursor, pageSize: 50 })
+      pages.push(...page.page)
+      if (page.isDone) break
+      cursor = page.continueCursor
+    }
+    expect(pages.map((row) => row.name)).toEqual(['distant-target'])
   }
 })
 
@@ -93,27 +91,23 @@ test('profile pagination stays bounded, excludes cookies, and searches beyond th
     pageSize: 50,
   })
   expect(new Set([...first.page, ...second.page].map((row) => row._id)).size).toBe(100)
-  const matches = await t.query(api.profiles.queries.listPage, {
-    search: 'TARGET',
-    cursor: null,
-    pageSize: 50,
-  })
-  expect(matches.page).toHaveLength(50)
-  expect(matches.page.every((row) => row.name.startsWith('target-'))).toBe(true)
-  const remaining = await t.query(api.profiles.queries.listPage, {
-    search: 'target',
-    cursor: matches.continueCursor,
-    pageSize: 50,
-  })
-  expect(remaining.page).toHaveLength(15)
-  expect(remaining.isDone).toBe(true)
-  const missing = await t.query(api.profiles.queries.listPage, {
-    search: 'missing',
-    cursor: null,
-    pageSize: 50,
-  })
-  expect(missing.page).toEqual([])
-  expect(missing.isDone).toBe(true)
+  let cursor: string | null = null
+  const matches = []
+  for (;;) {
+    const page = await t.query(api.profiles.queries.listPage, { search: 'TARGET', cursor, pageSize: 50 })
+    matches.push(...page.page)
+    if (page.isDone) break
+    cursor = page.continueCursor
+  }
+  expect(matches).toHaveLength(65)
+  expect(matches.every((row) => row.name.startsWith('target-'))).toBe(true)
+  cursor = null
+  for (;;) {
+    const missing = await t.query(api.profiles.queries.listPage, { search: 'missing', cursor, pageSize: 50 })
+    expect(missing.page).toEqual([])
+    if (missing.isDone) break
+    cursor = missing.continueCursor
+  }
 })
 
 test('profile pages honor the chosen page size and reject sizes outside the footer options', async () => {

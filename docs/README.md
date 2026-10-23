@@ -20,7 +20,7 @@ Conflict order: `docs/` → `AGENTS.md` → README stubs.
 
 Instagram automation platform: React frontend, Rust/Axum API,
 Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared data layer. Package manager and browser-worker runtime: Bun
-(`packageManager: bun@1.4.2`, workspaces `frontend` + `server`).
+(`packageManager: bun@1.4.4`, workspaces `frontend` + `server`).
 
 - `frontend/`: React + Vite+ app.
   Feature-owned UI under `src/features/` (`profiles`, `models`, `automations`,
@@ -41,6 +41,8 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
   Rust owns the surrounding validation, retries and durable model setup state.
   Browser workers receive subscription updates and resource leases
   over authenticated local Rust sockets; they do not open Convex subscription connections.
+  Socket handshakes have a five-second limit; queued resource leases can still
+  wait after connecting. Worker shutdown cancels pending subscription startup.
   React and Convex functions remain TypeScript.
 - `server/browser/`: CloakBrowser sessions, profile persistence, and login/manual
   browser entrypoints.
@@ -158,7 +160,8 @@ deleted: missing database rows alone are not treated as permission to wipe data.
 
 ## Commands
 
-Root (`bun run …`): `build:rust`, `dev`, `dev:server`, `build`, `start`, `test:convex`, `typecheck`,
+Root (`bun run …`): `build:rust`, `dev`, `dev:server`, `dev:frontend`, `dev:convex`,
+`build`, `start`, `test:convex`, `test:server`, `typecheck`,
 `lint`, `format`, `format:check`.
 Workspaces: `bun run --filter frontend dev|build|lint|preview|typecheck|format|format:check`,
 `bun run --filter anti-server dev|build|start|typecheck|lint`.
@@ -166,19 +169,27 @@ React regression checks: `bun run --filter frontend test:ui` (Vitest + Happy DOM
 Server: `bun run --filter anti-server build`. Docker: `docker compose up --build`
 (services below); Convex: `bunx convex dev|deploy`.
 
+`bun run dev` runs the three development services with Bun's parallel runner.
+A failed service stops the others; `--no-orphans` also cleans up descendants.
+
 ### TypeScript and Vite+
 
-All builds and typechecks use the standard `typescript` package, pinned to
-**7.0.2** in all three manifests. There are no TypeScript 6 or compiler aliases.
-`bun run typecheck` checks the server, frontend, and Convex. Rust services use `cargo check --workspace`.
-Convex CLI also finds this compiler. Workspace settings point the TypeScript
-extension at `node_modules/typescript`.
+`bun run typecheck` uses Bun's built-in `bun check` for the server, frontend,
+and Convex. Frontend builds use the same check before Vite. Server JavaScript
+emission, the Convex CLI, and editor tooling keep the standard `typescript`
+package, pinned to **7.0.2** in all three manifests. Rust services use
+`cargo check --workspace`. Workspace settings point the TypeScript extension
+at `node_modules/typescript`.
 
-Use Node **24.21.0** from `.node-version` for the tooling; Bun **1.4.2** remains
+Use Node **24.21.0** from `.node-version` for the tooling; Bun **1.4.4** remains
 the package manager and server runtime. Run `bun install --frozen-lockfile`.
+GitHub Actions reads the Bun version from the root `packageManager` field;
+both Dockerfiles pin the same version.
 The frontend uses Vite+ **1.0.0**, including Vite, Rolldown, and Oxc. Its bundled
 Vitest **5.0.1** runs `bun run test:convex`; server and frontend utility tests
-still run with `bun test server` and `bun test frontend`.
+run with `bun run test:server` and `bun test frontend`.
+The server suite uses two isolated file workers and cleans up descendants on
+exit. Tests within each file stay sequential because they mutate globals.
 UI regression tests live in `tests/ui/`, separately from the Bun utility
 tests so the two runners never execute each other's suites.
 
@@ -191,7 +202,8 @@ clock reads, and component identity issues found during migration are fixed.
 Oxlint does not implement the old React compiler `config`
 and `gating` rules; this app does not configure React Compiler or its gating.
 
-`bun run format` and `bun run format:check` use Oxfmt, preserving single quotes,
+`bun run format` and `bun run format:check` use Bun's built-in formatter with
+the existing `vite.config.ts` Oxfmt settings, preserving single quotes,
 no semicolons, and Tailwind class sorting against `frontend/src/index.css`.
 Formatting the whole repository is opt-in; this migration does not reformat
 existing application code. Install the recommended TypeScript and Oxc VS Code
@@ -241,7 +253,7 @@ Concurrency is capped by `AUTOMATION_MAX_CONCURRENCY` (default 3).
 Account setup uses the active browser for username, full name, avatar, and posting.
 There is no separate mobile client or mobile session storage. Scraping uses saved
 browser cookies through the profile's Work proxy, without opening a browser window.
-Images: `oven/bun:1.4.2-*` for the server; `node:24.21.0-bookworm-slim` with Bun
+Images: `oven/bun:1.4.4-*` for the server; `node:24.21.0-bookworm-slim` with Bun
 for the frontend build and `nginx:alpine` for its runtime. Production frontend builds require `VITE_API_URL`,
 `VITE_CONVEX_URL` as build args.
 

@@ -7,23 +7,23 @@
         "build": "tsc -p tsconfig.json",
         "dev": "cargo build --manifest-path ../Cargo.toml --workspace --locked && bun --hot index.ts",
         "start": "bun dist/index.js",
-        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "typecheck": "bun check -p tsconfig.json",
         "lint": "vp lint ."
     },
     "dependencies": {
-        "@sentry/node": "^11.1.0",
+        "@sentry/node": "^11.8.0",
         "cloakbrowser": "^0.6.3",
-        "dotenv": "^18.0.4",
+        "dotenv": "^18.0.9",
         "mmdb-lib": "^3.0.3",
-        "pino": "^10.3.1",
-        "playwright-core": "1.63.0",
+        "pino": "^10.4.0",
+        "playwright-core": "1.64.1",
         "sharp": "^0.35.5",
         "socks-proxy-agent": "^10.1.0",
         "ws": "^8.22.0"
     },
     "devDependencies": {
-        "@types/bun": "^1.4.2",
-        "@types/node": "^20.0.0",
+        "@types/bun": "^1.4.4",
+        "@types/node": "^26.6.5",
         "@types/ws": "^8.18.2",
         "typescript": "7.0.2"
     }

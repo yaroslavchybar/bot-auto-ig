@@ -11,28 +11,20 @@ export function isPageSize(value: number): value is PageSize {
   return (PAGE_SIZES as readonly number[]).includes(value)
 }
 
-export const SCAN_BATCH_LIMIT = 5
 export const SCAN_BATCH_BYTES = 512 * 1024
 
-// Scan bounded batches to preserve substring search without sending unmatched rows to clients.
+// Scan one bounded database page per query. Sparse filtered pages resume with Convex's native
+// cursor, avoiding nested .paginate() calls and remaining stable as rows change.
 export async function scanPage<T>(
   fetchPage: (cursor: string | null, count: number) => Promise<CursorPage<T>>,
   matches: (row: T) => boolean,
   cursor: string | null,
   pageSize = 50,
 ): Promise<CursorPage<T>> {
-  const page: T[] = []
-  let next = cursor
-  for (let batches = 1; ; batches++) {
-    const batch = await fetchPage(next, pageSize - page.length)
-    page.push(...batch.page.filter(matches))
-    if (batch.isDone || page.length >= pageSize)
-      return { page, continueCursor: batch.continueCursor, isDone: batch.isDone }
-    if (batch.continueCursor === next) throw new Error('Pagination cursor did not advance')
-    if (batches >= SCAN_BATCH_LIMIT)
-      return { page, continueCursor: batch.continueCursor, isDone: false }
-    next = batch.continueCursor
-  }
+  const batch = await fetchPage(cursor, pageSize)
+  if (!batch.isDone && batch.continueCursor === cursor)
+    throw new Error('Pagination cursor did not advance')
+  return { page: batch.page.filter(matches), continueCursor: batch.continueCursor, isDone: batch.isDone }
 }
 
 export function matchesSearch(search: string, fields: unknown[]): boolean {

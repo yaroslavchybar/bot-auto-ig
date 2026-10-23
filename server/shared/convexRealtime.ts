@@ -31,6 +31,7 @@ export function subscribeToConvexQuery<T>(
   args: Record<string, unknown>,
   onUpdate: (value: T) => void,
   onError: (error: Error) => void,
+  signal?: AbortSignal,
 ): { initial: Promise<T>; unsubscribe: () => void } {
   let resolve!: (value: T) => void
   let reject!: (error: Error) => void
@@ -54,10 +55,11 @@ export function subscribeToConvexQuery<T>(
     if (stopped) return
     const current = (socket = new WebSocket(
       runtimeUrl().replace(/^http/, 'ws') + '/subscriptions',
-      { headers: runtimeHeaders(), maxPayload: 1024 * 1024 },
+      { headers: runtimeHeaders(), maxPayload: 1024 * 1024, handshakeTimeout: 5_000 },
     ))
-    current.on('open', () => current.send(JSON.stringify({ name, args })))
+    current.on('open', () => { if (!stopped) current.send(JSON.stringify({ name, args })) })
     current.on('message', (data) => {
+      if (stopped) return
       try {
         const message = JSON.parse(data.toString())
         if (message.error) {
@@ -86,15 +88,20 @@ export function subscribeToConvexQuery<T>(
     if (stopped) return
     stopped = true
     if (retry) clearTimeout(retry)
+    signal?.removeEventListener('abort', unsubscribe)
     socket?.terminate()
     subscriptions.delete(unsubscribe)
     if (!initialized) {
       initialized = true
-      reject(new Error('Subscription cancelled'))
+      reject(signal?.aborted ? signal.reason : new Error('Subscription cancelled'))
     }
   }
   subscriptions.add(unsubscribe)
-  connect()
+  if (signal?.aborted) unsubscribe()
+  else {
+    signal?.addEventListener('abort', unsubscribe, { once: true })
+    connect()
+  }
   return { initial, unsubscribe }
 }
 
@@ -103,13 +110,15 @@ export const watchRoutineRuntime = (
   modelIds: string[],
   update: (value: RuntimeSnapshot) => void,
   error: (error: Error) => void,
-) => subscribeToConvexQuery('automations/queries:runtimeSnapshot', { id, modelIds }, update, error)
+  signal?: AbortSignal,
+) => subscribeToConvexQuery('automations/queries:runtimeSnapshot', { id, modelIds }, update, error, signal)
 export const watchRoutineAccess = (
   automationId: string,
   profileId: string,
   update: (value: boolean) => void,
   error: (error: Error) => void,
-) => subscribeToConvexQuery('routines:access', { automationId, profileId }, update, error)
+  signal?: AbortSignal,
+) => subscribeToConvexQuery('routines:access', { automationId, profileId }, update, error, signal)
 export async function closeConvexRealtime(): Promise<void> {
   for (const close of subscriptions) close()
 }
@@ -118,4 +127,5 @@ export const watchProfileAccess = (
   profileId: string,
   update: (value: boolean) => void,
   error: (error: Error) => void,
-) => subscribeToConvexQuery('profiles/queries:automationAccess', { profileId }, update, error)
+  signal?: AbortSignal,
+) => subscribeToConvexQuery('profiles/queries:automationAccess', { profileId }, update, error, signal)

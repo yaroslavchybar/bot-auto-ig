@@ -3,6 +3,64 @@ use crate::test_support::{body, Fixture};
 use axum::{response::IntoResponse, Json};
 
 #[tokio::test]
+async fn clean_worker_exit_preserves_session_failure_and_scheduled_retry() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("server/automation");
+    tokio::fs::create_dir_all(&dir).await.unwrap();
+    tokio::fs::write(
+        dir.join("worker.ts"),
+        r#"
+process.stdin.once('data', () => {
+console.log(JSON.stringify({event:'automation.profile_session',level:'error',outcome:'error'}));
+console.log(JSON.stringify({event:'automation.session',level:'error',outcome:'error'}));
+console.log('__EVENT__'+JSON.stringify({type:'worker_waiting',dueAt:Date.now()+60000})+'__EVENT__');
+process.exit(0);
+});
+"#,
+    )
+    .await
+    .unwrap();
+    let writes = Arc::new(Mutex::new(Vec::new()));
+    let seen = writes.clone();
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let save = release.clone();
+    let fixture = Fixture::start(move |request| {
+        let seen = seen.clone();
+        let save = save.clone();
+        async move {
+            if request.uri().path() == "/api/automations/update-status" {
+                seen.lock().await.push(body(request).await);
+                save.acquire().await.unwrap().forget();
+            }
+            Json(json!({"isActive":true,"routine":{},"nodeStates":{}})).into_response()
+        }
+    })
+    .await;
+    let mut api = Api::from_env().unwrap();
+    api.convex_url = fixture.url.clone();
+    api.key = "fixture".into();
+    let owner = Processes::new(Arc::new(api), root.path().into());
+    let mut closed = owner.closed.subscribe();
+    owner.start_automation("a").await.unwrap();
+    let job = owner.jobs.lock().await[&Processes::key(true, "a")].clone();
+    release.add_permits(10);
+    let (_, due_at) = tokio::time::timeout(Duration::from_secs(5), closed.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        due_at.is_some(),
+        "logging failures must not disable the routine retry"
+    );
+    assert_eq!(writes.lock().await.last().unwrap()["status"], "pending");
+    let progress = job.progress.lock().await;
+    assert_eq!(progress.diagnostic_count, 0);
+    let result = output::completion("pending", None, progress.session_error.clone());
+    assert_eq!(result["outcome"], "error");
+    assert_eq!(result["error"]["type"], "AutomationSession");
+}
+
+#[tokio::test]
 async fn checkpoint_bursts_coalesce_and_terminal_errors_never_schedule_another_run() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("server/automation");

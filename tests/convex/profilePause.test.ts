@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
-import { createConvexTest, seedAutomation } from './helpers'
+import { advanceTestClock, createConvexTest, seedAutomation } from './helpers'
 import { syncWorkerProfile } from '../../convex/workerMetadata'
 import { defaultRoutine } from '../../convex/routinePolicy'
 
@@ -127,7 +127,7 @@ test('pause blocks automation, scraping, warm-up, and browser-cookie calls while
     allowed: false,
     reason: 'Hourly scraper request limit reached',
   })
-  vi.setSystemTime(Date.now() + 3_600_000)
+  vi.setSystemTime(await advanceTestClock(s.t) + 3_600_000)
   expect((await s.reserve('next-hour')).allowed).toBe(true)
   expect((await s.t.mutation(internal.scrapeSources.claim, {}))?.profileId).toBe(s.profileId)
 })

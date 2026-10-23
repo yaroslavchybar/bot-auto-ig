@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 FROM node:24.21.0-bookworm-slim AS frontend-build
 
-COPY --from=oven/bun:1.4.2-slim /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=oven/bun:1.4.4-slim /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
 

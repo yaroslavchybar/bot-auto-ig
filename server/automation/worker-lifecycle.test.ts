@@ -3,8 +3,91 @@ import assert from 'node:assert/strict'
 import { runAutomation, type WorkerDependencies } from './worker.js'
 import type { BrowserSession } from '../browser/cloak.js'
 import type { RuntimeSnapshot } from '../shared/convexRealtime.js'
+import { spawnSync } from 'node:child_process'
 
 const profile = { id: 'p', name: 'Profile', modelIds: ['model'], igLoggedIn: true, inUse: false }
+
+for (const outcome of ['stalled', 'error field', 'error note', 'success', 'cancelled'])
+  test(`parent session retains a profile outcome without failing the worker (${outcome})`, () => {
+    const result = spawnSync(process.execPath, ['--eval', `
+      import assert from 'node:assert/strict'
+      import { runAutomation } from './server/automation/worker.ts'
+      import logger, { logOperation, addLogContext, redactLogValues } from './server/shared/logger.ts'
+      const outcome = ${JSON.stringify(outcome)}
+      const profile = {id:'p',name:'fixture',modelIds:['m'],igLoggedIn:true,inUse:false}
+      const snapshot = {automation:{status:'running',isActive:true},profiles:[profile]}
+      let updateRuntime, closed = 0
+      globalThis.fetch = async () => Response.json({})
+      await logOperation('automation.session', {}, () => runAutomation({automation:{
+        nodes:[{id:'start',type:'start',data:{config:{sourceLists:['m']}}}],edges:[]
+      }}, {
+        watchRuntime: (_id,_lists,update) => {
+          updateRuntime = update; update(snapshot)
+          return {initial:Promise.resolve(snapshot),unsubscribe() {}}
+        },
+        watchProfileAccess: (_id,update) => {
+          update(true); return {initial:Promise.resolve(true),unsubscribe() {}}
+        },
+        openSession: async () => ({page:{},close:async () => {
+          closed++
+          redactLogValues('profile-private-secret')
+          if (outcome === 'stalled') addLogContext({outcome:'error',sessionReason:'stalled'})
+          else if (outcome === 'error field') addLogContext({outcome:'error',error:Error('profile-private-secret')})
+          else if (outcome === 'error note') logger.error({event:'profile.idle_failed',error:Error('profile-private-secret')})
+          else if (outcome === 'cancelled') addLogContext({outcome:'cancelled'})
+          updateRuntime({...snapshot,automation:{status:'cancelled',isActive:false}})
+        }})
+      }))
+      assert.equal(closed, 1)
+    `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 5000 })
+    assert.equal(result.status, 0, result.stderr)
+    const logs = result.stdout.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line))
+    const child = logs.find(entry => entry.event === 'automation.profile_session')
+    const parent = logs.find(entry => entry.event === 'automation.session')
+    const failed = ['stalled', 'error field', 'error note'].includes(outcome)
+    assert.equal(child.outcome, failed ? 'error' : outcome)
+    assert.equal(parent.outcome, failed ? 'error' : 'success')
+    if (failed) {
+      if (outcome === 'stalled') assert.equal(parent.error.message, 'Profile session failed: stalled')
+      else assert.equal(parent.error.message, child.error.message)
+      const note = parent.context.notes.find((note: Record<string, unknown>) => note.event === 'automation.profile_failed')
+      assert.equal(note.profileId, 'p')
+      assert.equal(note.childOperationId, child.operationId)
+    }
+    assert.ok(!JSON.stringify(logs).includes('profile-private-secret'))
+  })
+
+for (const pending of ['runtime', 'routine access', 'profile access'])
+  test(`shutdown cancels initial ${pending} subscription before a browser opens`, () => {
+    const result = spawnSync(process.execPath, ['--eval', `
+      import assert from 'node:assert/strict'
+      import { runAutomation } from './server/automation/worker.ts'
+      import { requestStop, shutdownSignal } from './server/browser/lifecycle.ts'
+      const pending = ${JSON.stringify(pending)}
+      let closed = 0
+      const snapshot = {automation:{status:'running',isActive:true},profiles:[{id:'p',name:'fixture',modelIds:['m'],igLoggedIn:true,inUse:false}]}
+      function subscription(kind, value, update, signal) {
+        assert.equal(signal, shutdownSignal)
+        if (kind !== pending) {
+          update(value)
+          return {initial:Promise.resolve(value),unsubscribe() {closed++}}
+        }
+        const initial = new Promise((_,reject) => signal.addEventListener('abort', () => reject(signal.reason), {once:true}))
+        queueMicrotask(requestStop)
+        return {initial,unsubscribe() {closed++}}
+      }
+      const automation = pending === 'routine access' ? {modelIds:['m'],routine:{activity:{}}}
+        : {nodes:[{id:'start',type:'start',data:{config:{sourceLists:['m']}}}],edges:[]}
+      await assert.rejects(runAutomation({automation}, {
+        openSession: async () => {throw Error('Must not open a browser')},
+        watchRuntime: (_id,_lists,update,_error,signal) => subscription('runtime',snapshot,update,signal),
+        watchRoutineAccess: (_id,_profile,update,_error,signal) => subscription('routine access',true,update,signal),
+        watchProfileAccess: (_profile,update,_error,signal) => subscription('profile access',true,update,signal),
+      }), error => error === shutdownSignal.reason)
+      assert.equal(closed, pending === 'runtime' ? 1 : 2)
+    `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 5000 })
+    assert.equal(result.status, 0, result.stderr)
+  })
 
 for (const actionFails of [false, true]) {
   test(`cleanup failures are visible and never replace an earlier action failure (${actionFails})`, async () => {

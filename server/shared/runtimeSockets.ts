@@ -13,6 +13,7 @@ export function nativeLease<T>(
     const socket = new WebSocket(runtimeUrl().replace(/^http/, 'ws') + route, {
       headers: runtimeHeaders(),
       maxPayload: 4096,
+      handshakeTimeout: 5_000,
     })
     let granted = false
     let released = false

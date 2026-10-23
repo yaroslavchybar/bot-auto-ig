@@ -20,8 +20,8 @@ use axum::{
     Json,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use hmac::{Hmac, Mac};
-use rand::RngCore;
+use hmac::{Hmac, KeyInit as HmacKeyInit, Mac};
+use rand::{rngs::SysRng, TryRng};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -70,23 +70,25 @@ fn key() -> Result<Vec<u8>> {
     )
 }
 fn username_hash(key: &[u8], name: &str) -> String {
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key).unwrap();
+    let mut mac = <Hmac<Sha256> as HmacKeyInit>::new_from_slice(key).unwrap();
     mac.update(b"ig-username-lookup-v1");
     let lookup = mac.finalize().into_bytes();
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&lookup).unwrap();
+    let mut mac = <Hmac<Sha256> as HmacKeyInit>::new_from_slice(&lookup).unwrap();
     mac.update(name.to_lowercase().as_bytes());
     hex(&mac.finalize().into_bytes())
 }
 fn encrypt(key: &[u8], credentials: &Credentials) -> Result<Encrypted> {
     let hash = username_hash(key, &credentials.username);
     let mut iv = [0; 12];
-    rand::rngs::OsRng.fill_bytes(&mut iv);
+    let mut rng = SysRng;
+    rng.try_fill_bytes(&mut iv)
+        .map_err(|_| Failure::unavailable("Credential encryption randomness failed"))?;
     let cipher =
         Aes256Gcm::new_from_slice(key).map_err(|_| Failure::invalid("Invalid credential key"))?;
     let payload = serde_json::to_vec(credentials)?;
     let sealed = cipher
         .encrypt(
-            Nonce::from_slice(&iv),
+            &Nonce::try_from(iv.as_slice()).expect("fixed-size nonce"),
             Payload {
                 msg: &payload,
                 aad: &unhex(&hash)?,
@@ -126,7 +128,7 @@ fn decrypt(key: &[u8], row: &Encrypted) -> Result<Credentials> {
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| invalid())?;
     let payload = cipher
         .decrypt(
-            Nonce::from_slice(&iv),
+            &Nonce::try_from(iv.as_slice()).map_err(|_| invalid())?,
             Payload {
                 msg: &data,
                 aad: &unhex(&row.username_hash).map_err(|_| invalid())?,
@@ -655,8 +657,7 @@ impl Accounts {
                     }
                     if value["ok"]!=true { return Err(Failure::unavailable("Browser login did not confirm a session")); }
                     browser_finished = true;
-                    use rand::Rng;
-                    let cooldown = rand::thread_rng().gen_range(3*86_400_000_u64..=5*86_400_000);
+                    let cooldown = rand::random_range(3*86_400_000_u64..=5*86_400_000);
                     let result = self.store("recordBrowserLogin",json!({"id":account_id,"browserLoggedInAt":api::now_ms(),"loginProxyId":proxy_id,"claimToken":token,"cooldownMs":cooldown})).await?;
                     if result["cooldownRecorded"]!=true { ig_service_common::service_error("accounts.proxy_claim_expired","Browser login succeeded after proxy claim expired"); }
                     Ok(true)

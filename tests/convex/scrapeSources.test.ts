@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
-import { createConvexTest } from './helpers'
+import { advanceTestClock, createConvexTest } from './helpers'
 import { sessionWindow } from '../../convex/scraperRequestPolicy'
 import { proxyCountryZones } from '../../convex/proxyCountryZones'
 import { patchProfile, syncWorkerProfile } from '../../convex/workerMetadata'
@@ -100,7 +100,7 @@ test('the first successful scrape starts a hard 24-hour cutoff even with an acti
     ...run,
     likers: [{ igId: '1000', username: 'retained' }],
   })
-  const start = Date.now()
+  const start = await advanceTestClock(s.t)
   await s.t.mutation(internal.scrapeSources.finish, { ...run, status: 'completed', newIds: 1 })
   const post = (await s.t.run((ctx) => ctx.db.query('scrapePosts').unique()))!
   expect(post.firstScrapedAt).toBe(start)
@@ -154,16 +154,17 @@ test('fractional scraper cooldowns produce integer scheduler deadlines and preve
   vi.setSystemTime(now)
   const s = await setup()
   await discover(s)
+  const cooldownAt = await advanceTestClock(s.t)
   await s.t.mutation(internal.scraper.cooldownAccount, {
     profileId: s.profileId,
     retryAfterMs: 1_800_000.25,
   })
   expect((await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).taskAt).toBe(
-    now + 1_800_001,
+    cooldownAt + 1_800_001,
   )
-  vi.setSystemTime(now + 1_800_000)
+  vi.setSystemTime(cooldownAt + 1_800_000)
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
-  vi.setSystemTime(now + 1_800_001)
+  vi.setSystemTime(cooldownAt + 1_800_001)
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).not.toBeNull()
 })
 
@@ -365,10 +366,14 @@ test.each([
 ])('busy browser profiles suspend scraper work and resume when idle (%j)', async (busy) => {
   vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
   const s = await setup()
+  const discoveredAt = await advanceTestClock(s.t)
   await discover(s)
   await s.t.run((ctx) => patchProfile(ctx, s.profileId, busy))
+  const source = (await s.t.run(ctx => ctx.db.get(s.sourceId)))!
+  expect(source.nextCheckAt).toBe(source.lastPostsCheckAt! + DAY)
+  expect(source.lastPostsCheckAt).toBeGreaterThanOrEqual(discoveredAt)
   expect(await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).toMatchObject({
-    taskAt: Date.now() + DAY,
+    taskAt: source.nextCheckAt,
     blockedProfileIds: [s.profileId],
   })
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()

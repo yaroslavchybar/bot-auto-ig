@@ -1,4 +1,5 @@
 import { convexTest } from 'convex-test'
+import { vi } from 'vite-plus/test'
 import type { UserIdentity } from 'convex/server'
 
 import { api } from '../../convex/_generated/api'
@@ -25,6 +26,14 @@ export function createConvexTest() {
 export function createUnauthenticatedConvexTest() {
   const t = convexTest(schema, modules)
   return t
+}
+
+// Frozen wall clocks can lag Convex's monotonically increasing commit clock.
+// Advance past the latest snapshot before asserting exact transaction deadlines.
+export async function advanceTestClock(t: ReturnType<typeof createConvexTest>) {
+  const snapshotTime = await t.query(async () => Date.now())
+  vi.setSystemTime(snapshotTime + 1)
+  return Date.now()
 }
 
 export async function insertDoc(

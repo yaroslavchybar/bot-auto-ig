@@ -59,7 +59,7 @@ export const listBatchInternal = internalQuery({
     const result = await filtered.paginate({
       cursor,
       numItems: count,
-      maximumRowsRead: 50,
+      maximumRowsRead: count,
       maximumBytesRead: SCAN_BATCH_BYTES,
     })
     return {

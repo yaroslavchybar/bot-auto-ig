@@ -35,6 +35,7 @@ struct Progress {
     diagnostics: VecDeque<Value>,
     diagnostic_count: u64,
     diagnostic_error: Option<Value>,
+    session_error: Option<Value>,
 }
 #[derive(Clone)]
 struct CheckpointUpdate {
@@ -488,6 +489,7 @@ impl Processes {
             let diagnostics = progress.diagnostics.clone();
             let diagnostic_count = progress.diagnostic_count;
             let diagnostic_error = progress.diagnostic_error.clone();
+            let session_error = progress.session_error.clone();
             let final_status = final_status.to_owned();
             drop(progress);
             if automation {
@@ -519,7 +521,7 @@ impl Processes {
                 let _ = owner.api.events.send(json!({"type": "automation_status", "automationId": job.id, "status": if due_at.is_some() { "pending" } else { "idle" }}));
                 let _ = owner.closed.send((job.id.clone(), due_at));
             }
-            let result = output::completion(&final_status, diagnostic_error);
+            let result = output::completion(&final_status, diagnostic_error, session_error);
             let completion = json!({
                 "id": uuid::Uuid::new_v4().to_string(), "ts": api::now_ms(),
                 "requestId": request_id,
@@ -530,6 +532,7 @@ impl Processes {
                 "durationMs": started.elapsed().as_millis() as u64,
                 "error": result["error"],
                 "context": {"workerId": job.id, "pid": pid,
+                    "workerStatus": final_status,
                     "exitCode": status.ok().and_then(|s| s.code()),
                     "notes": diagnostics, "noteCount": diagnostic_count},
                 "environment": ig_service_common::log_environment("runtime")
@@ -651,6 +654,17 @@ impl Processes {
             if value["event"].is_string()
                 && matches!(value["level"].as_str(), Some("info" | "error"))
             {
+                // A clean process exit does not mean its profile sessions succeeded.
+                if job.automation
+                    && value["event"] == "automation.session"
+                    && value["outcome"] == "error"
+                {
+                    job.progress.lock().await.session_error = Some(if value["error"].is_object() {
+                        value["error"].clone()
+                    } else {
+                        json!({"type":"AutomationSession", "message":"One or more profile sessions failed"})
+                    });
+                }
                 if stderr {
                     eprintln!("{value}");
                 } else {

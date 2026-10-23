@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { scanPage, SCAN_BATCH_LIMIT } from './pagination.js'
+import { scanPage } from './pagination.js'
 
 test('sparse searches stop at the batch budget and resume without losing matches', async () => {
   let calls = 0
@@ -14,10 +14,12 @@ test('sparse searches stop at the batch budget and resume without losing matches
     }
   }
   const first = await scanPage(fetch, (row) => row === 20 || row === 300, null)
-  expect(calls).toBe(SCAN_BATCH_LIMIT)
+  expect(calls).toBe(1)
   expect(first.page).toEqual([20])
   expect(first.isDone).toBe(false)
-  const second = await scanPage(fetch, (row) => row === 20 || row === 300, first.continueCursor)
+  let second = await scanPage(fetch, (row) => row === 20 || row === 300, first.continueCursor)
+  while (!second.isDone && second.page.length === 0)
+    second = await scanPage(fetch, (row) => row === 20 || row === 300, second.continueCursor)
   expect(second.page).toEqual([300])
   expect(second.isDone).toBe(true)
 })
@@ -34,8 +36,8 @@ test('empty partial pages carry a cursor and filled pages return immediately', a
     }
   }
   const empty = await scanPage(fetch, () => false, null)
-  expect(empty).toEqual({ page: [], continueCursor: '250', isDone: false })
-  expect(calls).toBe(SCAN_BATCH_LIMIT)
+  expect(empty).toEqual({ page: [], continueCursor: '50', isDone: false })
+  expect(calls).toBe(1)
   calls = 0
   expect((await scanPage(fetch, () => true, null)).page).toHaveLength(50)
   expect(calls).toBe(1)

@@ -15,9 +15,11 @@ export class BrowseSession {
   wait = async (ms: number): Promise<void> => {
     const until = Math.min(this.end, Date.now() + ms)
     this.check()
-    while (Date.now() < until) {
+    for (;;) {
       this.check()
-      await sleep(Math.min(200, until - Date.now()))
+      const remaining = until - Date.now()
+      if (remaining <= 0) break
+      await sleep(Math.min(200, remaining))
     }
     this.check()
   }

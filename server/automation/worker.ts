@@ -35,7 +35,7 @@ import {
   type AutomationEdge,
 } from './graph.js'
 import { executeGraphProfile } from './graph-runner.js'
-import logger, { logOperation, addLogContext } from '../shared/logger.js'
+import logger, { logOperation, addLogContext, currentLogScope, type LogScope } from '../shared/logger.js'
 import type { ActionLogger } from './actions/shared.js'
 import { captureConsole } from '../logs/console.js'
 import { attachSessionDecisions } from './actions/session-decision.js'
@@ -199,6 +199,7 @@ class RuntimeMonitor {
         log({ event: 'automation.worker.runtime_subscription_failed', automationId, error, outcome: 'error' })
         this.updates.notify()
       },
+      shutdownSignal,
     )
   }
 
@@ -257,7 +258,10 @@ async function withProfile(
     close: () => Promise<void>
   }) => Promise<void>,
 ): Promise<void> {
-  return logOperation('automation.profile_session', { profileId: profile.id, profileName: profile.name, automationId: options.automationId, headless: options.headless ?? true }, async () => {
+  const parent = currentLogScope()
+  let profileScope: LogScope | undefined
+  return logOperation('automation.profile_session', { profileId: profile.id, profileName: profile.name, automationId: options.automationId, headless: options.headless ?? true }, async scope => {
+    profileScope = scope
     const automationId = options.automationId || 'automation'
     let session: BrowserSession | undefined
     let closing: Promise<void> | undefined
@@ -315,6 +319,12 @@ async function withProfile(
         )
     }
 
+  }).finally(() => {
+    if (profileScope?.failed) parent?.note('error', { event: 'automation.profile_failed', ...profileScope.safeFields({
+      profileId: profile.id, profileName: profile.name,
+      childOperationId: profileScope.operationId, reason: profileScope.fields.sessionReason,
+      error: profileScope.error ?? new Error(`Profile session failed: ${String(profileScope.fields.sessionReason || 'unknown reason')}`),
+    }) })
   })
 }
 
@@ -344,6 +354,7 @@ async function runRoutineProfile(options: {
       access = false
       log({ event: 'automation.worker.routine_access_subscription_failed', automationId, profileId: profile.id, error, outcome: 'error' })
     },
+    shutdownSignal,
   )
   try {
     access = await accessSubscription.initial
@@ -444,7 +455,7 @@ export async function runAutomation(
       }
       if (hasWarmup && !sessionReady(await warmupGetByProfile(profile.id))) return
       let access = !profile.paused
-      const accessSubscription = deps.watchProfileAccess(profile.id, value => { access = value }, () => { access = false })
+      const accessSubscription = deps.watchProfileAccess(profile.id, value => { access = value }, () => { access = false }, shutdownSignal)
       try {
         if (!await accessSubscription.initial) return
         if (hasWarmup && !await prepareBrowsingDay(profile.id,

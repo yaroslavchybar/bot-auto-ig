@@ -67,23 +67,30 @@ export async function openReels(page: Page, log: ActionLogger, session = new Bro
     }
     stage = 'settling'
     let settled = await waitForSettle(page, opening, log)
-    if (!settled && onReels()) {
+    if (settled !== 'settled' && onReels()) {
       opening.check()
-      stage = 'reload'
-      log({ event: 'automation.actions.reels.viewer_reload', reason: 'Visible reel did not settle' })
-      await page.reload({ waitUntil: 'domcontentloaded', timeout: opening.timeout(5000) })
+      await assertInstagramReady(page, opening)
+      // Reloading an unavailable Reel permalink repeatedly cannot move past it.
+      const freshFeed = settled === 'video_unavailable'
+      stage = freshFeed ? 'fresh_feed' : 'reload'
+      log({ event: 'automation.actions.reels.viewer_reload', reason: 'Visible reel did not settle',
+        recovery: stage, reelId: reelId(page.url()) })
+      if (freshFeed)
+        await page.goto('https://www.instagram.com/reels/', { waitUntil: 'domcontentloaded', timeout: opening.timeout(5000) })
+      else await page.reload({ waitUntil: 'domcontentloaded', timeout: opening.timeout(5000) })
       await dismissPopups(page, opening)
-      stage = 'settling_after_reload'
+      stage = freshFeed ? 'settling_after_fresh_feed' : 'settling_after_reload'
       settled = await waitForSettle(page, opening, log)
     }
-    if (!settled || !onReels()) {
-      log({ event: 'automation.actions.reels.open_failed', stage, reason: 'Visible reel did not settle' })
+    if (settled !== 'settled' || !onReels()) {
+      log({ event: 'automation.actions.reels.open_failed', stage, reason: 'Visible reel did not settle', settleReason: settled })
       return false
     }
     if (!alreadyOpen) log({ event: 'automation.actions.reels.opened_reels', message: 'Opened reels' })
     return true
   } catch (error) {
     session.check()
+    if (!isTemporaryUiError(error) && !(error instanceof SessionEnded)) throw error
     log({ event: 'automation.actions.reels.open_failed', stage, error })
     return false
   }
@@ -122,18 +129,24 @@ export function reelAdMarker(video: Element): 'ad_redirect' | 'ad_label_and_cta'
 async function inViewVideo(page: Page, session: BrowseSession): Promise<Locator | null> {
   try {
     const vids = page.locator('video')
-    const n = await vids.count().catch(() => 0)
+    const n = await vids.count()
     const viewport = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
     let best: Locator | null = null, bestArea = 0
     for (let i = 0; i < n; i++) {
-      const box = await vids.nth(i).boundingBox({ timeout: session.timeout(1000) }).catch(() => null)
+      const box = await vids.nth(i).boundingBox({ timeout: session.timeout(1000) }).catch(error => {
+        session.check()
+        if (!isTemporaryUiError(error)) throw error
+        return null
+      })
       if (!box) continue
       const width = Math.max(0, Math.min(viewport.width, box.x + box.width) - Math.max(0, box.x))
       const height = Math.max(0, Math.min(viewport.height, box.y + box.height) - Math.max(0, box.y))
       if (width * height > bestArea) { best = vids.nth(i); bestArea = width * height }
     }
     return best
-  } catch {
+  } catch (error) {
+    session.check()
+    if (!isTemporaryUiError(error)) throw error
     return null
   }
 }
@@ -150,11 +163,12 @@ function reelViewBounds(video: Element) {
 }
 
 // Instagram can offset media within a reel. Wait for a visible, stable frame, not viewport centering.
-async function waitForSettle(page: Page, session: BrowseSession, log: ActionLogger): Promise<boolean> {
+type ReelSettleResult = 'settled' | 'video_unavailable' | 'scrollport_unavailable' | 'video_clipped' | 'video_moving'
+async function waitForSettle(page: Page, session: BrowseSession, log: ActionLogger): Promise<ReelSettleResult> {
   const sleep = session.wait
   session.check()
   let previous: { x: number; y: number; width: number; height: number } | undefined
-  let reason = 'video_unavailable'
+  let reason: ReelSettleResult = 'video_unavailable'
   let videoBox: typeof previous
   let viewBounds: { top: number; bottom: number } | undefined
   for (let i = 0; i < 50; i++) {
@@ -170,14 +184,14 @@ async function waitForSettle(page: Page, session: BrowseSession, log: ActionLogg
       if (visible >= Math.min(box.height, height) * 0.9) {
         reason = 'video_moving'
         if (previous && Math.abs(box.y - previous.y) <= 1 && Math.abs(box.x - previous.x) <= 1 &&
-          Math.abs(box.width - previous.width) <= 1 && Math.abs(box.height - previous.height) <= 1) return true
+          Math.abs(box.width - previous.width) <= 1 && Math.abs(box.height - previous.height) <= 1) return 'settled'
         previous = { ...box }
       } else previous = undefined
     } else previous = undefined
     await sleep(100)
   }
-  log({ event: 'automation.actions.reels.settle_failed', reason, videoBox, viewBounds })
-  return false
+  log({ event: 'automation.actions.reels.settle_failed', reason, videoBox, viewBounds, reelId: reelId(page.url()) })
+  return reason
 }
 
 // Headed sessions use one native wheel notch. Other viewers retain the named Next control.
@@ -218,7 +232,7 @@ export async function advanceReel(page: Page, session: BrowseSession, log: Actio
     stage = 'navigation'
     await page.waitForURL(url => !!reelId(url.href) && reelId(url.href) !== before, { timeout: session.timeout(5000) })
     stage = 'settling'
-    if (await waitForSettle(page, session, log) && changed()) return true
+    if (await waitForSettle(page, session, log) === 'settled' && changed()) return true
     return failed('Next reel did not settle')
   } catch (error) {
     return failed('Reel advancement failed', error)
