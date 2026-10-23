@@ -3,6 +3,7 @@ use crate::test_support::{body, Fixture};
 use axum::{response::IntoResponse, Json};
 use std::sync::atomic::AtomicUsize;
 
+#[cfg(windows)]
 async fn wait_for(mut condition: impl AsyncFnMut() -> bool) {
     tokio::time::timeout(Duration::from_secs(5), async {
         while !condition().await {

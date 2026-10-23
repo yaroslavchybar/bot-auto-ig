@@ -246,22 +246,18 @@ impl Processes {
         {
             return Err(Failure::invalid("Profile maintenance is in progress"));
         }
-        if let Err(error) = self
-            .spawn(
-                false,
-                name,
-                vec![
-                    "--name".into(),
-                    name.into(),
-                    "--automation-id".into(),
-                    "manual".into(),
-                ],
-                None,
-            )
-            .await
-        {
-            return Err(error);
-        }
+        self.spawn(
+            false,
+            name,
+            vec![
+                "--name".into(),
+                name.into(),
+                "--automation-id".into(),
+                "manual".into(),
+            ],
+            None,
+        )
+        .await?;
         Ok(())
     }
     async fn can_start(&self, automation: bool, id: &str) -> Result<()> {
