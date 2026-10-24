@@ -49,7 +49,6 @@ enum Control {
 struct Job {
     automation: bool,
     id: String,
-    started: u64,
     stopping: AtomicBool,
     control: mpsc::Sender<Control>,
     done: watch::Receiver<bool>,
@@ -213,7 +212,7 @@ impl Processes {
         if automation.is_null() {
             return Err(Failure::missing("Automation not found"));
         }
-        let payload = json!({"automationId": id, "automation": automation, "yieldWhenIdle": true});
+        let payload = json!({"automationId": id, "automation": automation});
         if let Err(error) = self.spawn(true, id, vec![], Some(payload)).await {
             let _ = self.status(id, "failed", None).await;
             return Err(error);
@@ -367,7 +366,6 @@ impl Processes {
         let job = Arc::new(Job {
             automation,
             id: id.into(),
-            started: api::now_ms(),
             stopping: AtomicBool::new(false),
             control,
             done: done_rx,
@@ -749,15 +747,6 @@ impl Processes {
     }
     pub async fn is_running(&self, id: &str) -> bool {
         self.jobs.lock().await.contains_key(&Self::key(true, id))
-    }
-    pub async fn status_value(&self, id: Option<&str>) -> Value {
-        let jobs = self.jobs.lock().await;
-        if let Some(id) = id {
-            let job = jobs.get(&Self::key(true, id));
-            return json!({"automationId": id, "status": job.map_or("idle", |j| if j.stopping.load(Ordering::Relaxed) { "stopping" } else { "running" }), "running": job.is_some(), "startedAt": job.map(|j| j.started)});
-        }
-        let jobs: Vec<_> = jobs.values().filter(|job| job.automation).map(|job| json!({"automationId": job.id, "status": if job.stopping.load(Ordering::Relaxed) { "stopping" } else { "running" }, "startedAt": job.started})).collect();
-        json!({"running": !jobs.is_empty(), "runningCount": jobs.len(), "automations": jobs})
     }
     pub async fn ownership(&self) -> Value {
         let jobs: Vec<_> = self.jobs.lock().await.values().cloned().collect();

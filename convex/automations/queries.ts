@@ -53,11 +53,6 @@ export const listInternal = internalQuery({
 	handler: listAutomations,
 });
 
-export const get = query({
-	args: { id: v.string() },
-	handler: getAutomation,
-});
-
 export const getInternal = internalQuery({
 	args: { id: v.string() },
 	handler: getAutomation,

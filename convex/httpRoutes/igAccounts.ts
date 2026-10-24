@@ -18,8 +18,6 @@ export function registerIgAccountRoutes(http: HttpRouter): void {
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request)
       switch (body.operation) {
-        case 'list':
-          return jsonResponse(await ctx.runQuery(internal.igAccounts.listInternal, {}))
         case 'byId':
           return jsonResponse(await ctx.runQuery(internal.igAccounts.byIdInternal, { id: body.id }))
         case 'byUsernameHash':

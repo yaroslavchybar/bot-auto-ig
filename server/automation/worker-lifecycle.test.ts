@@ -157,7 +157,7 @@ test('an injected browser opener retains access checks and post-session model se
     await runAutomation(input, dependencies)
     assert.deepEqual([opened, setup, posted], [1, 1, 1])
     active = false
-    await runAutomation({ ...input, yieldWhenIdle: true }, dependencies)
+    await runAutomation(input, dependencies)
     assert.deepEqual([opened, setup, posted], [1, 1, 1])
     assert.equal(unsubscribed, 4)
     active = true

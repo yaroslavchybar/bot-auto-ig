@@ -41,19 +41,6 @@ export const setIgState = mutation({
   },
 })
 
-export const setIgStateInternal = internalMutation({
-  args: {
-    profileId: v.id('profiles'),
-    igLoggedIn: v.boolean(),
-  },
-  handler: async (ctx, { profileId, igLoggedIn }) => {
-    const profile = await ctx.db.get(profileId)
-    if (!profile || profile.status === 'deleting')
-      throw new DomainError('NOT_FOUND', 'Profile unavailable')
-    if (profile.igLoggedIn !== igLoggedIn) await patchProfile(ctx, profileId, { igLoggedIn })
-  },
-})
-
 export const beginDeleteInternal = internalMutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
@@ -76,7 +63,7 @@ export const finishRenameInternal = internalMutation({
 		await patchProfile(ctx, profileId, { pendingRenameFrom: undefined });
 	},
 });
-import { createProfileRow, insertProfileRow, updateProfileByNameRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkAddProfilesToModelRow, bulkRemoveProfilesFromModelRow } from "./helpers";
+import { createProfileRow, insertProfileRow, updateProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkAddProfilesToModelRow, bulkRemoveProfilesFromModelRow } from "./helpers";
 
 /** Create a batch and reserve permanent proxies in one Convex transaction. */
 export const createForModelInternal = internalMutation({
@@ -146,13 +133,6 @@ const profileArgsShape = {
 	cookiesJson: v.optional(v.string()),
 };
 
-export const create = mutation({
-	args: profileArgsShape,
-	handler: async (ctx, args) => {
-		return await createProfileRow(ctx, args);
-	},
-});
-
 export const createInternal = internalMutation({
 	args: profileArgsShape,
 	handler: async (ctx, args) => {
@@ -170,13 +150,6 @@ export const updateByNameInternal = internalMutation({
 	args: updateByNameArgsShape,
 	handler: async (ctx, args) => {
 		return await updateProfileByNameRow(ctx, args);
-	},
-});
-
-export const removeByNameInternal = internalMutation({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await removeProfileByNameRow(ctx, args.name);
 	},
 });
 

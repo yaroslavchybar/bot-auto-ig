@@ -1,4 +1,4 @@
-use super::{strip, text};
+use super::strip;
 use crate::{
     api::Api,
     native::{
@@ -30,8 +30,6 @@ pub fn router() -> Router<Arc<Api>> {
         .route("/api/profiles/{name}/stop", post(stop))
         .route("/api/profiles/reconcile-runtime", post(reconcile))
         .route("/api/profiles/reconcile-runtime/", post(reconcile))
-        .route("/api/profiles/sync-status", post(sync_status))
-        .route("/api/profiles/sync-status/", post(sync_status))
         .layer(RequestBodyLimitLayer::new(JSON_LIMIT))
 }
 
@@ -96,19 +94,4 @@ async fn reconcile(Services(native): Services) -> Result<Json<Value>> {
     let mut value = native.profiles.reconcile().await?;
     value["success"] = json!(true);
     Ok(Json(value))
-}
-async fn sync_status(Services(native): Services, JsonBody(body): JsonBody) -> Result<Json<Value>> {
-    let _locks = native
-        .profiles
-        .locks(vec![text(&body, "name").into()])
-        .await?;
-    native
-        .profiles
-        .sync(
-            text(&body, "name"),
-            text(&body, "status"),
-            body["inUse"] == true,
-        )
-        .await?;
-    Ok(Json(json!({"success":true})))
 }

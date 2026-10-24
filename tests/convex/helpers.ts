@@ -3,7 +3,7 @@ import { vi } from 'vite-plus/test'
 import type { UserIdentity } from 'convex/server'
 
 import { defaultRoutine } from '../../convex/routinePolicy'
-import { api } from '../../convex/_generated/api'
+import { api, internal } from '../../convex/_generated/api'
 import schema from '../../convex/schema'
 
 export const modules = import.meta.glob([
@@ -59,7 +59,7 @@ export async function seedProfile(
   t: ReturnType<typeof createConvexTest>,
   overrides: Record<string, unknown> = {}
 ) {
-  return await t.mutation(api.profiles.mutations.create, {
+  return await t.mutation(internal.profiles.mutations.createInternal, {
     name: (overrides.name as string | undefined) ?? 'Profile A',
     proxy: overrides.proxy as string | undefined,
     proxyType: overrides.proxyType as string | undefined,

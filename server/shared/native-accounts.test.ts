@@ -150,8 +150,6 @@ async function fixture() {
             }
           return reply({ imported })
         }
-        case 'list':
-          return reply(accounts)
         case 'page':
         case 'available':
           return reply({ page: accounts.slice(0, body.count), continueCursor: '', isDone: true })
@@ -392,9 +390,7 @@ test('Rust imports existing credential format, hides secrets, and isolates unrea
       createdAt: 1,
       status: 'available',
     })
-    const listing = (await (await fetch(native.publicUrl + '/api/ig-accounts')).json()) as Array<
-      Record<string, unknown>
-    >
+    const { page: listing } = (await (await fetch(native.publicUrl + '/api/ig-accounts/page')).json()) as { page: Array<Record<string, unknown>> }
     expect(listing.map((a) => a.status)).toEqual(['invalid', 'available'])
     expect(JSON.stringify(listing)).not.toContain('password')
     const page = (await (

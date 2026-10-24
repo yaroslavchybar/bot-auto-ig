@@ -11,7 +11,7 @@ test('only canonical log entries are parsed; other output stays with the console
     '', ' ', 'finished without error', '{bad json}', 'null', '[]',
     '{"level":"debug","message":"external"}',
     '__EVENT__true__EVENT__',
-    '__EVENT__{"type":"task_progress","detail":"checkpoint }__EVENT__ reached"}__EVENT__',
+    '__EVENT__{"type":"unknown_event","detail":"checkpoint }__EVENT__ reached"}__EVENT__',
   ]) assert.equal(parseLogLine(raw), null)
   assert.deepEqual(parseLogLine(`  ${JSON.stringify(entry)}\n`), entry)
 })

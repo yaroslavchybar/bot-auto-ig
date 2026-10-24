@@ -20,10 +20,10 @@ test('sleeping routines resume on wake and become editable when disabled', async
 test('automation get returns null for malformed route ids', async () => {
   const t = createConvexTest()
   const automation = await seedAutomation(t, { name: 'Automation Get Check' })
-  expect(await t.query(api.automations.queries.get, { id: String(automation!._id) })).toMatchObject({
+  expect(await t.query(internal.automations.queries.getInternal, { id: String(automation!._id) })).toMatchObject({
     name: 'Automation Get Check',
   })
-  expect(await t.query(api.automations.queries.get, { id: 'not-a-automation-id' })).toBeNull()
+  expect(await t.query(internal.automations.queries.getInternal, { id: 'not-a-automation-id' })).toBeNull()
 })
 
 test('creates automations, deduplicates list ids, and transitions status', async () => {

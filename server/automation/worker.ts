@@ -22,7 +22,7 @@ import { withAiSettings } from './ai-settings.js'
 import { postModelUpdateInSession } from '../ig-accounts/warmup.js'
 import { setupModelInSession } from '../ig-accounts/profile-setup.js'
 import { routineReady, routineRecordSession } from '../shared/convexClient.js'
-import { orderProfileQueue, profileProxyKey } from './profile-queue.js'
+import { orderProfileQueue } from './profile-queue.js'
 import logger, { logOperation, addLogContext, currentLogScope, type LogScope } from '../shared/logger.js'
 import type { ActionLogger } from './actions/shared.js'
 import { captureConsole } from '../logs/console.js'
@@ -39,39 +39,6 @@ function event(type: WorkerEvent['type'], data: AnyRecord = {}): Promise<void> {
     `__EVENT__${JSON.stringify({ type, ts: new Date().toISOString(), ...data })}__EVENT__\n`,
     error => error ? reject(error) : resolve(),
   ))
-}
-
-/** Safety cap so a missed subscription update never sleeps forever. */
-export const MAX_REALTIME_SLEEP_MS = 15 * 60 * 1000
-
-export function msUntilMidnightUtc(now = Date.now()): number {
-  const date = new Date(now)
-  const nextMidnight = Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate() + 1,
-  )
-  return Math.max(0, nextMidnight - now)
-}
-
-/**
- * How long the realtime loop may sleep before a time-based readiness change.
- * Covers warmup/account rest periods and UTC daily budget resets.
- */
-export function nextWakeupDelayMs(
-  snapshot: RuntimeSnapshot | null,
-  now = Date.now(),
-): number {
-  const candidates: number[] = [msUntilMidnightUtc(now)]
-  for (const row of snapshot?.warmups ?? []) {
-    const at = Number((row as AnyRecord).nextRunAt)
-    if (Number.isFinite(at) && at > now) candidates.push(at - now)
-  }
-  for (const row of snapshot?.progress ?? []) {
-    const at = Number((row as AnyRecord).nextRunAt)
-    if (Number.isFinite(at) && at > now) candidates.push(at - now)
-  }
-  return Math.max(0, Math.min(...candidates, MAX_REALTIME_SLEEP_MS))
 }
 
 function isTruncatedSnapshot(snapshot: RuntimeSnapshot): boolean {
@@ -109,64 +76,10 @@ async function expandedRuntimeSnapshot(
   }
 }
 
-class UpdateSignal {
-  private pending = 0
-  private waiter: (() => void) | null = null
-
-  notify(): void {
-    this.pending = 1
-    const waiter = this.waiter
-    this.waiter = null
-    waiter?.()
-  }
-
-  wait(abortSignal: AbortSignal, timeoutMs?: number): Promise<boolean> {
-    if (this.pending > 0) {
-      this.pending--
-      return Promise.resolve(true)
-    }
-    if (abortSignal.aborted) return Promise.resolve(false)
-    return new Promise(resolve => {
-      let timer: ReturnType<typeof setTimeout> | undefined
-      const cleanup = () => {
-        if (timer) clearTimeout(timer)
-        abortSignal.removeEventListener('abort', onAbort)
-      }
-      const onAbort = () => {
-        this.waiter = null
-        cleanup()
-        resolve(false)
-      }
-      const onWake = (value: boolean) => {
-        cleanup()
-        resolve(value)
-      }
-      this.waiter = () => {
-        this.pending = Math.max(0, this.pending - 1)
-        onWake(true)
-      }
-      abortSignal.addEventListener('abort', onAbort, { once: true })
-      if (Number.isFinite(timeoutMs) && (timeoutMs as number) >= 0) {
-        timer = setTimeout(() => {
-          if (this.waiter) {
-            this.waiter = null
-            onWake(true)
-          }
-        }, timeoutMs)
-        timer.unref?.()
-      }
-    })
-  }
-}
-
-/** Owns the live runtime subscription and its wakeup signal. */
+/** Owns the live runtime snapshot and detects configuration changes. */
 class RuntimeMonitor {
-  private readonly updates = new UpdateSignal()
   private readonly subscription: ReturnType<typeof watchRoutineRuntime>
   private initialized = false
-  private profileRevision = ''
-  private automationRevision = ''
-  private timingRevision = ''
   snapshot: RuntimeSnapshot | null = null
   error?: Error
 
@@ -177,7 +90,6 @@ class RuntimeMonitor {
       error => {
         this.error = error
         log({ event: 'automation.worker.runtime_subscription_failed', automationId, error, outcome: 'error' })
-        this.updates.notify()
       },
       shutdownSignal,
     )
@@ -186,30 +98,11 @@ class RuntimeMonitor {
   get initial() { return this.subscription.initial }
 
   private onSnapshot(snapshot: RuntimeSnapshot): void {
-    const profileRevision = JSON.stringify((snapshot?.profiles ?? []).map(profile => ({
-      id: profile.id, name: profile.name, status: profile.status,
-      paused: profile.paused, inUse: profile.inUse, igLoggedIn: profile.igLoggedIn,
-      outreachReady: profile.outreachReady, modelId: profile.modelId,
-      lastOpenedAt: profile.lastOpenedAt, pendingRenameFrom: profile.pendingRenameFrom,
-    })))
-    const timingRevision = JSON.stringify({
-      warmups: snapshot?.warmups ?? [], progress: snapshot?.progress ?? [],
-    })
-    const automationRevision = `${snapshot?.automation?.status ?? ''}:${snapshot?.automation?.isActive !== false}`
     const configRevision = String(snapshot?.automation?.configRevision ?? '')
-    const previousConfigRevision = String((this.snapshot?.automation as AnyRecord | undefined)?.configRevision ?? '')
-    const configChanged = this.initialized && configRevision !== previousConfigRevision
-    const changed = this.initialized && (
-      profileRevision !== this.profileRevision ||
-      timingRevision !== this.timingRevision ||
-      automationRevision !== this.automationRevision || configChanged
-    )
-    if (configChanged) this.error = new Error('Automation configuration changed; restarting worker')
+    const previousConfigRevision = String(this.snapshot?.automation?.configRevision ?? '')
+    if (this.initialized && configRevision !== previousConfigRevision)
+      this.error = new Error('Automation configuration changed; restarting worker')
     this.snapshot = snapshot
-    this.profileRevision = profileRevision
-    this.timingRevision = timingRevision
-    this.automationRevision = automationRevision
-    if (changed) this.updates.notify()
     this.initialized = true
   }
 
@@ -218,10 +111,6 @@ class RuntimeMonitor {
     return !this.error && !!automation &&
       (automation.status === 'running' || automation.status === 'pending') &&
       automation.isActive !== false
-  }
-
-  wait(timeoutMs: number): Promise<boolean> {
-    return this.updates.wait(shutdownSignal, timeoutMs)
   }
 
   stop(): void { this.subscription.unsubscribe() }
@@ -388,43 +277,20 @@ export async function runAutomation(
 
     await event('session_started', { automationId: automationId })
     if (!profiles.length)
-      log({ event: 'automation.worker.available_profiles_in_the_selected', message: 'No available profiles in the selected lists; waiting for profiles' })
+      log({ event: 'automation.worker.available_profiles_in_the_selected', message: 'No available profiles in the selected lists; returning to scheduler' })
 
-    let previousProxy: string | undefined
-    // The browser license permits one profile at a time. A failed profile does not stop the queue.
-    const runQueue = async (rows: DbProfileRow[], snapshot: RuntimeSnapshot) => {
-      const ready = rows.filter(profile => routineMayRun(snapshot, profile.id))
-      for (const profile of orderProfileQueue(ready, previousProxy)) {
-        shutdownSignal.throwIfAborted()
-        if (!monitor.isActive()) break
-        previousProxy = profileProxyKey(profile)
-        await runRoutineProfile({ profile, automation, routine: automation.routine!, automationId, deps })
-      }
+    // Rust schedules the next worker after this ready queue is drained.
+    const ready = profiles.filter(profile => routineMayRun(latestRuntime, profile.id))
+    for (const profile of orderProfileQueue(ready)) {
+      shutdownSignal.throwIfAborted()
+      if (!monitor.isActive()) break
+      await runRoutineProfile({ profile, automation, routine: automation.routine!, automationId, deps })
     }
-    await runQueue(profiles, latestRuntime)
 
-    // Subscription updates and time-based deadlines share one execution path.
-    if (input.yieldWhenIdle && monitor.isActive()) {
+    if (monitor.isActive()) {
       const snapshot = await expandedRuntimeSnapshot(automationId, lists, monitor.snapshot)
       await event('worker_waiting', { automationId, dueAt: Math.max(Date.now() + 1000, routineDueAt(snapshot)) })
       return
-    }
-    while (monitor.isActive()) {
-      // Sweep all windows when truncated so wakeups cover rest periods in
-      // later windows too; otherwise a profile outside the first prefix
-      // would never shorten the sleep.
-      const snapshot = await expandedRuntimeSnapshot(automationId, lists, monitor.snapshot)
-      // Time-based readiness (warmup rest and day rollover) produces
-      // no table write, so wake on a timeout as well as on subscription updates.
-      const sleepMs = nextWakeupDelayMs(snapshot)
-      if (!await monitor.wait(sleepMs)) break
-      if (monitor.error) break
-      const current = await expandedRuntimeSnapshot(automationId, lists, monitor.snapshot)
-      const fresh = (current?.profiles ?? []).filter(
-        (profile: any) =>
-          profileEligible(profile as DbProfileRow, lists),
-      ) as DbProfileRow[]
-      if (fresh.length) await runQueue(fresh, current)
     }
     if (monitor.error) throw monitor.error
 

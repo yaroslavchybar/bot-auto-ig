@@ -25,7 +25,7 @@ test('a resting routine yields its deadline and closes its realtime subscription
     }
     try {
       const { runAutomation } = await import('./server/automation/worker.ts')
-      await runAutomation({ automationId: 'routine', yieldWhenIdle: true,
+      await runAutomation({ automationId: 'routine',
         automation: { _id: 'routine', nodes: [], edges: [], modelIds: ['list'], routine: { headless: true } } })
       assert.equal(closed, 1)
       assert.equal(events.at(-1).type, 'worker_waiting')

@@ -19,16 +19,6 @@ const status = v.union(
   v.literal('invalid'),
 )
 
-export const listInternal = internalQuery({
-  args: {},
-  handler: async (ctx) =>
-    Promise.all(
-      (await ctx.db.query('igAccounts').collect()).map((account) =>
-        withConnectionStatus(ctx, account),
-      ),
-    ),
-})
-
 export const pageInternal = internalQuery({
   args: {
     cursor: v.union(v.string(), v.null()),

@@ -9,7 +9,6 @@ import {
 } from './shared';
 
 const warmupPaths = [
-  '/api/warmup/states',
   '/api/warmup/by-profile',
   '/api/warmup/prepare',
   '/api/warmup/begin',
@@ -49,14 +48,6 @@ export function registerWarmupRoutes(http: HttpRouter): void {
         profileId: body.profileId as any, runId: String(body.runId), date: String(body.date), username: String(body.username),
       });
       return jsonResponse(action === 'begin-follow' ? result : { ok: true });
-    }),
-  });
-
-  http.route({
-    path: '/api/warmup/states',
-    method: 'GET',
-    handler: withErrorHandling(async (ctx) => {
-      return jsonResponse(await ctx.runQuery(internal.warmup.queries.listInternal, {}));
     }),
   });
 

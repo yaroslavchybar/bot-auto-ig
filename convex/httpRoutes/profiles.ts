@@ -8,20 +8,16 @@ import {
   withErrorHandling,
 } from './shared';
 
-
-
 const profilePaths = [
   '/api/profiles',
   '/api/profiles/by-name',
   '/api/profiles/by-id',
   '/api/profiles/update-by-name',
-  '/api/profiles/delete-by-name',
   '/api/profiles/begin-delete',
   '/api/profiles/finish-delete',
   '/api/profiles/finish-rename',
   '/api/profiles/sync-status',
   '/api/profiles/create-for-model',
-  '/api/profiles/ig-state',
   '/api/profiles/unread-chats',
 ];
 
@@ -79,7 +75,6 @@ function registerProfileQueryRoutes(http: HttpRouter): void {
       return jsonResponse(mapProfileToApi(profile, { includeCookies: true }));
     }),
   });
-
 
 }
 
@@ -164,33 +159,11 @@ function registerProfileDeleteRoutes(http: HttpRouter): void {
     }),
   });
 
-
-  // Alias for /api/profiles/remove-by-name
-  http.route({
-    path: '/api/profiles/delete-by-name',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const ok = await ctx.runMutation(internal.profiles.mutations.removeByNameInternal, body as any);
-      return jsonResponse({ ok });
-    }),
-  });
 }
 
 /* ── Status mutation routes ── */
 
 function registerProfileStatusRoutes(http: HttpRouter): void {
-
-  http.route({
-    path: '/api/profiles/ig-state', method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      await ctx.runMutation(internal.profiles.mutations.setIgStateInternal, {
-        profileId: body.profileId, igLoggedIn: body.igLoggedIn,
-      });
-      return jsonResponse({ ok: true });
-    }),
-  });
 
   http.route({
     path: '/api/profiles/sync-status',

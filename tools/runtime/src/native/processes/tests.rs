@@ -63,7 +63,7 @@ async fn automation_uses_started_snapshot_and_yields_capacity() {
     tokio::fs::create_dir_all(&dir).await.unwrap();
     tokio::fs::write(dir.join("worker.ts"), r#"
 let input = ''; process.stdin.on('data', data => { input += data.toString(); if (!input.includes('\n')) return;
-const payload = JSON.parse(input.split('\n')[0]); if (payload.automation.routine.headless !== true || payload.yieldWhenIdle !== true) process.exit(2);
+const payload = JSON.parse(input.split('\n')[0]); if (payload.automation.routine.headless !== true) process.exit(2);
 console.log('__EVENT__'+JSON.stringify({type:'worker_waiting',dueAt:2000000000000.25})+'__EVENT__'); process.exit(0); });
 "#).await.unwrap();
     let states = Arc::new(Mutex::new(Vec::new()));

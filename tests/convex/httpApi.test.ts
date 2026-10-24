@@ -18,7 +18,7 @@ test('keeps internal HTTP-facing profile queries available without identity', as
   expect(profiles[0]).toMatchObject({
     name: 'Profile A',
   })
-  await expect(t.query(api.profiles.queries.list, {})).resolves.toHaveLength(1)
+  await expect(t.query(api.profiles.queries.listPage, { search: '', cursor: null, pageSize: 10 })).resolves.toMatchObject({ page: [{ name: 'Profile A' }] })
 })
 
 test('keeps name-based profile maintenance on the internal HTTP surface', async () => {
@@ -36,8 +36,8 @@ test('keeps name-based profile maintenance on the internal HTTP surface', async 
     proxyType: 'socks5',
   })
   await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: 'Profile B' })
-  const removed = await t.mutation(internal.profiles.mutations.removeByNameInternal, {
-    name: 'Profile B',
+  const removed = await t.mutation(internal.profiles.mutations.removeByIdInternal, {
+    profileId: updated!._id,
   })
   const profiles = await t.query(internal.profiles.queries.listInternal, {})
 

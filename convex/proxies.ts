@@ -149,19 +149,6 @@ function cleanCountry(country: unknown, purpose: ProxyPurpose): string | undefin
   return value
 }
 
-export const list = query({
-  args: {},
-  handler: async (ctx) => {
-    const rows = await ctx.db.query('proxies').collect()
-    rows.sort((a, b) => a.createdAt - b.createdAt)
-    return rows.map((row) => ({
-      ...row,
-      purpose: proxyPurpose(row),
-      maxProfiles: resolveMaxProfiles(row),
-    }))
-  },
-})
-
 export const loginInternal = internalQuery({
   args: {},
   handler: async (ctx) =>

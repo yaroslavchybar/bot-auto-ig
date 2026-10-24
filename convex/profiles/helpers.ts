@@ -201,17 +201,6 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	return await ctx.db.get(existing._id);
 }
 
-export async function removeProfileByNameRow(ctx: MutationCtx, name: string) {
-  const cleaned = String(name || '').trim()
-  if (!cleaned) throw new DomainError('VALIDATION', 'name is required')
-  const existing = await ctx.db
-    .query('profiles')
-    .withIndex('by_name', q => q.eq('name', cleaned))
-    .first()
-  if (!existing) return true
-  return removeProfileByIdRow(ctx, existing._id)
-}
-
 export async function removeProfileByIdRow(ctx: MutationCtx, profileId: Id<'profiles'>) {
   const existing = await ctx.db.get(profileId)
   if (existing && existing.status !== 'deleting')

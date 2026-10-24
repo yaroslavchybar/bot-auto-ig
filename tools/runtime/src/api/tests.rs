@@ -358,7 +358,7 @@ async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
     );
     assert_eq!(
         client
-            .get(format!("{}/api/automations/status", public.url))
+            .post(format!("{}/api/automations/stop", public.url))
             .bearer_auth("fixture")
             .send()
             .await
@@ -390,7 +390,7 @@ async fn public_events_are_native_and_filter_topics_without_a_bun_worker() {
     ))
     .await
     .unwrap();
-    state.events.send(json!({"type":"task_started"})).unwrap();
+    state.events.send(json!({"type":"unknown_event"})).unwrap();
     let payload = json!({"type":"profile_completed","profileId":"p"});
     state.events.send(payload.clone()).unwrap();
     use futures_util::StreamExt;

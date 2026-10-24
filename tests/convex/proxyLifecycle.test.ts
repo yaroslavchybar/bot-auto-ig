@@ -14,7 +14,7 @@ test('unchanged endpoints reject limits below usage and allow the exact assignme
   const update = { id: saved!._id, name: 'Renamed', proxy: 'http://user:pass@HOST:8080/', proxyType: 'http' }
   await expect(t.mutation(api.proxies.update, { ...update, maxProfiles: 1 }))
     .rejects.toThrow(/Profile limit is too small/)
-  expect(await t.query(api.proxies.list, {})).toMatchObject([{ name: 'Shared', maxProfiles: 2 }])
+  expect((await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page).toMatchObject([{ name: 'Shared', maxProfiles: 2 }])
   await expect(t.mutation(api.proxies.update, { ...update, maxProfiles: 2 }))
     .resolves.toMatchObject({ name: 'Renamed', maxProfiles: 2 })
 })
@@ -30,7 +30,7 @@ test('equivalent URL and legacy formats share limits on create and update', asyn
   await expect(t.mutation(internal.profiles.mutations.updateByNameInternal, {
     oldName: (await t.run(ctx => ctx.db.get(direct!._id)))!.name, name: 'Direct', proxy: equivalent,
   })).rejects.toThrow(/limit 1/)
-  expect(await t.query(api.proxies.list, {})).toHaveLength(1)
+  expect((await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page).toHaveLength(1)
 })
 
 test('proxy edits atomically update all assigned profiles and retain their usage limit', async () => {
@@ -53,12 +53,12 @@ test('proxy edits atomically update all assigned profiles and retain their usage
 test('connection changes are rejected while assigned profiles run', async () => {
   const t = createConvexTest()
   const p = await seedProfile(t, { name: 'A', ...endpoint })
-  const [saved] = await t.query(api.proxies.list, {})
+  const [saved] = (await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page
   await t.run(ctx => ctx.db.patch(p!._id, { inUse: true, status: 'running' }))
   await expect(t.mutation(api.proxies.update, {
     id: saved._id, name: saved.name, proxy: 'http://other:8080', proxyType: 'http',
   })).rejects.toThrow(/Stop assigned profiles/)
-  expect(await t.query(api.proxies.list, {})).toMatchObject([{ proxy: 'http://user:pass@host:8080' }])
+  expect((await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page).toMatchObject([{ proxy: 'http://user:pass@host:8080' }])
   // Cosmetic edits remain available.
   await t.mutation(api.proxies.update, { id: saved._id, name: 'Renamed', ...endpoint })
 })
@@ -68,10 +68,10 @@ test('assigned proxies cannot be deleted; unassigned deletion stays deleted', as
   const saved = await t.mutation(api.proxies.create, { name: 'Solo', ...endpoint, maxProfiles: 1 })
   const p = await seedProfile(t, { name: 'A', ...endpoint })
   await expect(t.mutation(api.proxies.remove, { id: saved!._id })).rejects.toThrow(/Reassign profiles/)
-  expect(await t.query(api.proxies.list, {})).toMatchObject([{ name: 'Solo', maxProfiles: 1 }])
+  expect((await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page).toMatchObject([{ name: 'Solo', maxProfiles: 1 }])
   await t.mutation(internal.profiles.mutations.updateByNameInternal, { oldName: (await t.run(ctx => ctx.db.get(p!._id)))!.name, name: 'A', proxy: '' })
   await t.mutation(api.proxies.remove, { id: saved!._id })
-  expect(await t.query(api.proxies.list, {})).toHaveLength(0)
+  expect((await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page).toHaveLength(0)
 })
 
 test('duplicate endpoints are rejected on both create and edit', async () => {
@@ -89,7 +89,7 @@ test('explicit SOCKS5 and HTTPS schemes survive auto-save without a type field',
   const p = await seedProfile(t, { name: 'Socks', proxy: 'socks5://host:1080' })
   expect(p).toMatchObject({ proxy: 'socks5://host:1080', proxyType: 'socks5' })
   await seedProfile(t, { name: 'Secure', proxy: 'https://host:8443' })
-  expect(await t.query(api.proxies.list, {})).toEqual(expect.arrayContaining([
+  expect((await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page).toEqual(expect.arrayContaining([
     expect.objectContaining({ proxy: 'socks5://host:1080', proxyType: 'socks5' }),
     expect.objectContaining({ proxy: 'https://host:8443', proxyType: 'https' }),
   ]))
@@ -98,5 +98,5 @@ test('explicit SOCKS5 and HTTPS schemes survive auto-save without a type field',
 test('malformed proxy writes fail without exposing credentials or storing partial rows', async () => {
   const t = createConvexTest()
   await expect(seedProfile(t, { name: 'Bad', proxy: 'http://user:secret@host:bad' })).rejects.toThrow('Invalid proxy URL or protocol')
-  expect(await t.query(api.proxies.list, {})).toHaveLength(0)
+  expect((await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page).toHaveLength(0)
 })

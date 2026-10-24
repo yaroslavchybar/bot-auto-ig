@@ -102,7 +102,6 @@ test('all account read paths use the linked profile connection after logout and 
     expect((await t.query(internal.igAccounts.byIdInternal, { id: accountId }))?.status).toBe(expected)
     expect((await t.query(internal.igAccounts.byUsernameHashInternal, { usernameHash: 'connection' }))?.status).toBe(expected)
     expect((await t.query(internal.igAccounts.byProfileInternal, { profileId: profile._id }))?.status).toBe(expected)
-    expect((await t.query(internal.igAccounts.listInternal, {}))[0].status).toBe(expected)
     expect((await t.query(internal.igAccounts.pageInternal, { cursor: null, count: 10 })).page[0].status).toBe(expected)
     expect((await t.query(internal.igAccounts.connectedNamesInternal, {})).page).toHaveLength(loggedIn ? 1 : 0)
   }
@@ -277,7 +276,7 @@ test('browser login records a connected browser account and starts model setup',
   })).toEqual({ cooldownRecorded: true })
   expect((await t.query(internal.igAccounts.byIdInternal, { id: account._id }))?.browserLoggedInAt)
     .toBe(browserLoggedInAt)
-  const savedProxy = (await t.query(api.proxies.list, {}))[0]!
+  const savedProxy = (await t.run(ctx => ctx.db.get(loginProxy._id)))!
   expect(savedProxy.loginCooldownUntil).toBeGreaterThanOrEqual(browserLoggedInAt + cooldownMs)
   expect(savedProxy.loginCooldownAccountId).toBe(account._id)
   expect(savedProxy.loginClaim).toBeUndefined()
@@ -365,5 +364,5 @@ test('a lost claim does not erase a confirmed browser login', async () => {
     { profileId: profile._id }))?.igLoggedIn).toBe(true)
   expect((await t.query(internal.igAccounts.byIdInternal,
     { id: first!._id }))?.browserLoggedInAt).toBe(browserLoggedInAt)
-  expect((await t.query(api.proxies.list, {}))[0]?.loginClaim?.accountId).toBe(second!._id)
+  expect((await t.run(ctx => ctx.db.get(proxy._id)))?.loginClaim?.accountId).toBe(second!._id)
 })

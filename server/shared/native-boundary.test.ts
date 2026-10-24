@@ -5,7 +5,7 @@ import path from 'node:path'
 import sharp from 'sharp'
 import { nativeFixture } from './native-fixture.testing.js'
 
-test('public content, displays, and automation status work without a Bun command server', async () => {
+test('public content and displays work without a Bun command server', async () => {
   const convex = createServer((request, response) => {
     expect(request.headers.authorization).toBe('Bearer fixture-key')
     const route = new URL(request.url!, 'http://local').pathname
@@ -70,10 +70,6 @@ test('public content, displays, and automation status work without a Bun command
     expect(Buffer.from(await streamed.arrayBuffer())).toEqual(copy)
     expect(await (await get('/api/displays')).json()).toEqual([])
     expect((await get('/api/chat/threads')).status).toBe(404)
-    expect(await (await get('/api/automations/status')).json()).toMatchObject({
-      running: false,
-      runningCount: 0,
-    })
     expect(
       (await fetch(native.publicUrl + bank + '/posts/' + item.id, { method: 'DELETE' })).status,
     ).toBe(200)

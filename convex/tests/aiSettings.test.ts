@@ -1,5 +1,5 @@
 import { expect, test } from 'vite-plus/test'
-import { api } from '../_generated/api'
+import { api, internal } from '../_generated/api'
 import { defaultRoutine } from '../routinePolicy'
 import { createConvexTest, seedModel } from '../../tests/convex/helpers'
 
@@ -24,7 +24,7 @@ test('AI settings save per automation and reset without affecting another automa
     id: a!._id,
     routine: { ...defaultRoutine, ai: {} },
   })
-  expect((await t.query(api.automations.queries.get, { id: a!._id }))?.routine?.ai).toEqual({})
+  expect((await t.query(internal.automations.queries.getInternal, { id: a!._id }))?.routine?.ai).toEqual({})
 })
 
 test('saved profile screening prompts and models round-trip and reject unusable ones', async () => {
@@ -54,7 +54,7 @@ test('saved profile screening prompts and models round-trip and reject unusable 
     routine: { ...defaultRoutine, ai: { profileScreening: { model: 'liquid/d1-ultra' } } },
   })
   expect(
-    (await t.query(api.automations.queries.get, { id: created!._id }))?.routine?.ai?.profileScreening,
+    (await t.query(internal.automations.queries.getInternal, { id: created!._id }))?.routine?.ai?.profileScreening,
   ).toEqual({ model: 'liquid/d1-ultra' })
   for (const screening of [
     { model: 'missing/model' },

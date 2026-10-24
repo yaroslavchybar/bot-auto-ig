@@ -39,7 +39,7 @@ function fixture() {
   return {
     profile, snapshot, opened, closed, issues, deps,
     run: (overrides: Partial<WorkerDependencies> = {}) => runAutomation({
-      automationId: 'automation', yieldWhenIdle: true,
+      automationId: 'automation',
       automation: { modelIds: ['model'], routine: { activity: {}, headless: true } },
     }, { ...deps, ...overrides }),
     restore: () => { globalThis.fetch = originalFetch },
@@ -114,6 +114,22 @@ test('a configuration change terminates the old worker after cleanup', async () 
         } }
       },
     }), /configuration changed/)
+    assert.deepEqual(s.closed, s.opened)
+  } finally { s.restore() }
+})
+
+test('a runtime subscription failure closes the current profile and stops the queue', async () => {
+  const s = fixture()
+  let fail!: (error: Error) => void
+  try {
+    await assert.rejects(s.run({
+      watchRuntime: (_id, _models, update, onError) => {
+        fail = onError!; update(s.snapshot)
+        return { initial: Promise.resolve(s.snapshot), unsubscribe() {} }
+      },
+      runSession: async () => { fail(new Error('Runtime connection lost')); return false },
+    }), /Runtime connection lost/)
+    assert.deepEqual(s.opened, ['first'])
     assert.deepEqual(s.closed, s.opened)
   } finally { s.restore() }
 })

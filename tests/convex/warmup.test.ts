@@ -1,5 +1,5 @@
 import { expect, test, vi, afterEach } from 'vite-plus/test'
-import { api, internal } from '../../convex/_generated/api'
+import { internal } from '../../convex/_generated/api'
 import { advanceTestClock, createConvexTest, seedProfile, seedModel, seedAutomation } from './helpers'
 import { defaultRoutine } from '../../convex/routinePolicy'
 
@@ -12,7 +12,7 @@ async function setup(options: { sessionMinMinutes?: number; sessionMaxMinutes?: 
   const begin = (runId = 'one') => t.mutation(internal.warmup.mutations.beginRunInternal, { ...args, runId })
   const finish = (date: string, minutes: number, runId = 'one') =>
     t.mutation(internal.warmup.mutations.finishRunInternal, { profileId: args.profileId, date, minutes, runId })
-  const state = () => t.query(api.warmup.queries.getByProfile, { profileId: args.profileId })
+  const state = () => t.query(internal.warmup.queries.getByProfileInternal, { profileId: args.profileId })
   return { t, args, begin, finish, state }
 }
 

@@ -259,27 +259,6 @@ export const updateStatusInternal = internalMutation({
 	handler: updateAutomationStatus,
 });
 
-export const reset = mutation({
-	args: { id: v.id("automations") },
-	handler: async (ctx, args) => {
-		const automation = await ctx.db.get(args.id);
-		if (!automation) throw new DomainError('NOT_FOUND', "Automation not found");
-
-		if (automation.status === "running") {
-			throw new DomainError('CONFLICT', "Cannot reset running automation");
-		}
-
-		await ctx.db.patch(args.id, {
-			status: "idle",
-			error: undefined,
-			startedAt: undefined,
-			completedAt: undefined,
-			updatedAt: Date.now(),
-		});
-		return await ctx.db.get(args.id);
-	},
-});
-
 export const reconcileInterruptedInternal = internalMutation({
   args: { cursor: v.optional(v.string()) },
   handler: async (ctx, args) => {

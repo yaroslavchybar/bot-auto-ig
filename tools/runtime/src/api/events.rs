@@ -98,7 +98,7 @@ mod tests {
         ] {
             assert!(matches_topic(&json!({"type":kind}), "displays"));
         }
-        assert!(!matches_topic(&json!({"type":"task_started"}), "displays"));
-        assert!(matches_topic(&json!({"type":"task_started"}), "all"));
+        assert!(!matches_topic(&json!({"type":"unknown_event"}), "displays"));
+        assert!(matches_topic(&json!({"type":"unknown_event"}), "all"));
     }
 }

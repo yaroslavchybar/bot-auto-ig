@@ -49,7 +49,7 @@ test('proxy usage follows create, rename, reassignment, direct connection and de
     expect(await usage('http://next:8080')).toEqual({ count: 0, profileNames: [] })
     await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: second.name })
     expect(await usage(first.proxy!)).toEqual({ count: 1, profileNames: ['Second'] })
-    await t.mutation(internal.profiles.mutations.removeByNameInternal, { name: second.name })
+    await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: second._id })
     expect(await usage(first.proxy!)).toEqual({ count: 0, profileNames: [] })
     const third = (await seedProfile(t, { name: 'Third', proxy: first.proxy, proxyType: 'http' }))!
     await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: third.name })

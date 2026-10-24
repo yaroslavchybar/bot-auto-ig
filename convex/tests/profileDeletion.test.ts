@@ -3,93 +3,88 @@ import { internal } from '../_generated/api'
 import { defaultRoutine } from '../routinePolicy'
 import { createConvexTest, seedModel, seedProfile } from '../../tests/convex/helpers'
 
-for (const deletion of ['id', 'name'] as const) {
-  test(`profile deletion by ${deletion} removes all owned state and preserves other profiles`, async () => {
-    const t = createConvexTest()
-    const profile = (await seedProfile(t, { name: 'Delete' }))!
-    const other = (await seedProfile(t, { name: 'Keep' }))!
-    const model = (await seedModel(t))!
-    const rows = await t.run(async (ctx) => {
-      const result = []
-      for (const p of [profile, other]) {
-        const id = p._id
-        const ids = [
-          await ctx.db.insert('accountProgress', {
-            profileId: id,
+test('profile deletion removes all owned state and preserves other profiles', async () => {
+  const t = createConvexTest()
+  const profile = (await seedProfile(t, { name: 'Delete' }))!
+  const other = (await seedProfile(t, { name: 'Keep' }))!
+  const model = (await seedModel(t))!
+  const rows = await t.run(async (ctx) => {
+    const result = []
+    for (const p of [profile, other]) {
+      const id = p._id
+      const ids = [
+        await ctx.db.insert('accountProgress', {
+          profileId: id,
 
-            activeDays: 4,
-            outreachUsedToday: 0,
-            outreachAllowanceToday: 0,
-            nextRunAt: 0,
-            updatedAt: 1, }),
-          await ctx.db.insert('warmupStates', {
-            profileId: id,
-            day: 4,
-            date: '',
-            runsToday: 1,
-            todayMinutes: 20,
-            activeRun: { id: 'run', minutes: 5, restMinutes: 10 }, }),
-          await ctx.db.insert('modelSetupStates', {
-            profileId: id,
-            modelId: model._id,
-            startedAt: 1,
-            postSourceIds: [],
-            postDates: [], }),
-          await ctx.db.insert('modelSetupStates', {
-            profileId: id,
-            modelId: model._id,
-            startedAt: 2,
-            postSourceIds: [],
-            postDates: [], }),
-          await ctx.db.insert('scraperRequestUsage', { profileId: id, requests: [] }),
-          await ctx.db.insert('proxyProfileAssignments', {
-            profileId: id,
-            name: p.name,
-            proxy: '127.0.0.1:8080',
-            proxyType: 'http', }),
-        ]
-        const worker = await ctx.db
-          .query('scraperProfiles')
-          .withIndex('by_profile', (q) => q.eq('profileId', id))
-          .unique()
-        result.push([...ids, worker!._id])
-      }
-      return result
-    })
-    const automationId = await t.run(async (ctx) =>
-      ctx.db.insert('automations', {
-        name: 'Automation',
-        createdAt: 1,
-        updatedAt: 1,
-        routine: {
-          ...defaultRoutine,
-          outreachEnabled: true,
-          outreach: {
-              leadListId: await ctx.db.insert('leadLists', {
-                name: 'Leads',
-                createdAt: 1, }),
-              profileIds: [profile._id, other._id],
-              message: 'Hi', }, },
-      }),
-    )
-    const remove = () =>
-      deletion === 'id'
-        ? t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
-        : t.mutation(internal.profiles.mutations.removeByNameInternal, { name: profile.name })
-    await expect(remove()).rejects.toThrow(/Begin profile deletion/)
-    await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: profile.name })
-    expect(await t.run((ctx) => ctx.db.get(rows[0]![0]!))).not.toBeNull()
-    await remove()
-    await remove()
-    for (const id of rows[0]!) expect(await t.run((ctx) => ctx.db.get(id))).toBeNull()
-    for (const id of rows[1]!) expect(await t.run((ctx) => ctx.db.get(id))).not.toBeNull()
-    const saved = await t.run((ctx) => ctx.db.get(automationId))
-    expect(saved?.routine?.outreach?.profileIds).toEqual([other._id])
-    expect(saved?.routine?.outreachEnabled).toBe(true)
-    expect(await t.run((ctx) => ctx.db.get(model._id))).not.toBeNull()
-    expect(await t.run((ctx) => ctx.db.get(profile._id))).toBeNull()
+          activeDays: 4,
+          outreachUsedToday: 0,
+          outreachAllowanceToday: 0,
+          nextRunAt: 0,
+          updatedAt: 1, }),
+        await ctx.db.insert('warmupStates', {
+          profileId: id,
+          day: 4,
+          date: '',
+          runsToday: 1,
+          todayMinutes: 20,
+          activeRun: { id: 'run', minutes: 5, restMinutes: 10 }, }),
+        await ctx.db.insert('modelSetupStates', {
+          profileId: id,
+          modelId: model._id,
+          startedAt: 1,
+          postSourceIds: [],
+          postDates: [], }),
+        await ctx.db.insert('modelSetupStates', {
+          profileId: id,
+          modelId: model._id,
+          startedAt: 2,
+          postSourceIds: [],
+          postDates: [], }),
+        await ctx.db.insert('scraperRequestUsage', { profileId: id, requests: [] }),
+        await ctx.db.insert('proxyProfileAssignments', {
+          profileId: id,
+          name: p.name,
+          proxy: '127.0.0.1:8080',
+          proxyType: 'http', }),
+      ]
+      const worker = await ctx.db
+        .query('scraperProfiles')
+        .withIndex('by_profile', (q) => q.eq('profileId', id))
+        .unique()
+      result.push([...ids, worker!._id])
+    }
+    return result
   })
-}
+  const automationId = await t.run(async (ctx) =>
+    ctx.db.insert('automations', {
+      name: 'Automation',
+      createdAt: 1,
+      updatedAt: 1,
+      routine: {
+        ...defaultRoutine,
+        outreachEnabled: true,
+        outreach: {
+            leadListId: await ctx.db.insert('leadLists', {
+              name: 'Leads',
+              createdAt: 1, }),
+            profileIds: [profile._id, other._id],
+            message: 'Hi', }, },
+    }),
+  )
+  const remove = () => t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
+  await expect(remove()).rejects.toThrow(/Begin profile deletion/)
+  await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: profile.name })
+  expect(await t.run((ctx) => ctx.db.get(rows[0]![0]!))).not.toBeNull()
+  await remove()
+  await remove()
+  for (const id of rows[0]!) expect(await t.run((ctx) => ctx.db.get(id))).toBeNull()
+  for (const id of rows[1]!) expect(await t.run((ctx) => ctx.db.get(id))).not.toBeNull()
+  const saved = await t.run((ctx) => ctx.db.get(automationId))
+  expect(saved?.routine?.outreach?.profileIds).toEqual([other._id])
+  expect(saved?.routine?.outreachEnabled).toBe(true)
+  expect(await t.run((ctx) => ctx.db.get(model._id))).not.toBeNull()
+  expect(await t.run((ctx) => ctx.db.get(profile._id))).toBeNull()
+})
 
 test('deletion clears lead leases and scraper ownership without losing shared data or outreach history', async () => {
   const t = createConvexTest()

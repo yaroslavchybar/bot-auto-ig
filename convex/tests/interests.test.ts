@@ -1,5 +1,5 @@
 import { expect, test } from 'vite-plus/test'
-import { api } from '../_generated/api'
+import { api, internal } from '../_generated/api'
 import { defaultRoutine, validateRoutine } from '../routinePolicy'
 import { createConvexTest, seedModel } from '../../tests/convex/helpers'
 
@@ -21,7 +21,7 @@ test('automation interest tags and rewritten intent persist and can be removed w
     routine: { ...defaultRoutine, interests: [] },
   })
   expect(
-    (await t.query(api.automations.queries.get, { id: automation!._id }))?.routine?.interests,
+    (await t.query(internal.automations.queries.getInternal, { id: automation!._id }))?.routine?.interests,
   ).toEqual([])
 })
 

@@ -158,15 +158,6 @@ export const getByIdInternal = internalQuery({
   },
 })
 
-export const list = query({
-  args: {},
-  handler: async (ctx) => {
-    return (await listProfileRows(ctx)).map(
-      ({ instagramSessionId: _sessionId, cookiesJson: _cookiesJson, ...row }: any) => row,
-    )
-  },
-})
-
 export const getByNameInternal = internalQuery({
   args: { name: v.string() },
   handler: async (ctx, args) => {

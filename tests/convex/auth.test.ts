@@ -11,7 +11,7 @@ test('allows unauthenticated public queries', async () => {
   const t = createUnauthenticatedConvexTest()
 
   await expect(t.query(api.models.list, {})).resolves.toEqual([])
-  await expect(t.query(api.profiles.queries.list, {})).resolves.toEqual([])
+  await expect(t.query(api.profiles.queries.listPage, { search: '', cursor: null, pageSize: 10 })).resolves.toMatchObject({ page: [] })
   await expect(t.query(api.automations.queries.list, {})).resolves.toEqual([])
 })
 

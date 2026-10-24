@@ -25,15 +25,11 @@ export type ProfileRecord = {
 export type SocketTopic = 'all' | 'displays'
 
 export type WebSocketEventType =
-  | 'status'
   | 'automation_status'
   | 'error'
   | 'session_started'
   | 'profile_started'
-  | 'task_started'
-  | 'task_progress'
   | 'session_decision'
-  | 'task_completed'
   | 'profile_completed'
   | 'model_setup_after_session'
   | 'session_ended'
@@ -47,24 +43,10 @@ type EventFields = {
   dueAt?: number
   automationId?: string
   id?: string
-  message?: string
   status?: string
-  totalAccounts?: number
-  totalProfiles?: number
   profileName?: string
   profileId?: string
-  threadId?: string
-  archivesChanged?: boolean
-  messageId?: string
-  taskId?: string
-  task?: string
-  nodeId?: string
-  targetUsername?: string
   error?: string
-  errorCode?: string
-  outcome?: string
-  attempt?: number
-  diagnostics?: string
   vncPort?: number
   displayNum?: number
   ts?: string | number

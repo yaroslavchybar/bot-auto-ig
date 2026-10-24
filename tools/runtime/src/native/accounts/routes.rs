@@ -19,8 +19,6 @@ use tower_http::limit::RequestBodyLimitLayer;
 
 pub fn router() -> Router<Arc<Api>> {
     Router::new()
-        .route("/api/ig-accounts", get(list))
-        .route("/api/ig-accounts/", get(list))
         .route("/api/ig-accounts/page", get(page))
         .route("/api/ig-accounts/page/", get(page))
         .route("/api/ig-accounts/available-count", get(available_count))
@@ -40,9 +38,6 @@ pub fn router() -> Router<Arc<Api>> {
         .route("/api/ig-accounts/create-batch/", post(create_batch))
         .route("/api/ig-accounts/{profileId}/connect", post(connect))
         .layer(RequestBodyLimitLayer::new(JSON_LIMIT))
-}
-async fn list(Services(native): Services) -> Result<Json<Value>> {
-    Ok(Json(native.accounts.list().await?))
 }
 async fn available_count(Services(native): Services) -> Result<Json<Value>> {
     Ok(Json(

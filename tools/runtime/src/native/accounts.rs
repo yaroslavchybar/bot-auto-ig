@@ -267,16 +267,6 @@ impl Accounts {
         }
         Ok(json!({"imported":imported,"skipped":lines.len() as u64-imported}))
     }
-    pub async fn list(&self) -> Result<Value> {
-        let rows = self.store("list", json!({})).await?;
-        let key = self.credential_key()?;
-        Ok(json!(rows
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|row| public_row(row, &key))
-            .collect::<Vec<_>>()))
-    }
     pub async fn page(
         &self,
         search: &str,

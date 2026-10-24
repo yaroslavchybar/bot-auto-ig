@@ -2,10 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { RuntimeSnapshot } from '../shared/convexRealtime.js'
 import {
-  MAX_REALTIME_SLEEP_MS,
   loadFullRuntimeSnapshot,
-  msUntilMidnightUtc,
-  nextWakeupDelayMs,
   routineMayRun,
 } from './worker.js'
 
@@ -28,36 +25,6 @@ test('routine prefilter skips rest and spent budgets, then allows the next UTC d
   snapshot.profiles = [{ id: 'p', paused: false }]
   snapshot.progress = [{ profileId: 'p', issue: 'review' }]
   assert.equal(routineMayRun(snapshot, 'p', now), false)
-})
-
-test('midnight is always a wakeup candidate', () => {
-  const now = Date.UTC(2026, 8, 21, 12, 0, 0)
-  assert.equal(msUntilMidnightUtc(now), 12 * 60 * 60 * 1000)
-  const delay = nextWakeupDelayMs(null, now)
-  assert.ok(delay > 0 && delay <= MAX_REALTIME_SLEEP_MS)
-})
-
-test('warmup and progress rest periods wake the loop', () => {
-  const now = Date.now()
-  const snapshot: any = {
-    automation: { status: 'running', isActive: true },
-    profiles: [{ id: 'p1' }],
-    warmups: [{ profileId: 'p1', nextRunAt: now + 2 * 60_000 }],
-    progress: [{ profileId: 'p1', nextRunAt: now + 60_000 }],
-  }
-  const delay = nextWakeupDelayMs(snapshot, now)
-  assert.ok(delay > 0 && delay <= 60_000 + 1000)
-})
-
-test('long sleeps are capped so a missed update never sleeps forever', () => {
-  const now = Date.UTC(2026, 8, 21, 0, 0, 1)
-  const snapshot: any = {
-    automation: { status: 'running', isActive: true },
-    profiles: [],
-    warmups: [{ profileId: 'p1', nextRunAt: now + 10 * 60 * 60_000 }],
-    progress: [],
-  }
-  assert.equal(nextWakeupDelayMs(snapshot, now), MAX_REALTIME_SLEEP_MS)
 })
 
 test('truncated snapshots sweep every model cursor so no profile starves', async () => {

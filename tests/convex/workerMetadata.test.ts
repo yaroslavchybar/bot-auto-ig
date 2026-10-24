@@ -9,7 +9,7 @@ afterEach(() => {
 })
 
 test('scraper metadata follows browser cookie availability and proxy changes',async()=>{
- const t=createConvexTest();const profile=(await t.mutation(api.profiles.mutations.create,{name:'profile'}))!;
+ const t=createConvexTest();const profile=(await t.mutation(internal.profiles.mutations.createInternal,{name:'profile'}))!;
  const profileId=profile._id
  expect(await t.run(ctx=>ctx.db.query('scraperProfiles').unique())).toMatchObject({scraperReady:false})
  await t.run(ctx=>patchProfile(ctx,profileId,{instagramSessionId:'cookie',proxy:'new:8080',proxyType:'http'}))

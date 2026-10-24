@@ -10,7 +10,7 @@ test('TXT import normalizes proxies, skips duplicates, and defaults to three pro
     proxyType: 'http', purpose: 'work', country: 'us',
   })
   expect(result).toEqual({ imported: 1, skipped: 1 })
-  const rows = await t.query(api.proxies.list, {})
+  const rows = (await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page
   expect(rows[0]).toMatchObject({ maxProfiles: 3, purpose: 'work', country: 'us',
     proxy: 'http://demo:example@203.0.113.10:5432' })
 })
@@ -21,7 +21,7 @@ test('manual login proxy import keeps type and country and excludes work profile
     text: 'gate.example.com:1080:login:secret', proxyType: 'socks5',
     purpose: 'login', country: 'ro',
   })
-  const [login] = await t.query(api.proxies.list, {})
+  const [login] = (await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page
   expect(login).toMatchObject({ purpose: 'login', country: 'ro', proxyType: 'socks5',
     proxy: 'socks5://login:secret@gate.example.com:1080' })
   expect(await t.query(internal.proxies.loginInternal, {})).toMatchObject([{
@@ -44,7 +44,7 @@ test('saving a profile auto-saves its proxy once', async () => {
     proxyType: 'http',
   })
 
-  const rows = await t.query(api.proxies.list, {})
+  const rows = (await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({
     name: 'Profile A',
@@ -64,7 +64,7 @@ test('updating a profile with a new proxy auto-saves it', async () => {
     proxyType: 'socks5',
   })
 
-  const rows = await t.query(api.proxies.list, {})
+  const rows = (await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({
     proxy: 'socks5://user:pass@host-b:1080',
@@ -136,7 +136,7 @@ test('bare host:port values dedup against canonical rows', async () => {
     proxyType: 'http',
   })
 
-  const rows = await t.query(api.proxies.list, {})
+  const rows = (await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({
     proxy: 'http://user:pass@host-a:8080',
@@ -201,7 +201,7 @@ test('login claims and cooldowns protect the endpoint and deletion while allowin
   }
   await t.run(ctx => ctx.db.patch(proxy._id, { loginCooldownUntil: Date.now() - 1 }))
   await t.mutation(api.proxies.remove, { id: proxy._id })
-  expect(await t.query(api.proxies.list, {})).toEqual([])
+  expect((await t.query(api.proxies.listPage, { search: '', cursor: null, pageSize: 100 })).page).toEqual([])
 })
 
 test('a cached login proxy snapshot cannot claim a changed endpoint', async () => {
