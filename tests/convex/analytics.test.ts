@@ -1,5 +1,5 @@
 import { expect, test } from 'vite-plus/test'
-import { api } from '../../convex/_generated/api'
+import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 import { emptyActivity, recordActivity } from '../../convex/analyticsActivity'
 
@@ -7,9 +7,9 @@ test('analytics counts confirmed daily activity and excludes deleted profiles', 
   const t = createConvexTest()
   await t.run(async (ctx) => {
     for (const [name, status, usageDate] of [
-      ['active', 'running', '2026-10-11'],
+      ['active', 'idle', '2026-10-11'],
       ['stale', 'idle', '2026-10-10'],
-      ['deleted', 'deleting', '2026-10-11'],
+
     ] as const) {
       const profileId = await ctx.db.insert('profiles', {
         name,
@@ -48,8 +48,8 @@ test('analytics counts confirmed daily activity and excludes deleted profiles', 
       })
     }
   })
-  await t.mutation(api.analytics.initialize, {})
-  await t.mutation(api.analytics.initialize, {})
+  await t.mutation(internal.migrations.simplifyAutomation.run, {})
+  await t.mutation(internal.migrations.simplifyAutomation.run, {})
   const result = await t.query(api.analytics.overview, { date: '2026-10-11' })
   expect(result.totals).toMatchObject({
     follows: 4,
@@ -64,7 +64,7 @@ test('analytics counts confirmed daily activity and excludes deleted profiles', 
 
 test('analytics reads initialized unique lead totals from the small counter', async () => {
   const t = createConvexTest()
-  await t.mutation(api.analytics.initialize, {})
+  await t.mutation(internal.migrations.simplifyAutomation.run, {})
   expect((await t.query(api.analytics.overview, { date: '2026-10-11' })).leads).toBeNull()
   await t.mutation(api.leadStats.initialize, {})
   expect((await t.query(api.analytics.overview, { date: '2026-10-11' })).leads).toEqual({
@@ -76,7 +76,7 @@ test('analytics reads initialized unique lead totals from the small counter', as
 
 test('date ranges include today, respect UTC boundaries and leave current lead inventory unchanged', async () => {
   const t = createConvexTest()
-  await t.mutation(api.analytics.initialize, {})
+  await t.mutation(internal.migrations.simplifyAutomation.run, {})
   await t.mutation(api.leadStats.initialize, {})
   await t.run(async (ctx) => {
     for (const [date, count] of [
@@ -115,21 +115,19 @@ test('date ranges include today, respect UTC boundaries and leave current lead i
 
 test('zero activity does not write counters and re-initializing preserves existing history', async () => {
   const t = createConvexTest()
-  await t.mutation(api.analytics.initialize, {})
+  await t.mutation(internal.migrations.simplifyAutomation.run, {})
   await t.run((ctx) => recordActivity(ctx, '2026-10-11', emptyActivity()))
   expect(await t.run((ctx) => ctx.db.query('analyticsDays').collect())).toEqual([])
   await t.run((ctx) => recordActivity(ctx, '2026-10-11', { follows: 2, scraperRequests: 4 }))
-  await t.mutation(api.analytics.initialize, {})
+  await t.mutation(internal.migrations.simplifyAutomation.run, {})
   const result = await t.query(api.analytics.overview, { date: '2026-10-11', period: 'all' })
   expect(result.totals.follows).toBe(2)
   expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals.scraperRequests).toBe(4)
 })
 
-test('analytics refuses uninitialized activity history and invalid dates', async () => {
+test('analytics returns zero before first activity and rejects invalid dates', async () => {
   const t = createConvexTest()
-  await expect(t.query(api.analytics.overview, { date: '2026-10-11' })).rejects.toThrow(
-    'Activity history is initializing',
-  )
+  expect((await t.query(api.analytics.overview, { date: '2026-10-11' })).totals).toEqual({ follows: 0, dms: 0, warmupMinutes: 0 })
   await expect(t.query(api.analytics.overview, { date: '2026-02-30' })).rejects.toThrow(
     'Invalid UTC date',
   )

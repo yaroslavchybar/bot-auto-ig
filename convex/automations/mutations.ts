@@ -1,6 +1,6 @@
 import { DomainError } from '../errors';
 import { recordActivity } from '../analyticsActivity';
-import { routineValidator, validateRoutine, warmupPostRange, outreachRoutes, type RoutinePolicy } from '../routinePolicy';
+import { routineValidator, validateRoutine, warmupPostRange, type RoutinePolicy } from '../routinePolicy';
 import { updateWarmupPostTargets } from '../modelSetupPolicy';
 import { assertAssignments } from '../routines';
 import { v } from "convex/values";
@@ -11,7 +11,6 @@ import type { Id } from "../_generated/dataModel";
 import {
 	statusValidator,
 	normalizeModelIds,
-	getAutomationModelIds,
 	prepareAutomationRun,
 	assertValidStatusTransition,
 	type AutomationStatus,
@@ -26,12 +25,13 @@ async function assertModelAvailable(ctx: MutationCtx, modelIds: Id<'models'>[], 
   if (other) throw new DomainError('CONFLICT', 'This model already has an automation');
 }
 
-async function assertOutreachRoutes(ctx: MutationCtx, policy: RoutinePolicy, modelIds: Id<'models'>[]) {
-  for (const route of outreachRoutes(policy)) {
+async function assertOutreachAssignment(ctx: MutationCtx, policy: RoutinePolicy, modelIds: Id<'models'>[]) {
+  const route = policy.outreach;
+  if (route) {
     if (!await ctx.db.get(route.leadListId)) throw new DomainError('VALIDATION', 'Scraped list not found');
     for (const profileId of route.profileIds) {
       const profile = await ctx.db.get(profileId);
-      if (!profile || profile.status === 'deleting' || !profile.modelIds?.some(id => modelIds.includes(id)))
+      if (!profile || profile.status === 'deleting' || (!profile.modelId || !modelIds.includes(profile.modelId)))
         throw new DomainError('VALIDATION', 'Assigned profiles must belong to this automation’s model');
     }
   }
@@ -40,10 +40,8 @@ async function assertOutreachRoutes(ctx: MutationCtx, policy: RoutinePolicy, mod
 export const create = mutation({
 	args: {
 		name: v.string(),
-		routine: v.optional(routineValidator),
+		routine: routineValidator,
 		description: v.optional(v.string()),
-		nodes: v.any(),
-		edges: v.any(),
 		modelIds: v.optional(v.array(v.id("models"))),
 	},
 	handler: async (ctx, args) => {
@@ -51,16 +49,14 @@ export const create = mutation({
 		if (!cleaned) throw new DomainError('VALIDATION', "name is required");
 
 		const now = Date.now();
-		if (args.routine) validateRoutine(args.routine);
+		validateRoutine(args.routine);
 		const modelIds = normalizeModelIds(args.modelIds);
-		if (args.routine) await assertModelAvailable(ctx, modelIds);
-		if (args.routine) await assertOutreachRoutes(ctx, args.routine, modelIds);
+		await assertModelAvailable(ctx, modelIds);
+		await assertOutreachAssignment(ctx, args.routine, modelIds);
 		const id = await ctx.db.insert("automations", {
 			name: cleaned,
 			routine: args.routine,
 			description: args.description,
-			nodes: args.nodes || [],
-			edges: args.edges || [],
 			modelIds,
 			// New automations start disabled; enabling is an explicit action.
 			isActive: false,
@@ -68,7 +64,7 @@ export const create = mutation({
 			createdAt: now,
 			updatedAt: now,
 		});
-		if (args.routine && modelIds[0]) await updateWarmupPostTargets(ctx, modelIds[0], args.routine);
+		if (modelIds[0]) await updateWarmupPostTargets(ctx, modelIds[0], args.routine);
 		return await ctx.db.get(id);
 	},
 });
@@ -79,8 +75,6 @@ export const update = mutation({
 		name: v.optional(v.string()),
 		routine: v.optional(routineValidator),
 		description: v.optional(v.string()),
-		nodes: v.optional(v.any()),
-		edges: v.optional(v.any()),
 		modelIds: v.optional(v.array(v.id("models"))),
 	},
 	handler: async (ctx, args) => {
@@ -95,7 +89,7 @@ export const update = mutation({
 		if (updates.routine || existing.routine) {
 			validateRoutine(updates.routine ?? existing.routine!);
 			await assertModelAvailable(ctx, normalizeModelIds(updates.modelIds ?? existing.modelIds), id);
-			await assertOutreachRoutes(ctx, updates.routine ?? existing.routine!, normalizeModelIds(updates.modelIds ?? existing.modelIds));
+			await assertOutreachAssignment(ctx, updates.routine ?? existing.routine!, normalizeModelIds(updates.modelIds ?? existing.modelIds));
 		}
 
 		const patch: Record<string, any> = { updatedAt: Date.now() };
@@ -106,8 +100,6 @@ export const update = mutation({
 			patch.name = cleaned;
 		}
 		if (updates.description !== undefined) patch.description = updates.description;
-		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
-		if (updates.edges !== undefined) patch.edges = updates.edges;
 		if (updates.modelIds !== undefined) patch.modelIds = normalizeModelIds(updates.modelIds);
 
 		await ctx.db.patch(id, patch);
@@ -161,9 +153,7 @@ export const duplicate = mutation({
 		const newId = await ctx.db.insert("automations", {
 			name,
 			description: existing.description,
-			nodes: existing.nodes,
-			edges: existing.edges,
-			modelIds: existing.routine ? [] : getAutomationModelIds(existing),
+			modelIds: [],
 			isActive: false,
             routine: existing.routine,
 			status: "idle",
@@ -228,8 +218,6 @@ async function startAutomation(ctx: any, args: { id: any }) {
 type UpdateStatusArgs = {
 	id: any;
 	status: AutomationStatus;
-	currentNodeId?: string;
-	nodeStates?: any;
 	error?: string;
 };
 
@@ -243,8 +231,6 @@ async function updateAutomationStatus(ctx: any, args: UpdateStatusArgs) {
 		updatedAt: Date.now(),
 	};
 
-	if (args.currentNodeId !== undefined) patch.currentNodeId = args.currentNodeId;
-	if (args.nodeStates !== undefined) patch.nodeStates = args.nodeStates;
 	if (args.error !== undefined) patch.error = args.error;
 
 	// Set timestamps based on status
@@ -268,8 +254,6 @@ export const updateStatusInternal = internalMutation({
 	args: {
 		id: v.id("automations"),
 		status: statusValidator,
-		currentNodeId: v.optional(v.string()),
-		nodeStates: v.optional(v.any()),
 		error: v.optional(v.string()),
 	},
 	handler: updateAutomationStatus,
@@ -288,8 +272,6 @@ export const reset = mutation({
 		await ctx.db.patch(args.id, {
 			status: "idle",
 			error: undefined,
-			currentNodeId: undefined,
-			nodeStates: undefined,
 			startedAt: undefined,
 			completedAt: undefined,
 			updatedAt: Date.now(),
@@ -311,22 +293,18 @@ export const reconcileInterruptedInternal = internalMutation({
       .paginate({ cursor: args.cursor ?? null, numItems: batchSize, maximumRowsRead: batchSize });
     const interrupted = batch.page.filter(automation =>
       automation.status === 'running' ||
-      (automation.status === 'pending' && (!automation.routine || automation.isActive !== true)) ||
+      (automation.status === 'pending' && automation.isActive !== true) ||
       (automation.status === 'failed' && automation.routine && automation.error === restartError));
     for (const automation of interrupted) {
-      if (automation.routine) {
-        // Account progress and checkpoints persist. The scheduler decides when
-        // the next session is allowed after budgets and cooldowns are restored.
-        await ctx.db.patch(automation._id, {
-          status: automation.isActive === true ? 'pending' : 'cancelled',
-          error: undefined,
-          startedAt: undefined,
-          completedAt: automation.isActive === true ? undefined : now,
-          updatedAt: now,
-        });
-      } else {
-        await ctx.db.patch(automation._id, { status: 'failed', error: restartError, completedAt: now, updatedAt: now });
-      }
+      // Account progress persists. The scheduler decides when
+      // the next session is allowed after budgets and cooldowns are restored.
+      await ctx.db.patch(automation._id, {
+        status: automation.isActive === true ? 'pending' : 'cancelled',
+        error: undefined,
+        startedAt: undefined,
+        completedAt: automation.isActive === true ? undefined : now,
+        updatedAt: now,
+      });
     }
     // Called only after orphan workers are stopped. Charge interrupted reserved time
     // conservatively, then release it so other sessions can continue today.

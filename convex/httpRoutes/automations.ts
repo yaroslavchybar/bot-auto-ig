@@ -81,8 +81,6 @@ export function registerAutomationRoutes(http: HttpRouter): void {
       const row = await ctx.runMutation(internal.automations.mutations.updateStatusInternal, {
         id: id as any,
         status: body?.status,
-        currentNodeId: body?.currentNodeId,
-        nodeStates: body?.nodeStates,
         error: body?.error,
       });
       return jsonResponse(row);

@@ -41,7 +41,6 @@ for (const deletion of ['id', 'name'] as const) {
             startedAt: 2,
             postSourceIds: [],
             postDates: [], }),
-          await ctx.db.insert('profileModelAssignments', { profileId: id, modelId: model._id }),
           await ctx.db.insert('scraperRequestUsage', { profileId: id, requests: [] }),
           await ctx.db.insert('proxyProfileAssignments', {
             profileId: id,
@@ -60,23 +59,18 @@ for (const deletion of ['id', 'name'] as const) {
     const automationId = await t.run(async (ctx) =>
       ctx.db.insert('automations', {
         name: 'Automation',
-        nodes: [],
-        edges: [],
         createdAt: 1,
         updatedAt: 1,
         routine: {
           ...defaultRoutine,
           outreachEnabled: true,
-          outreachRoutes: [
-            {
+          outreach: {
               leadListId: await ctx.db.insert('leadLists', {
                 name: 'Leads',
                 createdAt: 1, }),
               profileIds: [profile._id, other._id],
-              message: 'Hi', },
-          ], },
-        nodeStates: {
-          __profileRuns: { [profile._id]: { completed: true }, [other._id]: { completed: true } }, }, }),
+              message: 'Hi', }, },
+      }),
     )
     const remove = () =>
       deletion === 'id'
@@ -90,9 +84,8 @@ for (const deletion of ['id', 'name'] as const) {
     for (const id of rows[0]!) expect(await t.run((ctx) => ctx.db.get(id))).toBeNull()
     for (const id of rows[1]!) expect(await t.run((ctx) => ctx.db.get(id))).not.toBeNull()
     const saved = await t.run((ctx) => ctx.db.get(automationId))
-    expect(saved?.routine?.outreachRoutes?.[0]?.profileIds).toEqual([other._id])
+    expect(saved?.routine?.outreach?.profileIds).toEqual([other._id])
     expect(saved?.routine?.outreachEnabled).toBe(true)
-    expect(saved?.nodeStates.__profileRuns).toEqual({ [other._id]: { completed: true } })
     expect(await t.run((ctx) => ctx.db.get(model._id))).not.toBeNull()
     expect(await t.run((ctx) => ctx.db.get(profile._id))).toBeNull()
   })
@@ -170,14 +163,12 @@ test('deletion clears lead leases and scraper ownership without losing shared da
   const automationId = await t.run((ctx) =>
     ctx.db.insert('automations', {
       name: 'Automation',
-      nodes: [],
-      edges: [],
       createdAt: 1,
       updatedAt: 1,
       routine: {
         ...defaultRoutine,
         outreachEnabled: true,
-        outreachRoutes: [{ leadListId: ids.list, profileIds: [profile._id], message: 'Hi' }], }, }),
+        outreach: { leadListId: ids.list, profileIds: [profile._id], message: 'Hi' }, }, }),
   )
   await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: profile.name })
   await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId: profile._id })
@@ -204,7 +195,8 @@ test('deletion clears lead leases and scraper ownership without losing shared da
     expect(read.source).not.toHaveProperty(key)
   expect(read.post).not.toBeNull()
   expect(read.stats?.counts).toMatchObject({ assigned: 1, total: 4 })
-  expect(read.automation?.routine).toMatchObject({ outreachEnabled: false, outreachRoutes: [] })
+  expect(read.automation?.routine?.outreachEnabled).toBe(false)
+  expect(read.automation?.routine).not.toHaveProperty('outreach')
 })
 
 test('large lead cleanup continues in batches and rejects cleanup for a live profile', async () => {

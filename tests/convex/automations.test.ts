@@ -1,32 +1,17 @@
-import { expect, test, vi } from 'vite-plus/test'
+import { expect, test } from 'vite-plus/test'
 
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedModel, seedAutomation } from './helpers'
-import { selectedLists } from '../../server/automation/graph'
 import { defaultRoutine } from '../../convex/routinePolicy'
 
-test('older routine settings remain valid for stored automations', async () => {
-  const t = createConvexTest()
-  const model = (await seedModel(t))!
-  const routine = { ...defaultRoutine, outreachStartDay: 1, dailyIncrease: 35 }
-  const automation = await t.mutation(api.automations.mutations.create, {
-    name: 'Older routine', nodes: [], edges: [], modelIds: [model._id], routine,
-  })
-  expect(automation?.routine).toEqual(routine)
-  const saved = await t.mutation(api.automations.mutations.update, {
-    id: automation!._id, name: 'Renamed older routine',
-  })
-  expect(saved?.routine).toEqual(routine)
-})
-
-test('sleeping routines keep checkpoints on wake and become editable when disabled', async () => {
+test('sleeping routines resume on wake and become editable when disabled', async () => {
   const t = createConvexTest()
   const model = await seedModel(t)
-  const automation = await seedAutomation(t, { modelIds: [model!._id], status: 'running', routine: defaultRoutine, nodeStates: { saved: true } })
+  const automation = await seedAutomation(t, { modelIds: [model!._id], status: 'running', routine: defaultRoutine })
   const pending = await t.mutation(internal.automations.mutations.updateStatusInternal, { id: automation!._id, status: 'pending' })
   expect(pending?.status).toBe('pending')
   const resumed = await t.mutation(internal.automations.mutations.startInternal, { id: automation!._id })
-  expect(resumed?.nodeStates).toEqual({ saved: true })
+  expect(resumed?.status).toBe('pending')
   const disabled = await t.mutation(api.automations.mutations.setActive, { id: automation!._id, isActive: false })
   expect(disabled).toMatchObject({ status: 'cancelled', isActive: false })
   expect((await t.mutation(api.automations.mutations.update, { id: automation!._id, name: 'Editable' }))?.name).toBe('Editable')
@@ -41,34 +26,13 @@ test('automation get returns null for malformed route ids', async () => {
   expect(await t.query(api.automations.queries.get, { id: 'not-a-automation-id' })).toBeNull()
 })
 
-test('fresh runs clear completed profile state while pending runs keep checkpoints', async () => {
-  vi.useFakeTimers()
-  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
-  const t = createConvexTest()
-  const nodeStates = { __profileRuns: { profile: { completed: true, states: {}, currentNodeId: null } } }
-  const manual = await seedAutomation(t, { status: 'completed', nodeStates })
-  const started = await t.mutation(internal.automations.mutations.startInternal, { id: manual!._id })
-  expect(started?.nodeStates).toBeUndefined()
-  const pending = await seedAutomation(t, { status: 'pending', nodeStates })
-  const resumed = await t.mutation(internal.automations.mutations.startInternal, { id: pending!._id })
-  expect(resumed?.nodeStates).toEqual(nodeStates)
-  const rerun = await seedAutomation(t, { status: 'completed', isActive: true, nodeStates })
-  await t.mutation(internal.automations.mutations.startInternal, { id: rerun!._id })
-  const rerunDoc = await t.run(ctx => ctx.db.get(rerun!._id))
-  expect(rerunDoc?.nodeStates).toBeUndefined()
-  vi.runAllTimers()
-  await t.finishInProgressScheduledFunctions()
-})
-
 test('creates automations, deduplicates list ids, and transitions status', async () => {
   const t = createConvexTest()
   const list = await seedModel(t, 'List A')
 
   const created = await t.mutation(api.automations.mutations.create, {
     name: '  Automation A  ',
-    description: 'automation',
-    nodes: [],
-    edges: [],
+    description: 'automation', routine: defaultRoutine,
     modelIds: [list!._id, list!._id],
   })
   expect(created?.isActive).toBe(false)
@@ -77,8 +41,6 @@ test('creates automations, deduplicates list ids, and transitions status', async
   const running = await t.mutation(internal.automations.mutations.updateStatusInternal, {
     id: created!._id,
     status: 'running',
-    currentNodeId: 'node-1',
-    nodeStates: { 'node-1': 'running' },
   })
   const completed = await t.mutation(internal.automations.mutations.updateStatusInternal, {
     id: created!._id,
@@ -92,7 +54,6 @@ test('creates automations, deduplicates list ids, and transitions status', async
   expect(started?.status).toBe('pending')
   expect(running).toMatchObject({
     status: 'running',
-    currentNodeId: 'node-1',
   })
   expect(running?.startedAt).toEqual(expect.any(Number))
   expect(completed?.status).toBe('completed')
@@ -129,8 +90,6 @@ test('lists automations without schedule-era counters', async () => {
   await insertDoc(t, 'automations', {
     name: 'Automation C',
     description: 'plain run',
-    nodes: [],
-    edges: [],
     modelIds: [],
     status: 'idle',
     isActive: true,
@@ -159,45 +118,7 @@ test('disabled automations cannot start but can be re-enabled', async () => {
 test('new automations start disabled', async () => {
   const t = createConvexTest()
   const created = await t.mutation(api.automations.mutations.create, {
-    name: 'Automation D',
-    nodes: [],
-    edges: [],
-  })
+    name: 'Automation D', routine: defaultRoutine, modelIds: [(await seedModel(t))!._id],
+    })
   expect(created?.isActive).toBe(false)
-})
-
-
-test('startup reconciliation preserves checkpoints while ending interrupted runs', async () => {
-  const t = createConvexTest()
-  const running = await seedAutomation(t, { status: 'running', isActive: true, nodeStates: { saved: true } })
-  const pending = await seedAutomation(t, { status: 'pending' })
-  expect(await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})).toEqual({ reconciled: 2 })
-  expect(await t.run(ctx => ctx.db.get(running!._id))).toMatchObject({ status: 'failed', isActive: true, nodeStates: { saved: true } })
-  expect((await t.run(ctx => ctx.db.get(pending!._id)))?.status).toBe('failed')
-})
-
-
-test('editor saves preserve source list selections for reopening and execution', async () => {
-  const t = createConvexTest()
-  const list = await seedModel(t)
-  const automation = await seedAutomation(t)
-  const nodes = [{
-    id: 'start_node',
-    type: 'start',
-    data: { config: { sourceLists: [list!._id] } },
-  }]
-
-  await t.mutation(api.automations.mutations.update, {
-    id: automation!._id,
-    nodes,
-    edges: [],
-  })
-  const reopened = await t.query(api.automations.queries.get, { id: automation!._id })
-  expect(reopened!.nodes[0].data.config.sourceLists).toEqual([list!._id])
-  expect(selectedLists(reopened!.nodes)).toEqual([list!._id])
-
-  nodes[0].data.config.sourceLists = []
-  await t.mutation(api.automations.mutations.update, { id: automation!._id, nodes })
-  const cleared = await t.query(api.automations.queries.get, { id: automation!._id })
-  expect(selectedLists(cleared!.nodes)).toEqual([])
 })

@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test'
 import { vi } from 'vite-plus/test'
 import type { UserIdentity } from 'convex/server'
 
+import { defaultRoutine } from '../../convex/routinePolicy'
 import { api } from '../../convex/_generated/api'
 import schema from '../../convex/schema'
 
@@ -74,9 +75,8 @@ export async function seedAutomation(
   return await insertDoc(t, 'automations', {
     name: 'Automation A',
     description: 'test automation',
-    nodes: [],
-    edges: [],
-    modelIds: [],
+    routine: defaultRoutine,
+    modelIds: [(await seedModel(t, `Model ${Date.now()}-${Math.random()}`))!._id],
     status: 'idle',
     isActive: true,
     createdAt: Date.now(),

@@ -9,7 +9,7 @@ test('profile details expose the same outreach state with setup and assignment i
   const profile = (await seedProfile(t))!
   const { automationId } = await t.run(async (ctx) => {
     await ctx.db.patch(profile._id, {
-      modelIds: [model._id],
+      modelId: model._id,
       igLoggedIn: true,
       outreachReady: true,
       cookiesJson: 'private-cookies',
@@ -18,8 +18,6 @@ test('profile details expose the same outreach state with setup and assignment i
     const listId = await ctx.db.insert('leadLists', { name: 'Recipients', createdAt: 1 })
     const automationId = await ctx.db.insert('automations', {
       name: 'Example automation',
-      nodes: [],
-      edges: [],
       createdAt: 1,
       updatedAt: 1,
       isActive: true,
@@ -29,7 +27,7 @@ test('profile details expose the same outreach state with setup and assignment i
         initialDms: 5,
         maxDms: 10,
         outreachEnabled: true,
-        leadListId: listId,
+        outreach: { leadListId: listId, profileIds: [], allProfiles: true, message: 'Hi' },
       },
     })
     await ctx.db.insert('accountProgress', {
@@ -184,15 +182,13 @@ test('details prefer the enabled automation and ignore setup belonging to an old
   const oldModel = (await seedModel(t, 'Old'))!
   const profile = (await seedProfile(t))!
   await t.run(async (ctx) => {
-    await ctx.db.patch(profile._id, { modelIds: [model._id] })
+    await ctx.db.patch(profile._id, { modelId: model._id })
     for (const isActive of [false, true])
       await ctx.db.insert('automations', {
         name: isActive ? 'Enabled' : 'Disabled',
         modelIds: [model._id],
         isActive,
         routine: defaultRoutine,
-        nodes: [],
-        edges: [],
         createdAt: 1,
         updatedAt: 1,
       })

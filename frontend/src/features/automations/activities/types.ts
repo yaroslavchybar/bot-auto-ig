@@ -1,4 +1,3 @@
-import type { ActivityId } from '../../../../../server/shared/contracts'
 /**
  * Activity Types
  *
@@ -66,7 +65,7 @@ export type ActivityOutput =
 
 // Full definition of an activity
 export interface ActivityDefinition {
-  id: ActivityId // Unique ID (e.g., 'browse_feed')
+  id: 'browse_feed'
   name: string // Display name (e.g., 'Browse Feed')
   description: string // What this activity does
   category: ActivityCategory
@@ -78,5 +77,3 @@ export interface ActivityDefinition {
   keywords?: string[] // Search helpers for the block library
   pickerGroup?: string // Optional grouping hint for picker presentation
 }
-
-

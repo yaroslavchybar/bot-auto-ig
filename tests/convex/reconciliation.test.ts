@@ -30,14 +30,14 @@ test('startup drains interrupted warmups without scanning leads', async () => {
   expect(await t.run(async ctx => (await ctx.db.query('warmupStates').collect()).filter(row => row._id !== ids.idleWarmup).every(row => row.minutesUsedToday === 15))).toBe(true)
 })
 
-test('restart preserves waiting routines and recovers interrupted sessions without clearing checkpoints', async () => {
+test('restart preserves waiting routines and recovers interrupted sessions without resetting daily progress', async () => {
   const t = createConvexTest()
   const waiting = (await seedAutomation(t, {
-    routine: defaultRoutine, status: 'pending', updatedAt: 1, nodeStates: { saved: true },
+    routine: defaultRoutine, status: 'pending', updatedAt: 1,
   }))!
   const before = await t.run(ctx => ctx.db.get(waiting._id))
   const running = (await seedAutomation(t, {
-    routine: defaultRoutine, status: 'running', startedAt: 1, nodeStates: { saved: true },
+    routine: defaultRoutine, status: 'running', startedAt: 1,
   }))!
   const disabled = (await seedAutomation(t, {
     routine: defaultRoutine, status: 'running', isActive: false,
@@ -50,7 +50,7 @@ test('restart preserves waiting routines and recovers interrupted sessions witho
     .toEqual({ reconciled: 3 })
   expect(await t.run(ctx => ctx.db.get(waiting._id))).toEqual(before)
   const recovered = await t.run(ctx => ctx.db.get(running._id))
-  expect(recovered).toMatchObject({ status: 'pending', isActive: true, nodeStates: { saved: true } })
+  expect(recovered).toMatchObject({ status: 'pending', isActive: true })
   expect(recovered?.error).toBeUndefined()
   expect(recovered?.startedAt).toBeUndefined()
   expect(recovered?.completedAt).toBeUndefined()
@@ -58,12 +58,12 @@ test('restart preserves waiting routines and recovers interrupted sessions witho
     expect(await t.run(ctx => ctx.db.get(row._id))).toMatchObject({ status: 'cancelled', isActive: false })
   }
   const resumed = await t.mutation(internal.automations.mutations.startInternal, { id: running._id })
-  expect(resumed?.nodeStates).toEqual({ saved: true })
+  expect(resumed?.status).toBe('pending')
   expect(await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {}))
     .toEqual({ reconciled: 0 })
 })
 
-test('restart repairs old routine restart errors while preserving genuine and graph failures', async () => {
+test('restart repairs old routine restart errors while preserving genuine failures', async () => {
   const t = createConvexTest()
   const restartError = 'Server restarted during execution'
   const oldFailure = (await seedAutomation(t, {
@@ -75,8 +75,8 @@ test('restart repairs old routine restart errors while preserving genuine and gr
   const genuine = (await seedAutomation(t, {
     routine: defaultRoutine, status: 'failed', error: 'Could not open browser',
   }))!
-  const graph = (await seedAutomation(t, { status: 'failed', error: restartError }))!
-  const unchanged = await t.run(async ctx => Promise.all([ctx.db.get(genuine._id), ctx.db.get(graph._id)]))
+  const other = (await seedAutomation(t, { status: 'failed', error: 'Ordinary failure' }))!
+  const unchanged = await t.run(async ctx => Promise.all([ctx.db.get(genuine._id), ctx.db.get(other._id)]))
 
   expect(await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {}))
     .toEqual({ reconciled: 2 })
@@ -85,7 +85,7 @@ test('restart repairs old routine restart errors while preserving genuine and gr
   expect(recovered?.error).toBeUndefined()
   expect(recovered?.completedAt).toBeUndefined()
   expect((await t.run(ctx => ctx.db.get(disabled._id)))?.status).toBe('cancelled')
-  expect(await t.run(async ctx => Promise.all([ctx.db.get(genuine._id), ctx.db.get(graph._id)])))
+  expect(await t.run(async ctx => Promise.all([ctx.db.get(genuine._id), ctx.db.get(other._id)])))
     .toEqual(unchanged)
 })
 
@@ -114,15 +114,15 @@ test('restart charges reserved time once without shortening an existing cooldown
   expect(await t.run(ctx => ctx.db.get(ids.progress))).toEqual(before)
 })
 
-test.each(['running', 'failed'] as const)('restart drains $0 routine batches without looping over waiting routines or skipping graph runs', async status => {
+test.each(['running', 'failed'] as const)('restart drains $0 routine batches without looping over waiting routines or skipping disabled routines', async status => {
   const t = createConvexTest()
-  const graph = (await seedAutomation(t, { status: 'pending' }))!
+  const other = (await seedAutomation(t, { status: 'pending', isActive: false }))!
   await t.run(async ctx => {
     for (let index = 0; index < 101; index++) {
       await ctx.db.insert('automations', {
         name: `Routine ${index}`, routine: defaultRoutine, status,
         ...(status === 'failed' ? { error: 'Server restarted during execution' } : {}),
-        isActive: true, nodes: [], edges: [], createdAt: 1, updatedAt: 1,
+        isActive: true, createdAt: 1, updatedAt: 1,
       })
     }
   })
@@ -142,9 +142,9 @@ test.each(['running', 'failed'] as const)('restart drains $0 routine batches wit
   expect(batch.hasMore).toBe(true)
   expect(await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, { cursor: batch.cursor }))
     .toEqual({ reconciled: 0 })
-  expect((await t.run(ctx => ctx.db.get(graph._id)))?.status).toBe('failed')
+  expect((await t.run(ctx => ctx.db.get(other._id)))?.status).toBe('cancelled')
   expect(await t.run(async ctx => (await ctx.db.query('automations').collect())
-    .filter(row => row.routine).every(row => row.status === 'pending'))).toBe(true)
+    .filter(row => row._id !== other._id).every(row => row.status === 'pending'))).toBe(true)
 })
 
 test.each(['pending', 'failed'] as const)('recovery bounds scans through sparse $0 candidates and resumes from its cursor', async status => {
@@ -154,12 +154,13 @@ test.each(['pending', 'failed'] as const)('recovery bounds scans through sparse 
       await ctx.db.insert('automations', {
         name: `Unchanged ${index}`, routine: defaultRoutine, status,
         ...(status === 'failed' ? { error: 'Genuine failure' } : {}),
-        isActive: true, nodes: [], edges: [], createdAt: 1, updatedAt: 1,
+        isActive: true, createdAt: 1, updatedAt: 1,
       })
     }
   })
   const candidate = (await seedAutomation(t, {
     status,
+    ...(status === 'pending' ? { isActive: false } : {}),
     ...(status === 'failed' ? { routine: defaultRoutine, error: 'Server restarted during execution' } : {}),
   }))!
   const first = await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})
@@ -170,7 +171,7 @@ test.each(['pending', 'failed'] as const)('recovery bounds scans through sparse 
   const last = await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, { cursor: second.cursor })
   expect(last).toEqual({ reconciled: 1 })
   expect((await t.run(ctx => ctx.db.get(candidate._id)))?.status)
-    .toBe(status === 'pending' ? 'failed' : 'pending')
+    .toBe(status === 'pending' ? 'cancelled' : 'pending')
   expect(await t.run(async ctx => (await ctx.db.query('automations').collect())
     .filter(row => row._id !== candidate._id).every(row => row.status === status && row.updatedAt === 1))).toBe(true)
 })
@@ -183,11 +184,11 @@ test('authenticated recovery HTTP route forwards cursors and rejects invalid cur
       for (let index = 0; index < 101; index++) {
         await ctx.db.insert('automations', {
           name: `Waiting ${index}`, routine: defaultRoutine, status: 'pending',
-          isActive: true, nodes: [], edges: [], createdAt: 1, updatedAt: 1,
+          isActive: true, createdAt: 1, updatedAt: 1,
         })
       }
     })
-    const graph = (await seedAutomation(t, { status: 'pending' }))!
+    const other = (await seedAutomation(t, { status: 'pending', isActive: false }))!
     const request = (body: Record<string, unknown>) => t.fetch('/api/automations/reconcile', {
       method: 'POST', headers: { authorization: 'Bearer recovery-key', 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -199,7 +200,7 @@ test('authenticated recovery HTTP route forwards cursors and rejects invalid cur
     const second = await request({ cursor: batch.cursor })
     expect(second.status).toBe(200)
     expect(await second.json()).toEqual({ reconciled: 1 })
-    expect((await t.run(ctx => ctx.db.get(graph._id)))?.status).toBe('failed')
+    expect((await t.run(ctx => ctx.db.get(other._id)))?.status).toBe('cancelled')
     expect((await request({ cursor: 42 })).status).toBe(400)
   } finally {
     vi.unstubAllEnvs()

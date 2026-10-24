@@ -103,7 +103,6 @@ fn allowed(name: &str) -> bool {
             | "igAccounts:loginWork"
             | "automations/queries:runtimeSnapshot"
             | "routines:access"
-            | "profiles/queries:automationAccess"
             | "automations/queries:listRoutinesForScheduler"
     )
 }

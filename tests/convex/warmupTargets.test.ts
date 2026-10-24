@@ -7,7 +7,7 @@ async function setup(min = 3, max = 6) {
   const t = createConvexTest()
   const model = (await seedModel(t))!
   const automation = (await t.mutation(api.automations.mutations.create, {
-    name: 'Random setup', nodes: [], edges: [], modelIds: [model._id],
+    name: 'Random setup', modelIds: [model._id],
     routine: { ...defaultRoutine, warmupMinPosts: min, warmupMaxPosts: max },
   }))!
   const profile = (await seedProfile(t))!

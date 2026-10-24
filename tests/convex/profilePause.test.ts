@@ -24,7 +24,7 @@ async function setup() {
       createdAt: 0,
       proxy: 'http://proxy.test:8000',
       proxyType: 'http',
-      modelIds: [modelId],
+      modelId: modelId,
     })
     await ctx.db.insert('proxies', {
       name: 'proxy',
@@ -33,7 +33,6 @@ async function setup() {
       country: 'ua',
       createdAt: 0,
     })
-    await ctx.db.insert('profileModelAssignments', { profileId, modelId: modelId })
     await syncWorkerProfile(ctx, (await ctx.db.get(profileId))!)
     const listId = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 })
     const sourceId = await ctx.db.insert('scrapeSources', {
@@ -77,12 +76,6 @@ test('pause blocks automation, scraping, warm-up, and browser-cookie calls while
   for (let i = 0; i < 10; i++) expect((await s.reserve(`request-${i}`)).allowed).toBe(true)
   await s.pause(true)
   expect(await s.t.query(api.routines.access, args)).toBe(false)
-  expect(
-    await s.t.query(api.profiles.queries.automationAccess, {
-      bridgeToken: 'test',
-      profileId: s.profileId,
-    }),
-  ).toBe(false)
   const discovery=(await s.t.mutation(internal.scrapeSources.claim, {}))!
   expect(discovery).toMatchObject({runKind:'posts',profileId:''})
   await s.t.mutation(internal.scrapeSources.finish,{sourceId:s.sourceId,runId:discovery.runId,status:'completed'})
@@ -149,7 +142,7 @@ test('automation pause controls and the profile menu share one persistent flag',
   expect((await s.t.run((ctx) => ctx.db.get(s.profileId)))?.paused).toBe(true)
   expect(await loginWork()).toEqual([])
   await s.pause(false)
-  expect((await s.t.run((ctx) => ctx.db.query('accountProgress').unique()))?.paused).toBe(false)
+  expect(await s.t.run(ctx => ctx.db.query('accountProgress').unique())).not.toHaveProperty('paused')
   expect(await loginWork()).toHaveLength(1)
   await s.pause(true)
   await s.t.mutation(api.routines.setAccount, { profileId: s.profileId, paused: false })

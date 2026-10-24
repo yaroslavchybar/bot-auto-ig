@@ -22,8 +22,6 @@ test('routine prefilter skips rest and spent budgets, then allows the next UTC d
   snapshot.progress = [{ profileId: 'p', nextRunAt: now + 60_000 }]
   assert.equal(routineMayRun(snapshot, 'p', now), false)
   assert.equal(routineMayRun(snapshot, 'p', now + 60_000), true)
-  snapshot.progress = [{ profileId: 'p', paused: true }]
-  assert.equal(routineMayRun(snapshot, 'p', now), false)
   snapshot.progress = []
   snapshot.profiles = [{ id: 'p', paused: true }]
   assert.equal(routineMayRun(snapshot, 'p', now), false)
@@ -35,21 +33,8 @@ test('routine prefilter skips rest and spent budgets, then allows the next UTC d
 test('midnight is always a wakeup candidate', () => {
   const now = Date.UTC(2026, 8, 21, 12, 0, 0)
   assert.equal(msUntilMidnightUtc(now), 12 * 60 * 60 * 1000)
-  const delay = nextWakeupDelayMs(null, 0, now)
+  const delay = nextWakeupDelayMs(null, now)
   assert.ok(delay > 0 && delay <= MAX_REALTIME_SLEEP_MS)
-})
-
-test('cooldown expiry shortens the sleep', () => {
-  const now = Date.UTC(2026, 8, 21, 12, 0, 0)
-  const snapshot: any = {
-    automation: { status: 'running', isActive: true },
-    profiles: [{ id: 'p1', lastOpenedAt: now - 25 * 60_000 }],
-    warmups: [],
-    progress: [],
-  }
-  // 30 min cooldown with 25 min elapsed -> ~5 min left.
-  const delay = nextWakeupDelayMs(snapshot, 30, now)
-  assert.ok(delay > 4 * 60_000 && delay <= 5 * 60_000 + 1000)
 })
 
 test('warmup and progress rest periods wake the loop', () => {
@@ -60,7 +45,7 @@ test('warmup and progress rest periods wake the loop', () => {
     warmups: [{ profileId: 'p1', nextRunAt: now + 2 * 60_000 }],
     progress: [{ profileId: 'p1', nextRunAt: now + 60_000 }],
   }
-  const delay = nextWakeupDelayMs(snapshot, 0, now)
+  const delay = nextWakeupDelayMs(snapshot, now)
   assert.ok(delay > 0 && delay <= 60_000 + 1000)
 })
 
@@ -72,7 +57,7 @@ test('long sleeps are capped so a missed update never sleeps forever', () => {
     warmups: [{ profileId: 'p1', nextRunAt: now + 10 * 60 * 60_000 }],
     progress: [],
   }
-  assert.equal(nextWakeupDelayMs(snapshot, 0, now), MAX_REALTIME_SLEEP_MS)
+  assert.equal(nextWakeupDelayMs(snapshot, now), MAX_REALTIME_SLEEP_MS)
 })
 
 test('truncated snapshots sweep every model cursor so no profile starves', async () => {

@@ -96,7 +96,11 @@ jobs:
           no-cache: true
       - run: bun install --frozen-lockfile
       # The deploy key scopes this push to production.
-      - run: bunx convex deploy --check-build-environment disable
+      - name: Deploy Convex and migrate routine data
+        run: |
+          bun .github/scripts/check-simplification.ts
+          bunx convex deploy --check-build-environment disable
+          bunx convex run --prod migrations/simplifyAutomation:run '{}'
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
 

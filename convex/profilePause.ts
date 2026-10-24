@@ -13,12 +13,6 @@ export async function setProfilePaused(
   if (!profile || profile.status === 'deleting' || profile.pendingRenameFrom)
     throw new Error('Profile unavailable')
   if (profile.paused !== paused) await patchProfile(ctx, profileId, { paused })
-  const progress = await ctx.db
-    .query('accountProgress')
-    .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-    .unique()
-  if (progress && progress.paused !== paused)
-    await ctx.db.patch(progress._id, { paused, updatedAt: Date.now() })
   if (paused) {
     const sources = await ctx.db
       .query('scrapeSources')

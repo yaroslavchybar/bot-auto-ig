@@ -7,14 +7,14 @@ function stubBridgeKey(key: string) {
   vi.stubGlobal('process', { env: { INTERNAL_API_KEY: key } })
 }
 
-test('lists.remove cleans up assignment rows', async () => {
+test('models.remove clears indexed profile membership', async () => {
   const t = createConvexTest()
   const list = await seedModel(t, 'List A')
   const profile = await insertDoc(t, 'profiles', {
     createdAt: Date.now(),
     name: 'Profile A',
     inUse: false,
-    modelIds: [],
+    modelId: undefined,
   })
 
   await t.mutation(api.profiles.mutations.bulkAddToModel, {
@@ -22,7 +22,7 @@ test('lists.remove cleans up assignment rows', async () => {
     modelId: list!._id,
   })
   const before = await t.run(async (ctx) =>
-    ctx.db.query('profileModelAssignments').collect(),
+    ctx.db.query('profiles').withIndex('by_model', q => q.eq('modelId', list!._id)).collect(),
   )
   expect(before.length).toBe(1)
 
@@ -42,7 +42,7 @@ test('runtimeSnapshot returns timing fields and requires the bridge token', asyn
     createdAt: Date.now(),
     name: 'Profile A',
     inUse: false,
-    modelIds: [],
+    modelId: undefined,
   })
   await t.mutation(api.profiles.mutations.bulkAddToModel, {
     profileIds: [profile!._id],
@@ -116,7 +116,7 @@ test('runtimeSnapshot stays bounded and list pages sweep every assignment', asyn
       createdAt: Date.now() + i,
       name: `Paged ${i}`,
       inUse: false,
-      modelIds: [],
+      modelId: undefined,
     })
     await t.mutation(api.profiles.mutations.bulkAddToModel, {
       profileIds: [profile!._id],

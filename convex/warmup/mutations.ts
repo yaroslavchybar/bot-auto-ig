@@ -3,7 +3,6 @@ import { internalMutation } from '../_generated/server'
 import { ensureDailyPlan, planFromConfig, randomMinutes, todayDate, warmupActivityValidator } from './helpers'
 import { emptyWarmupActivity, warmupActivityPlan } from '../../server/shared/warmupPlan'
 import { recordActivity } from '../analyticsActivity'
-import { routineModels } from '../routinePolicy'
 import { proxyKey } from '../../server/shared/proxy'
 import { proxyCountryZones } from '../proxyCountryZones'
 
@@ -125,8 +124,8 @@ export const beginFollowInternal = internalMutation({
     const automationId = ctx.db.normalizeId('automations', state.lastAutomationId ?? '')
     const automation = automationId ? await ctx.db.get(automationId) : null
     const progress = await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', args.profileId)).unique()
-    if (!profile?.igLoggedIn || profile.paused || profile.status === 'deleting' || profile.pendingRenameFrom || progress?.paused || progress?.issue ||
-      !automation?.isActive || !routineModels(automation).some(id => profile.modelIds?.some(listId => listId === id))) return false
+    if (!profile?.igLoggedIn || profile.paused || profile.status === 'deleting' || profile.pendingRenameFrom || progress?.issue ||
+      !automation?.isActive || !(automation.modelIds ?? []).some(id => profile.modelId === id)) return false
     const used = { ...emptyWarmupActivity(), ...state.activityUsed }
     if (used.follows >= (state.activityPlan?.follows ?? 0)) return false
     await ctx.db.patch(state._id, { activityUsed: { ...used, follows: used.follows + 1 },

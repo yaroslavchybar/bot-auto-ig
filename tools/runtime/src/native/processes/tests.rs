@@ -57,14 +57,13 @@ async fn concurrent_manual_starts_do_not_publish_status_without_browser_ownershi
 }
 
 #[tokio::test]
-async fn automation_uses_started_snapshot_saves_final_checkpoint_and_yields_capacity() {
+async fn automation_uses_started_snapshot_and_yields_capacity() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("server/automation");
     tokio::fs::create_dir_all(&dir).await.unwrap();
     tokio::fs::write(dir.join("worker.ts"), r#"
 let input = ''; process.stdin.on('data', data => { input += data.toString(); if (!input.includes('\n')) return;
-const payload = JSON.parse(input.split('\n')[0]); if (payload.automation.currentNodeId !== null) process.exit(2);
-console.log('__EVENT__'+JSON.stringify({type:'checkpoint',nodeId:'new',nodeStates:{new:'done'}})+'__EVENT__');
+const payload = JSON.parse(input.split('\n')[0]); if (payload.automation.routine.headless !== true || payload.yieldWhenIdle !== true) process.exit(2);
 console.log('__EVENT__'+JSON.stringify({type:'worker_waiting',dueAt:2000000000000.25})+'__EVENT__'); process.exit(0); });
 "#).await.unwrap();
     let states = Arc::new(Mutex::new(Vec::new()));
@@ -74,11 +73,10 @@ console.log('__EVENT__'+JSON.stringify({type:'worker_waiting',dueAt:200000000000
         async move {
             match request.uri().path() {
                 "/api/automations/by-id" => {
-                    Json(json!({"isActive":true,"currentNodeId":"old"})).into_response()
+                    Json(json!({"isActive":true,"routine":{"headless":false}})).into_response()
                 }
                 "/api/automations/start" => {
-                    Json(json!({"isActive":true,"routine":{},"currentNodeId":null,"nodeStates":{}}))
-                        .into_response()
+                    Json(json!({"isActive":true,"routine":{"headless":true}})).into_response()
                 }
                 _ => {
                     observed.lock().await.push(body(request).await);
@@ -103,8 +101,8 @@ console.log('__EVENT__'+JSON.stringify({type:'worker_waiting',dueAt:200000000000
     let states = states.lock().await;
     let final_state = states.last().unwrap();
     assert_eq!(final_state["status"], "pending");
-    assert_eq!(final_state["nodeStates"], json!({"new":"done"}));
-    assert_eq!(final_state["currentNodeId"], "new");
+    assert!(final_state.get("nodeStates").is_none());
+    assert!(final_state.get("currentNodeId").is_none());
     assert!(!owner.is_running("a").await);
 }
 

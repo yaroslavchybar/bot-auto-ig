@@ -32,7 +32,7 @@ process.exit(0);
                 seen.lock().await.push(body(request).await);
                 save.acquire().await.unwrap().forget();
             }
-            Json(json!({"isActive":true,"routine":{},"nodeStates":{}})).into_response()
+            Json(json!({"isActive":true,"routine":{}})).into_response()
         }
     })
     .await;
@@ -61,7 +61,7 @@ process.exit(0);
 }
 
 #[tokio::test]
-async fn checkpoint_bursts_coalesce_and_terminal_errors_never_schedule_another_run() {
+async fn status_bursts_coalesce_and_terminal_errors_never_schedule_another_run() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("server/automation");
     tokio::fs::create_dir_all(&dir).await.unwrap();
@@ -70,7 +70,7 @@ async fn checkpoint_bursts_coalesce_and_terminal_errors_never_schedule_another_r
         r#"
 process.stdin.once('data', data => {
 const emit = value => console.log('__EVENT__'+JSON.stringify(value)+'__EVENT__');
-for(let i=0;i<100;i++) emit({type:'checkpoint',nodeId:'node'+i,nodeStates:{index:i}});
+for(let i=0;i<100;i++) emit({type:'session_started'});
 emit({type:'worker_waiting',dueAt:Date.now()+60000});
 emit({type:'session_ended',status:' Failed ',error:'fixture failure'});
 process.exit(1);
@@ -88,7 +88,7 @@ process.exit(1);
                 seen.lock().await.push(body(request).await);
                 tokio::time::sleep(Duration::from_millis(40)).await;
             }
-            Json(json!({"isActive":true,"routine":{},"nodeStates":{}})).into_response()
+            Json(json!({"isActive":true,"routine":{}})).into_response()
         }
     })
     .await;
@@ -104,29 +104,34 @@ process.exit(1);
         .unwrap();
     assert!(at.is_none());
     let writes = writes.lock().await;
-    assert!(writes.len() < 10, "checkpoint writes must coalesce");
+    assert!(writes.len() < 10, "status writes must coalesce");
     let last = writes.last().unwrap();
     assert_eq!(last["status"], "failed");
-    assert_eq!(last["nodeStates"]["index"], 99);
+    assert!(last.get("nodeStates").is_none());
     assert_eq!(last["error"], "fixture failure");
     assert_eq!(owner.ownership().await["processCount"], 0);
 }
 
 #[tokio::test]
-async fn malformed_control_frames_preserve_later_checkpoints_and_plain_diagnostics() {
+async fn malformed_control_frames_preserve_later_status_and_plain_diagnostics() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("server/automation");
     tokio::fs::create_dir_all(&dir).await.unwrap();
-    tokio::fs::write(dir.join("worker.ts"), r#"
+    tokio::fs::write(
+        dir.join("worker.ts"),
+        r#"
 process.stdin.once('data', () => {
 for (const value of ['true', '[]', 'null', '{"type":42}', '{broken'])
   console.log('__EVENT__'+value+'__EVENT__');
 for (let i=0;i<25;i++) console.log('diagnostic '+i);
 console.error('Import failed: password=hidden fixture-key');
-console.log('__EVENT__'+JSON.stringify({type:'checkpoint',nodeId:'saved',nodeStates:{saved:'done'}})+'__EVENT__');
+console.log('__EVENT__'+JSON.stringify({type:'session_ended',status:'completed'})+'__EVENT__');
 process.exit(0);
 });
-"#).await.unwrap();
+"#,
+    )
+    .await
+    .unwrap();
     let writes = Arc::new(Mutex::new(Vec::new()));
     let seen = writes.clone();
     let release = Arc::new(tokio::sync::Semaphore::new(0));
@@ -139,7 +144,7 @@ process.exit(0);
                 seen.lock().await.push(body(request).await);
                 save.acquire().await.unwrap().forget();
             }
-            Json(json!({"isActive":true,"nodeStates":{}})).into_response()
+            Json(json!({"isActive":true})).into_response()
         }
     })
     .await;
@@ -156,7 +161,7 @@ process.exit(0);
         .unwrap()
         .unwrap();
     let writes = writes.lock().await;
-    assert_eq!(writes.last().unwrap()["nodeStates"]["saved"], "done");
+    assert!(writes.last().unwrap().get("nodeStates").is_none());
     assert_eq!(writes.last().unwrap()["status"], "completed");
     let progress = job.progress.lock().await;
     assert_eq!(progress.diagnostic_count, 31);

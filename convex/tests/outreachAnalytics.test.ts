@@ -8,7 +8,6 @@ test('analytics combines counts, uses follow cohorts for ranges, and preserves r
   const first = (await seedProfile(t, { name: 'First' }))!
   const second = (await seedProfile(t, { name: 'Second' }))!
   const empty = (await seedProfile(t, { name: 'Empty' }))!
-  await t.mutation(api.analytics.initialize, {})
   await t.run(async (ctx) => {
     for (const row of [
       {
@@ -94,7 +93,6 @@ test('analytics combines counts, uses follow cohorts for ranges, and preserves r
 test('new tracking excludes historical lead rows rather than inventing historical conversions', async () => {
   const t = createConvexTest()
   const profile = (await seedProfile(t))!
-  await t.mutation(api.analytics.initialize, {})
   await t.run((ctx) =>
     ctx.db.insert('leads', {
       username: 'old',
@@ -114,7 +112,6 @@ test('new tracking excludes historical lead rows rather than inventing historica
 test('analytics rejects oversized ranges without truncating counts and keeps date filters', async () => {
   const t = createConvexTest()
   const profile = (await seedProfile(t))!
-  await t.mutation(api.analytics.initialize, {})
   const row = {
     profileId: profile._id,
     profileName: profile.name,
@@ -149,7 +146,6 @@ test('analytics rejects oversized ranges without truncating counts and keeps dat
 test('profile cleanup closes pending follows exactly once while keeping conversion history', async () => {
   const t = createConvexTest()
   const profile = (await seedProfile(t))!
-  await t.mutation(api.analytics.initialize, {})
   await t.run(async (ctx) => {
     const outreachDayId = await ctx.db.insert('outreachDays', {
       profileId: profile._id,

@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
-import { mutation, query, type QueryCtx } from './_generated/server'
-import { addActivity, emptyActivity, type ActivityCounts } from './analyticsActivity'
+import { query, type QueryCtx } from './_generated/server'
+import { addActivity, emptyActivity } from './analyticsActivity'
 import { outreachSummary } from './outreachAnalytics'
 
 const periodValidator = v.union(
@@ -19,49 +19,6 @@ async function accountsForAnalytics(ctx: QueryCtx) {
   return profileRows.filter((row) => row.status !== 'deleting')
 }
 
-/** Seed only dates still held by the old daily counters; unavailable history is never invented. */
-export const initialize = mutation({
-  args: {},
-  handler: async (ctx) => {
-    if (await ctx.db.query('analyticsHistory').unique()) return
-    const accounts = await accountsForAnalytics(ctx)
-    const days = new Map<string, ActivityCounts>()
-    const add = (date: string | undefined, delta: Partial<ActivityCounts>) => {
-      if (!date || !Object.values(delta).some((value) => value > 0)) return
-      days.set(date, addActivity(days.get(date) ?? emptyActivity(), delta))
-    }
-    for (const profile of accounts) {
-      const [progress, warmup] = await Promise.all([
-        ctx.db
-          .query('accountProgress')
-          .withIndex('by_profile', (q) => q.eq('profileId', profile.profileId))
-          .unique(),
-        ctx.db
-          .query('warmupStates')
-          .withIndex('by_profile', (q) => q.eq('profileId', profile.profileId))
-          .unique(),
-      ])
-      add(progress?.outreachQuotaDate, { follows: progress?.followedToday ?? 0 })
-      add(progress?.dmCountDate, { dms: progress?.sentToday ?? 0 })
-      add(warmup?.date, {
-        warmupMinutes: warmup?.minutesUsedToday ?? 0,
-        follows: warmup?.followAttempts?.filter((attempt) => attempt.confirmed).length ?? 0,
-      })
-    }
-    let totals = emptyActivity()
-    // Request tracking starts before the first dashboard visit; preserve those counters.
-    for (const row of await ctx.db.query('analyticsDays').collect()) {
-      days.set(row.date, addActivity(row.counts, days.get(row.date) ?? emptyActivity()))
-      await ctx.db.delete(row._id)
-    }
-    for (const [date, counts] of days) {
-      await ctx.db.insert('analyticsDays', { date, counts })
-      totals = addActivity(totals, counts)
-    }
-    await ctx.db.insert('analyticsHistory', { startedAt: Date.now(), totals })
-  },
-})
-
 /** On-demand totals from small daily counters; lead counts remain a current inventory snapshot. */
 export const overview = query({
   args: { date: v.string(), period: v.optional(periodValidator) },
@@ -78,10 +35,9 @@ export const overview = query({
       ctx.db.query('leadStats').unique(),
       ctx.db.query('analyticsHistory').unique(),
     ])
-    if (!history) throw new Error('Activity history is initializing. Please refresh shortly.')
     const days = period === 'all' ? null : period === '7days' ? 7 : period === '30days' ? 30 : 1
     const start = days === null ? undefined : new Date(timestamp - (days - 1) * 86_400_000).toISOString().slice(0, 10)
-    let counts = history.totals
+    let counts = history?.totals ?? emptyActivity()
     if (start !== undefined && days !== null) {
       const rows = await ctx.db
         .query('analyticsDays')
@@ -91,7 +47,7 @@ export const overview = query({
     }
     return {
       period,
-      historySince: new Date(history.startedAt).toISOString().slice(0, 10),
+      historySince: history ? new Date(history.startedAt).toISOString().slice(0, 10) : null,
       outreach: await outreachSummary(ctx, start, date, accounts),
       leads: leadStats?.backfillComplete ? leadStats.counts : null,
       totals: {

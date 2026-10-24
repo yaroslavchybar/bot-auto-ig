@@ -345,7 +345,7 @@ async fn browser_setup_prepares_without_mobile_and_keeps_uncertain_results_pendi
         let fixture=Fixture::start(move |request| {let account=stored.clone();let state=observed.clone();async move {
             match request.uri().path() {
                 "/api/automations/by-id"=>Json(json!({"isActive":true,"routine":{},"modelIds":["model"]})).into_response(),
-                "/api/profiles"=>Json(json!([{"id":"p","name":"example","createdAt":1,"igLoggedIn":true,"inUse":true,"status":"running","proxy":"work.test:80","paused":outcome=="paused","modelIds":["model"]}])).into_response(),
+                "/api/profiles"=>Json(json!([{"id":"p","name":"example","createdAt":1,"igLoggedIn":true,"inUse":true,"status":"running","proxy":"work.test:80","paused":outcome=="paused","modelId":"model"}])).into_response(),
                 "/api/models"=>Json(json!([{"id":"model","usernames":["changed_name"]}])).into_response(),
                 "/api/routines/ready"=>Json(json!(true)).into_response(),
                 "/api/ig-accounts-store"=>{
@@ -765,7 +765,7 @@ async fn enrollment_skips_an_unreadable_account_without_blocking_the_next_profil
         let saved=saved.clone(); async move {
             match request.uri().path() {
                 "/api/automations"=>Json(json!([{"_id":"automation","isActive":true,"routine":{},"modelIds":["model"]}])).into_response(),
-                "/api/profiles"=>Json(json!([{"id":"bad","modelIds":["model"],"igLoggedIn":true},{"id":"good","modelIds":["model"],"igLoggedIn":true}])).into_response(),
+                "/api/profiles"=>Json(json!([{"id":"bad","modelId":"model","igLoggedIn":true},{"id":"good","modelId":"model","igLoggedIn":true}])).into_response(),
                 "/api/ig-accounts-store"=> {
                     let body=crate::test_support::body(request).await;
                     let value=match profiles::text(&body,"operation") {

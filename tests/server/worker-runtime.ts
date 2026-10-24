@@ -16,9 +16,7 @@ export function runTestAutomation(
   input: Record<string, any>,
   openSession: WorkerDependencies['openSession'],
 ) {
-  const usesWarmup =
-    !!input.automation?.routine ||
-    input.automation?.nodes?.some((node: any) => node.data?.activityId === 'browse_feed')
+  const usesWarmup = true
   const allowed = (_id: string, update: (value: boolean) => void) => {
     update(true)
     return { initial: Promise.resolve(true), unsubscribe() {} }
@@ -27,7 +25,6 @@ export function runTestAutomation(
     openSession,
     setupModel: async () => false,
     postModelUpdate: async () => false,
-    watchProfileAccess: allowed,
     watchRoutineAccess: (_automation, id, update) => allowed(id, update),
     watchRuntime: (id, _lists, update) => {
       let stopped = false

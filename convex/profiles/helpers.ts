@@ -4,7 +4,7 @@ import { patchProfile, syncWorkerProfile } from '../workerMetadata'
 import { deleteProfileData } from './cleanup'
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
 import type { MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { recordedPostsReady } from '../modelSetupPolicy';
 
 function assertProfileEditable(profile: any) {
@@ -27,49 +27,15 @@ async function assertProfileNameAvailable(ctx: any, name: string, exceptId?: str
 		throw new DomainError('CONFLICT', 'Profile name is already in use');
 }
 
-export function getProfileModelIds(profile: any): any[] {
-	const merged = Array.isArray(profile?.modelIds) ? profile.modelIds : [];
-	const seen = new Set<string>();
-	const deduped: any[] = [];
-	for (const id of merged) {
-		const key = String(id || "").trim();
-		if (!key || seen.has(key)) continue;
-		seen.add(key);
-		deduped.push(id);
-	}
-	return deduped;
-}
-
-/** Keep the indexed membership table in sync with the profile's modelIds. */
-export async function syncProfileModelAssignments(ctx: MutationCtx, profileId: Id<'profiles'>, modelIds: Id<'models'>[]) {
-	const desired = new Map<string, Id<'models'>>();
-	for (const modelId of getProfileModelIds({ modelIds })) desired.set(String(modelId), modelId);
-	const existing = await ctx.db
-		.query("profileModelAssignments")
-		.withIndex("by_profile", (q) => q.eq("profileId", profileId))
-		.collect();
-	const current = new Set(existing.map((row) => String(row.modelId)));
-	if (current.size !== desired.size || [...desired.keys()].some(key => !current.has(key))) {
-		const setup = await ctx.db.query('modelSetupStates')
-			.withIndex('by_profile', q => q.eq('profileId', profileId)).first();
-		// Returning to the same model keeps its completed setup; a new model starts fresh.
-		const outreachReady = !!(setup && desired.size === 1 && desired.has(String(setup.modelId)) &&
-			setup.outreachReadyMarked && !setup.pending &&
-			recordedPostsReady(setup.postSourceIds, setup.postDates));
-		await ctx.db.patch(profileId, { outreachReady });
-	}
-	for (const row of existing) {
-		if (!desired.has(String(row.modelId))) await ctx.db.delete(row._id);
-	}
-	for (const [key, modelId] of desired) {
-		if (!current.has(key)) await ctx.db.insert("profileModelAssignments", { profileId, modelId });
-	}
-}
-
-export function buildModelPatch(modelIds: any[]): { modelIds: any[] } {
-	return {
-		modelIds,
-	};
+/** Model moves restore readiness only for a previously completed setup of that model. */
+async function changeProfileModel(ctx: MutationCtx, profile: Doc<'profiles'>, modelId: Id<'models'> | undefined) {
+  await assertProfileModelChange(ctx, profile, modelId);
+  if (profile.modelId === modelId) return;
+  const setup = await ctx.db.query('modelSetupStates')
+    .withIndex('by_profile', q => q.eq('profileId', profile._id)).first();
+  const outreachReady = !!(setup && setup.modelId === modelId && setup.outreachReadyMarked &&
+    !setup.pending && recordedPostsReady(setup.postSourceIds, setup.postDates));
+  await ctx.db.patch(profile._id, { modelId, outreachReady });
 }
 
 /** The browser cookie jar is authoritative; a missing session clears stale auth. */
@@ -168,7 +134,7 @@ export async function insertProfileRow(ctx: any, args: any) {
 		inUse: false,
 		fingerprintOs: args.fingerprintOs,
 		fingerprintSeed: args.fingerprintSeed,
-		modelIds: args.modelIds ?? [],
+		modelId: args.modelId,
 		lastOpenedAt: undefined,
 	});
 	await syncProxyUsage(ctx, { _id: id, name: args.name, proxy: args.proxy, proxyType: args.proxyType });
@@ -295,10 +261,7 @@ export async function bulkAddProfilesToModelRow(ctx: any, profileIds: any[], mod
 		profileIds.map(async (id) => {
 			const row = await ctx.db.get(id);
 			if (!row) return;
-			const next = [modelId];
-			await assertProfileModelChange(ctx, row, next);
-			await ctx.db.patch(id, buildModelPatch(next));
-			await syncProfileModelAssignments(ctx, id, next);
+			await changeProfileModel(ctx, row, modelId);
 		}),
 	);
     await assertAssignments(ctx);
@@ -311,10 +274,7 @@ export async function bulkRemoveProfilesFromModelRow(ctx: any, profileIds: any[]
 		profileIds.map(async (id) => {
 			const row = await ctx.db.get(id);
 			if (!row) return;
-			const next = getProfileModelIds(row).filter((existingListId) => String(existingListId) !== String(modelId));
-			await assertProfileModelChange(ctx, row, next);
-			await ctx.db.patch(id, buildModelPatch(next));
-			await syncProfileModelAssignments(ctx, id, next);
+			if (row.modelId === modelId) await changeProfileModel(ctx, row, undefined);
 		}),
 	);
 	await assertAssignments(ctx);
@@ -323,14 +283,13 @@ export async function bulkRemoveProfilesFromModelRow(ctx: any, profileIds: any[]
 import { assertAssignments } from '../routines';
 
 // A model move must not discard an action whose Instagram result is still unknown.
-async function assertProfileModelChange(ctx: any, profile: any, next: any[]) {
+async function assertProfileModelChange(ctx: MutationCtx, profile: Doc<'profiles'>, next: Id<'models'> | undefined) {
   if (!profile) return;
-  const current = getProfileModelIds(profile);
-  if (current.length === next.length && current.every(id => next.includes(id))) return;
-  if (profile.inUse || ['running', 'starting', 'deleting'].includes(profile.status) || profile.pendingRenameFrom)
+  if (profile.modelId === next) return;
+  if (profile.inUse || ['running', 'starting', 'deleting'].includes(profile.status ?? '') || profile.pendingRenameFrom)
     throw new DomainError('CONFLICT', 'Stop the profile and wait for maintenance before changing models');
   const setup = await ctx.db.query('modelSetupStates')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', profile._id)).first();
+    .withIndex('by_profile', q => q.eq('profileId', profile._id)).first();
   if (setup?.pending)
     throw new DomainError('CONFLICT', 'Resolve the pending model setup action before changing models');
 }

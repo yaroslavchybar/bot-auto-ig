@@ -29,8 +29,6 @@ export async function recordActivity(
 ) {
   if (!Object.values(delta).some((value) => value > 0)) return
   const history = await ctx.db.query('analyticsHistory').unique()
-  // The first dashboard visit seeds surviving daily counters before tracking new activity.
-  if (!history && !delta.scraperRequests) return
   const row = await ctx.db
     .query('analyticsDays')
     .withIndex('by_date', (q) => q.eq('date', date))
@@ -39,4 +37,5 @@ export async function recordActivity(
   if (row) await ctx.db.patch(row._id, { counts })
   else await ctx.db.insert('analyticsDays', { date, counts })
   if (history) await ctx.db.patch(history._id, { totals: addActivity(history.totals, delta) })
+  else await ctx.db.insert('analyticsHistory', { startedAt: Date.now(), totals: addActivity(emptyActivity(), delta) })
 }

@@ -1,5 +1,5 @@
 import type { MutationCtx } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { DomainError } from '../errors';
 import { v } from "convex/values";
 
@@ -22,22 +22,8 @@ export function assertValidStatusTransition(currentStatus: AutomationStatus | un
 	}
 }
 
-export function normalizeModelIds(modelIds: any[] | undefined): any[] {
-	const raw = Array.isArray(modelIds) ? modelIds : [];
-	const seen = new Set<string>();
-	const deduped: any[] = [];
-	for (const id of raw) {
-		const key = String(id || "").trim();
-		if (!key || seen.has(key)) continue;
-		seen.add(key);
-		deduped.push(id);
-	}
-	return deduped;
-}
-
-export function getAutomationModelIds(automation: any): any[] {
-	const raw = Array.isArray(automation?.modelIds) ? automation.modelIds : [];
-	return normalizeModelIds(raw);
+export function normalizeModelIds(modelIds: Id<'models'>[] | undefined): Id<'models'>[] {
+	return [...new Set(modelIds ?? [])];
 }
 
 export const statusValidator = v.union(
@@ -61,7 +47,7 @@ export async function prepareAutomationRun(ctx: MutationCtx, automation: Doc<'au
   const now = Date.now();
   await ctx.db.patch(automation._id, {
     status: 'pending', lastRunAt: now,
-    nodeStates: undefined, error: undefined, currentNodeId: undefined,
+    error: undefined,
     startedAt: undefined, completedAt: undefined, updatedAt: now,
   });
   return await ctx.db.get(automation._id);

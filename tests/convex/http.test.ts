@@ -106,7 +106,7 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
       name: 'Profile Start',
       status: 'idle',
       inUse: false,
-      modelIds: [],
+      modelId: undefined,
     }),
   )
 
@@ -223,8 +223,6 @@ test('serves automation routes over INTERNAL_API_KEY without a Clerk identity', 
     await ctx.db.insert('automations', {
       name: 'Automation Internal Auth',
       description: 'automation auth bridge',
-      nodes: [],
-      edges: [],
       modelIds: [],
       status: 'idle',
       isActive: true,

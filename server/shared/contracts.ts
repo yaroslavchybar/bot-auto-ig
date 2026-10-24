@@ -18,20 +18,9 @@ export type ProfileRecord = {
   fingerprintSeed?: number
   cookiesJson?: string
   instagramSessionId?: string
-  modelIds?: string[]
+  modelId?: string
   lastOpenedAt?: number
 }
-
-export const ACTIVITY_IDS = [
-  'browse_feed',
-  'close_browser',
-  'condition',
-  'delay',
-  'loop',
-  'random_branch',
-  'watch_stories',
-] as const
-export type ActivityId = (typeof ACTIVITY_IDS)[number]
 
 export type SocketTopic = 'all' | 'displays'
 
@@ -45,7 +34,6 @@ export type WebSocketEventType =
   | 'task_progress'
   | 'session_decision'
   | 'task_completed'
-  | 'checkpoint'
   | 'profile_completed'
   | 'model_setup_after_session'
   | 'session_ended'
@@ -71,7 +59,6 @@ type EventFields = {
   taskId?: string
   task?: string
   nodeId?: string
-  nodeStates?: Record<string, unknown>
   targetUsername?: string
   error?: string
   errorCode?: string

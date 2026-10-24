@@ -1,5 +1,6 @@
 import { expect, test } from 'vite-plus/test'
 
+import { defaultRoutine } from '../../convex/routinePolicy'
 import { api } from '../../convex/_generated/api'
 import { createUnauthenticatedConvexTest } from './helpers'
 
@@ -17,11 +18,10 @@ test('allows unauthenticated public queries', async () => {
 test('allows unauthenticated public mutations', async () => {
   const t = createUnauthenticatedConvexTest()
 
+  const model = await t.mutation(api.models.create, { name: 'Model' })
   const created = await t.mutation(api.automations.mutations.create, {
-    name: 'Automation A',
-    nodes: [],
-    edges: [],
-  })
+    name: 'Automation A', routine: defaultRoutine, modelIds: [model!._id],
+    })
 
   expect(created).toMatchObject({ name: 'Automation A' })
 })

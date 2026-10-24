@@ -63,7 +63,6 @@ export function AnalyticsPage() {
     const id = ++request.current
     return convex
       .mutation(api.leadStats.initialize, {})
-      .then(() => convex.mutation(api.analytics.initialize, {}))
       .then(() =>
         convex.query(api.analytics.overview, {
           date: new Date().toISOString().slice(0, 10),

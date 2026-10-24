@@ -62,8 +62,6 @@ test('keeps list and automation HTTP-facing queries callable without public auth
     ctx.db.insert('automations', {
       name: 'Automation A',
       description: 'automation',
-      nodes: [],
-      edges: [],
       modelIds: [listId],
       status: 'running',
       isActive: false,

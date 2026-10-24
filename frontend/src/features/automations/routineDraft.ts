@@ -1,6 +1,5 @@
 import {
   defaultRoutine,
-  outreachRoutes,
   validateRoutine,
   type RoutinePolicy,
 } from '../../../../convex/routinePolicy'
@@ -10,10 +9,9 @@ import { isBrowsingSetting } from '../../../../server/shared/browsingSettings'
 /** Translate saved settings into the editable draft without using presentation metadata. */
 export function routineDraft(saved?: RoutinePolicy): RoutinePolicy {
   const initial = saved ?? defaultRoutine
-  const { outreachStartDay: _outreachStartDay, dailyIncrease: _dailyIncrease, ...current } = initial
   const { warmup_topics, ...activity } = initial.activity
   return {
-    ...current,
+    ...initial,
     followingEnabled: initial.followingEnabled ?? true,
     notificationDmsEnabled: initial.notificationDmsEnabled ?? true,
     activity: Object.fromEntries(
@@ -24,9 +22,6 @@ export function routineDraft(saved?: RoutinePolicy): RoutinePolicy {
       (typeof warmup_topics === 'string' && warmup_topics.trim()
         ? [{ label: warmup_topics.trim().slice(0, 300), description: warmup_topics.trim() }]
         : []),
-    leadListId: undefined,
-    message: '',
-    outreachRoutes: outreachRoutes(initial),
   }
 }
 

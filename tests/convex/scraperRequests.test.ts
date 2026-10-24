@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test'
-import { api, internal } from '../../convex/_generated/api'
+import { internal } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 import { proxyCountryZones } from '../../convex/proxyCountryZones'
 import { requestsInHour, sessionWindow } from '../../convex/scraperRequestPolicy'
@@ -97,12 +97,10 @@ test('request history starts before opening Analytics and bridge retries count o
   const s = await setup()
   await s.reserve('first')
   await s.reserve('first')
-  await s.t.mutation(api.analytics.initialize, {})
   expect(
     await s.t.run(async ctx => (await ctx.db.query('analyticsHistory').unique())?.totals.scraperRequests),
   ).toBe(1)
   await s.reserve('second')
-  await s.t.mutation(api.analytics.initialize, {})
   expect(
     await s.t.run(async ctx => (await ctx.db.query('analyticsHistory').unique())?.totals.scraperRequests),
   ).toBe(2)

@@ -29,7 +29,7 @@ export type ProfileListRow = Pick<
   | 'paused'
   | 'unreadChatCount'
   | 'unreadChatsCheckedAt'
-  | 'modelIds'
+  | 'modelId'
 > & { attention?: 'error' | 'review' }
 
 export const listBatchInternal = internalQuery({
@@ -56,7 +56,7 @@ export const listBatchInternal = internalQuery({
           paused,
           unreadChatCount,
           unreadChatsCheckedAt,
-          modelIds,
+          modelId,
         }) => ({
           _id,
           name,
@@ -71,7 +71,7 @@ export const listBatchInternal = internalQuery({
           paused,
           unreadChatCount,
           unreadChatsCheckedAt,
-          modelIds,
+          modelId,
         }),
       ),
     }
@@ -109,7 +109,7 @@ export const listPage = query({
           ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', row._id)).unique(),
           ctx.db.query('modelSetupStates').withIndex('by_profile', q => q.eq('profileId', row._id)).collect(),
         ])
-        const matchingSetups = setups.filter(state => row.modelIds?.includes(state.modelId))
+        const matchingSetups = setups.filter(state => row.modelId === state.modelId)
         const attention = routineRetryState(progress).issue || ['error', 'failed'].includes(row.status ?? '')
           ? 'error' as const
           : matchingSetups.some(state => state.pending) ? 'review' as const
@@ -189,18 +189,6 @@ export const modelOptions = query({
   args: {},
   handler: async (ctx) =>
     (await ctx.db.query('profiles').collect()).map(
-      ({ _id, name, status, igLoggedIn, modelIds }) => ({ _id, name, status, igLoggedIn, modelIds }),
+      ({ _id, name, status, igLoggedIn, modelId }) => ({ _id, name, status, igLoggedIn, modelId }),
     ),
-})
-
-/** Live permission for graph workers; pausing closes their automated browser session. */
-export const automationAccess = query({
-  args: { bridgeToken: v.string(), profileId: v.id('profiles') },
-  handler: async (ctx, { bridgeToken, profileId }) => {
-    requireServerBridgeAuth(bridgeToken)
-    const profile = await ctx.db.get(profileId)
-    return Boolean(
-      profile && !profile.paused && profile.status !== 'deleting' && !profile.pendingRenameFrom,
-    )
-  },
 })

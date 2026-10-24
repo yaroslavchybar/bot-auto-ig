@@ -179,7 +179,7 @@ export function RoutinePopup({
     try {
       const data = routinePayload(name, modelIds, policy)
       if (automation) await update({ id: automation._id, ...data })
-      else await create({ ...data, nodes: [], edges: [] })
+      else await create(data)
       toast.success('Automation saved')
       onClose()
     } catch (error) {
@@ -267,8 +267,8 @@ export function RoutinePopup({
                       onValueChange={(id) => {
                         setListIds([id as Id<'models'>])
                         change(
-                          'outreachRoutes',
-                          policy.outreachRoutes?.map((route) => ({ ...route, profileIds: [] })),
+                          'outreach',
+                          policy.outreach ? { ...policy.outreach, profileIds: [] } : undefined,
                         )
                       }}
                     >
@@ -440,15 +440,15 @@ export function RoutinePopup({
                     )}
                   </SettingsGroup>
                   <OutreachAssignments
-                    routes={policy.outreachRoutes ?? []}
+                    assignment={policy.outreach}
                     lists={leadLists ?? []}
                     profiles={(profiles ?? []).filter(
                       (profile) =>
-                        profile.status !== 'deleting' && profile.modelIds?.includes(modelIds[0]!),
+                        profile.status !== 'deleting' && profile.modelId === modelIds[0],
                     )}
                     loading={leadLists === undefined || profiles === undefined}
                     disabled={formDisabled}
-                    onChange={(routes) => change('outreachRoutes', routes)}
+                    onChange={(assignment) => change('outreach', assignment)}
                   />
                 </div>
               </fieldset>

@@ -19,7 +19,7 @@ export async function updateWarmupPostTargets(ctx: MutationCtx, modelId: Id<'mod
   for (const state of states) {
     if (state.postSourceIds.length >= (state.postTarget ?? 9)) continue
     const profile = await ctx.db.get(state.profileId)
-    if (!profile?.modelIds?.includes(modelId)) continue
+    if (profile?.modelId !== modelId) continue
     const postTarget = randomInRange(warmupPostRange(policy))
     const ready = recordedPostsReady(state.postSourceIds, state.postDates)
     await ctx.db.patch(state._id, { postTarget, outreachReadyMarked: ready ? true : undefined })

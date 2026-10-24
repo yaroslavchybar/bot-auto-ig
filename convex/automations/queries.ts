@@ -4,7 +4,7 @@ import { query } from "../_generated/server";
 import type { QueryCtx } from '../_generated/server';
 import { statusValidator, type AutomationStatus } from "./helpers";
 import { requireServerBridgeAuth } from "../serverBridgeAuth";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { routineRetryState } from '../routineErrors';
 
 function configRevision(routine: unknown, modelIds: unknown): string {
@@ -85,21 +85,14 @@ export const listRoutinesForScheduler = query({
 const MAX_RUNTIME_PROFILES = 200;
 const MAX_RUNTIME_LISTS = 20;
 
-function resolveAssignedModelIds(automation: any, modelIds: string[]): string[] {
-	return (automation.routine
-		? (automation.modelIds ?? []).map(String)
-		: modelIds
-	).slice(0, MAX_RUNTIME_LISTS);
-}
-
-function toRuntimeProfile(profile: any) {
+function toRuntimeProfile(profile: Doc<'profiles'>) {
 	return {
 		id: profile._id,
 		name: profile.name,
 		status: profile.status,
 		inUse: profile.inUse,
     paused: profile.paused,
-		modelIds: profile.modelIds,
+		modelId: profile.modelId,
 		lastOpenedAt: profile.lastOpenedAt,
 		igLoggedIn: profile.igLoggedIn,
 		outreachReady: profile.outreachReady,
@@ -108,12 +101,7 @@ function toRuntimeProfile(profile: any) {
 }
 
 /** Fetch profiles plus rest timers in small sequential batches to avoid I/O bursts. */
-async function fetchRuntimeDetails(ctx: QueryCtx, profileIds: string[]) {
-	const profiles: any[] = [];
-	for (let i = 0; i < profileIds.length; i += 50) {
-		const batch = await Promise.all(profileIds.slice(i, i + 50).map((id) => ctx.db.get(id as any)));
-		for (const row of batch) if (row) profiles.push(row);
-	}
+async function fetchRuntimeDetails(ctx: QueryCtx, profiles: Doc<'profiles'>[]) {
 	// Subscribe to timing changes; client timers handle expiry without database polling.
 	const warmups: any[] = [];
 	const progresses: any[] = [];
@@ -160,7 +148,6 @@ async function fetchRuntimeDetails(ctx: QueryCtx, profileIds: string[]) {
       return {
         profileId: profile._id,
         nextRunAt: state.nextRunAt,
-        ...(progresses[index]?.paused ? { paused: true } : {}),
         ...(state.issue ? { issue: state.issue } : {}),
       };
     }),
@@ -182,21 +169,21 @@ export const runtimeSnapshot = query({
 		requireServerBridgeAuth(args.bridgeToken);
 		const automation = await ctx.db.get(args.id);
 		if (!automation) return null;
-		const assignedListIds = resolveAssignedModelIds(automation, args.modelIds);
-		const seen = new Set<string>();
+		const assignedListIds = (automation.modelIds ?? []).map(String).slice(0, MAX_RUNTIME_LISTS);
+		const seen = new Map<string, Doc<'profiles'>>();
 		let truncated = false;
 		for (const modelId of assignedListIds) {
 			const head = await ctx.db
-				.query("profileModelAssignments")
+				.query("profiles")
 				.withIndex("by_model", (q) => q.eq("modelId", modelId as unknown as Id<"models">))
 				.paginate({ cursor: null, numItems: MAX_RUNTIME_PROFILES });
-			for (const row of head.page) seen.add(String(row.profileId));
+			for (const row of head.page) seen.set(String(row._id), row);
 			if (!head.isDone) truncated = true;
 			if (seen.size > MAX_RUNTIME_PROFILES) truncated = true;
 		}
-		const profileIds = [...seen].sort().slice(0, MAX_RUNTIME_PROFILES);
-		if (seen.size > profileIds.length) truncated = true;
-		const details = await fetchRuntimeDetails(ctx, profileIds);
+		const profiles = [...seen.values()].sort((a, b) => String(a._id).localeCompare(String(b._id))).slice(0, MAX_RUNTIME_PROFILES);
+		if (seen.size > profiles.length) truncated = true;
+		const details = await fetchRuntimeDetails(ctx, profiles);
 		return {
 			automation: {
 				status: automation.status,
@@ -230,11 +217,10 @@ export const runtimeListPageInternal = internalQuery({
 			.slice(0, MAX_RUNTIME_LISTS);
 		if (!assignedListIds.includes(String(args.modelId))) return null;
 		const page = await ctx.db
-			.query("profileModelAssignments")
+			.query("profiles")
 			.withIndex("by_model", (q) => q.eq("modelId", args.modelId as unknown as Id<"models">))
 			.paginate({ cursor: args.cursor ?? null, numItems: MAX_RUNTIME_PROFILES });
-		const profileIds = [...new Set(page.page.map((row) => String(row.profileId)))];
-		const details = await fetchRuntimeDetails(ctx, profileIds);
+		const details = await fetchRuntimeDetails(ctx, page.page);
 		return {
 			automation: {
 				status: automation.status,

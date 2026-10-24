@@ -10,7 +10,7 @@ test('creates, updates, and removes models while clearing profile links', async 
     createdAt: Date.now(),
     name: 'Profile A',
     inUse: false,
-    modelIds: [list!._id],
+    modelId: list!._id,
   })
 
   const updated = await t.mutation(api.models.update, {
@@ -22,7 +22,7 @@ test('creates, updates, and removes models while clearing profile links', async 
 
   expect(updated?.name).toBe('List B')
   expect(removed).toBe(true)
-  expect(linkedProfile?.modelIds).toEqual([])
+  expect(linkedProfile?.modelId).toBeUndefined()
 })
 
 test('saves a model name pool for warmup', async () => {

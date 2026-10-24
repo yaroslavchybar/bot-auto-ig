@@ -29,7 +29,6 @@ export async function deleteProfileData(ctx: MutationCtx, profileId: Id<'profile
     'accountProgress',
     'warmupStates',
     'modelSetupStates',
-    'profileModelAssignments',
     'scraperProfiles',
     'scraperRequestUsage',
     'ownPostLikerSnapshots',
@@ -44,23 +43,10 @@ export async function deleteProfileData(ctx: MutationCtx, profileId: Id<'profile
   for (const automation of await ctx.db.query('automations').collect()) {
     const patch: Partial<Doc<'automations'>> = {}
     const routine = automation.routine
-    if (routine?.outreachRoutes?.some((route) => route.profileIds.includes(profileId))) {
-      const routes = routine.outreachRoutes
-        .map((route) => ({
-          ...route,
-          profileIds: route.profileIds.filter((id) => id !== profileId),
-        }))
-        .filter((route) => route.allProfiles || route.profileIds.length)
-      patch.routine = {
-        ...routine,
-        outreachRoutes: routes,
-        outreachEnabled: routine.outreachEnabled && routes.length > 0,
-      }
-    }
-    if (automation.nodeStates?.__profileRuns?.[profileId]) {
-      const runs = { ...automation.nodeStates.__profileRuns }
-      delete runs[profileId]
-      patch.nodeStates = { ...automation.nodeStates, __profileRuns: runs }
+    if (routine?.outreach?.profileIds.includes(profileId)) {
+      const profileIds = routine.outreach.profileIds.filter(id => id !== profileId);
+      const outreach = routine.outreach.allProfiles || profileIds.length ? { ...routine.outreach, profileIds } : undefined;
+      patch.routine = { ...routine, outreach, outreachEnabled: routine.outreachEnabled && !!outreach };
     }
     if (Object.keys(patch).length)
       await ctx.db.patch(automation._id, { ...patch, updatedAt: Date.now() })

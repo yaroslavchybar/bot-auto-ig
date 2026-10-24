@@ -10,7 +10,7 @@ test('profile list attention reflects current errors and pending setup, and clea
   const attention = async () => (await t.query(api.profiles.queries.listPage,
     { search: '', cursor: null, pageSize: 25 })).page.find(row => row._id === profile._id)?.attention
   const { setupId, progressId } = await t.run(async ctx => {
-    await ctx.db.patch(profile._id, { modelIds: [model._id] })
+    await ctx.db.patch(profile._id, { modelId: model._id })
     await ctx.db.insert('modelSetupStates', { profileId: profile._id, modelId: oldModel._id,
       startedAt: 1, postSourceIds: [], postDates: [], error: 'Old failure' })
     const setupId = await ctx.db.insert('modelSetupStates', { profileId: profile._id, modelId: model._id,
@@ -37,14 +37,14 @@ test('profile list attention reflects current errors and pending setup, and clea
   expect(await attention()).toBeUndefined()
 })
 
-test('profile attention considers all assigned models while ignoring unassigned setup', async () => {
+test('profile attention follows its assigned model while ignoring other setups', async () => {
   const t = createConvexTest()
   const profile = (await seedProfile(t))!
   const first = (await seedModel(t, 'First'))!
   const second = (await seedModel(t, 'Second'))!
   const unassigned = (await seedModel(t, 'Unassigned'))!
   const secondSetup = await t.run(async ctx => {
-    await ctx.db.patch(profile._id, { modelIds: [first._id, second._id] })
+    await ctx.db.patch(profile._id, { modelId: second._id })
     for (const model of [first, unassigned]) {
       await ctx.db.insert('modelSetupStates', {
         profileId: profile._id, modelId: model._id, startedAt: 1, postSourceIds: [], postDates: [],

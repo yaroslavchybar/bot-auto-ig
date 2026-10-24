@@ -7,33 +7,22 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { shouldStop, shutdownSignal, requestStop, releaseStdin } from '../browser/lifecycle.js'
 import {
-  warmupGetByProfile,
   type DbProfileRow,
   type DbAutomationRow,
 } from '../shared/convexClient.js'
 import {
   closeConvexRealtime,
   watchRoutineAccess,
-  watchProfileAccess,
   watchRoutineRuntime,
   type RuntimeSnapshot,
 } from '../shared/convexRealtime.js'
-import { prepareBrowsingDay, sessionReady } from './sessions.js'
+import { prepareBrowsingDay } from './sessions.js'
 import { runRoutineSession } from './routine.js'
 import { withAiSettings } from './ai-settings.js'
 import { postModelUpdateInSession } from '../ig-accounts/warmup.js'
 import { setupModelInSession } from '../ig-accounts/profile-setup.js'
 import { routineReady, routineRecordSession } from '../shared/convexClient.js'
-import { runPool } from './pool.js'
 import { orderProfileQueue, profileProxyKey } from './profile-queue.js'
-import {
-  selectedLists,
-  startConfig,
-  profileEligible,
-  type AutomationNode,
-  type AutomationEdge,
-} from './graph.js'
-import { executeGraphProfile } from './graph-runner.js'
 import logger, { logOperation, addLogContext, currentLogScope, type LogScope } from '../shared/logger.js'
 import type { ActionLogger } from './actions/shared.js'
 import { captureConsole } from '../logs/console.js'
@@ -52,11 +41,6 @@ function event(type: WorkerEvent['type'], data: AnyRecord = {}): Promise<void> {
   ))
 }
 
-function number(value: unknown, fallback: number): number {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
 /** Safety cap so a missed subscription update never sleeps forever. */
 export const MAX_REALTIME_SLEEP_MS = 15 * 60 * 1000
 
@@ -72,22 +56,13 @@ export function msUntilMidnightUtc(now = Date.now()): number {
 
 /**
  * How long the realtime loop may sleep before a time-based readiness change.
- * Covers profile reopen cooldown, warmup/account rest periods, and UTC day
- * rollover (daily budgets reset). Same logic for routine and warmup paths.
+ * Covers warmup/account rest periods and UTC daily budget resets.
  */
 export function nextWakeupDelayMs(
   snapshot: RuntimeSnapshot | null,
-  cooldownMinutes: number,
   now = Date.now(),
 ): number {
   const candidates: number[] = [msUntilMidnightUtc(now)]
-  for (const profile of snapshot?.profiles ?? []) {
-    const lastOpened = Number((profile as AnyRecord).lastOpenedAt)
-    if (cooldownMinutes > 0 && Number.isFinite(lastOpened) && lastOpened > 0) {
-      const expiry = lastOpened + cooldownMinutes * 60_000
-      if (expiry > now) candidates.push(expiry - now)
-    }
-  }
   for (const row of snapshot?.warmups ?? []) {
     const at = Number((row as AnyRecord).nextRunAt)
     if (Number.isFinite(at) && at > now) candidates.push(at - now)
@@ -108,11 +83,16 @@ export function routineMayRun(snapshot: RuntimeSnapshot, profileId: string, now 
   if (snapshot?.profiles?.find(profile => profile.id === profileId)?.paused) return false
   const state = snapshot?.progress?.find(row => row.profileId === profileId)
   const warmup = snapshot?.warmups?.find(row => row.profileId === profileId)
-  if (state?.paused || state?.issue || (state?.nextRunAt ?? 0) > now || (warmup?.nextRunAt ?? 0) > now) return false
+  if (state?.issue || (state?.nextRunAt ?? 0) > now || (warmup?.nextRunAt ?? 0) > now) return false
   if (warmup?.date === new Date(now).toISOString().slice(0, 10)) {
     if (warmup.activeRun || (warmup.minutesUsedToday ?? 0) >= (warmup.todayMinutes ?? Infinity)) return false
   }
   return true
+}
+
+function profileEligible(profile: DbProfileRow, models: string[]): boolean {
+  return !profile.paused && !profile.inUse && profile.status !== 'running' &&
+    !!profile.modelId && models.includes(profile.modelId)
 }
 
 async function expandedRuntimeSnapshot(
@@ -209,7 +189,7 @@ class RuntimeMonitor {
     const profileRevision = JSON.stringify((snapshot?.profiles ?? []).map(profile => ({
       id: profile.id, name: profile.name, status: profile.status,
       paused: profile.paused, inUse: profile.inUse, igLoggedIn: profile.igLoggedIn,
-      outreachReady: profile.outreachReady, modelIds: profile.modelIds,
+      outreachReady: profile.outreachReady, modelId: profile.modelId,
       lastOpenedAt: profile.lastOpenedAt, pendingRenameFrom: profile.pendingRenameFrom,
     })))
     const timingRevision = JSON.stringify({
@@ -254,9 +234,7 @@ async function withProfile(
     automationId?: string
     openSession?: typeof openBrowserSession
   } = {},
-  run: (session: BrowserSession, controls: {
-    close: () => Promise<void>
-  }) => Promise<void>,
+  run: (session: BrowserSession) => Promise<void>,
 ): Promise<void> {
   const parent = currentLogScope()
   let profileScope: LogScope | undefined
@@ -287,7 +265,7 @@ async function withProfile(
             displayId: display.id, decision }).catch(() => {})
         })
       }
-      await run(session, { close })
+      await run(session)
       await close()
       if (shouldStop()) addLogContext({ outcome: 'cancelled' })
       await event('profile_completed', {
@@ -326,9 +304,9 @@ async function withProfile(
 
 const workerDependencies = {
   openSession: openBrowserSession,
+  runSession: runRoutineSession,
   watchRuntime: watchRoutineRuntime,
   watchRoutineAccess,
-  watchProfileAccess,
   setupModel: setupModelInSession,
   postModelUpdate: postModelUpdateInSession,
 }
@@ -359,7 +337,7 @@ async function runRoutineProfile(options: {
     let hadActivity = false
     await withProfile(profile, { headless: routine.headless, openSession: deps.openSession, automationId }, async session => {
       hadActivity = await withAiSettings(routine.ai,
-        () => runRoutineSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access)) === true
+        () => deps.runSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access)) === true
       const modelId = automation.modelIds?.length === 1 ? automation.modelIds[0] : undefined
       if (modelId && !shouldStop() && access) {
         hadActivity = await deps.setupModel(profile.id, automationId, session.page, log,
@@ -388,19 +366,9 @@ export async function runAutomation(
 ): Promise<void> {
   const deps = { ...workerDependencies, ...overrides }
   const automation = (input.automation || {}) as DbAutomationRow & AnyRecord
-  const nodes = (
-    Array.isArray(automation.nodes) ? automation.nodes : []
-  ) as AutomationNode[]
-  const edges = (
-    Array.isArray(automation.edges) ? automation.edges : []
-  ) as AutomationEdge[]
-  const nodeStates: AnyRecord = {
-    ...automation.nodeStates,
-  }
-  const aggregateStates = nodeStates
   const automationId = String(input.automationId || 'automation')
-  const setupConfig = startConfig(nodes)
-  const lists = automation.routine ? automation.modelIds ?? [] : selectedLists(nodes)
+  if (!automation.routine) throw new Error('Routine settings are required')
+  const lists = automation.modelIds ?? []
   if (!lists.length)
     throw new Error(
       'Select at least one profile list before running the automation',
@@ -416,84 +384,29 @@ export async function runAutomation(
         log({ event: 'automation.runtime_snapshot_swept', message: `runtime snapshot truncated; swept ${latestRuntime.profiles.length} profiles across windows`, profileCount: latestRuntime.profiles.length })
       }
     }
-    const profiles = (latestRuntime!.profiles as DbProfileRow[]).filter((profile) =>
-        profileEligible(
-          profile,
-          lists,
-          setupConfig.profileReopenCooldownEnabled
-            ? number(setupConfig.profileReopenCooldownMinutes, 30)
-            : 0,
-        ),
-      )
+    const profiles = (latestRuntime?.profiles ?? []).filter(profile => profileEligible(profile as DbProfileRow, lists)) as DbProfileRow[]
 
     await event('session_started', { automationId: automationId })
     if (!profiles.length)
       log({ event: 'automation.worker.available_profiles_in_the_selected', message: 'No available profiles in the selected lists; waiting for profiles' })
 
-    // Free Cloak tier allows one browser at a time.
-    const parallel = 1
     let previousProxy: string | undefined
-    const hasWarmup = nodes.some(node => node.data?.activityId === 'browse_feed')
-    const repeat = !!automation.routine || setupConfig.repeatWhileActive === true && hasWarmup
-    const profileDone = (profileId: string) => {
-      const run = aggregateStates.__profileRuns?.[profileId]
-      return !!run?.completed && !repeat
-    }
-    const runProfile = async (profile: DbProfileRow) => {
-      shutdownSignal.throwIfAborted()
-      if (profileDone(profile.id)) return
-      if (automation.routine) {
-        await runRoutineProfile({
-          profile, automation, routine: automation.routine,
-          automationId, deps,
-        })
-        return
+    // The browser license permits one profile at a time. A failed profile does not stop the queue.
+    const runQueue = async (rows: DbProfileRow[], snapshot: RuntimeSnapshot) => {
+      const ready = rows.filter(profile => routineMayRun(snapshot, profile.id))
+      for (const profile of orderProfileQueue(ready, previousProxy)) {
+        shutdownSignal.throwIfAborted()
+        if (!monitor.isActive()) break
+        previousProxy = profileProxyKey(profile)
+        await runRoutineProfile({ profile, automation, routine: automation.routine!, automationId, deps })
       }
-      if (hasWarmup && !sessionReady(await warmupGetByProfile(profile.id))) return
-      let access = !profile.paused
-      const accessSubscription = deps.watchProfileAccess(profile.id, value => { access = value }, () => { access = false }, shutdownSignal)
-      try {
-        if (!await accessSubscription.initial) return
-        if (hasWarmup && !await prepareBrowsingDay(profile.id,
-          nodes.find(node => node.data?.activityId === 'browse_feed')?.data?.config ?? {})) return
-        await withProfile(
-          profile,
-          {
-            headless: setupConfig.headlessMode ?? false,
-            openSession: deps.openSession,
-            automationId,
-          },
-          async (session, controls) => {
-            previousProxy = profileProxyKey(profile)
-            await executeGraphProfile({
-              automationId, profile, session, controls, nodes, edges,
-              aggregateStates, repeat, emit: event, log,
-              canContinue: () => access,
-            })
-          },
-        )
-      } finally {
-        accessSubscription.unsubscribe()
-      }
-    }
-    const runQueue = async (profiles: DbProfileRow[], snapshot: RuntimeSnapshot = null) => {
-      const pending = profiles.filter(profile => !profileDone(profile.id) &&
-        (!automation.routine || !snapshot || routineMayRun(snapshot, profile.id)))
-      // Resting profiles must not affect proxy alternation among runnable profiles.
-      const ready = hasWarmup
-        ? await Promise.all(pending.map(async profile => sessionReady(await warmupGetByProfile(profile.id))))
-        : pending.map(() => true)
-      await runPool(orderProfileQueue(pending.filter((_, index) => ready[index]), previousProxy), parallel, runProfile)
     }
     await runQueue(profiles, latestRuntime)
 
     // Subscription updates and time-based deadlines share one execution path.
-    const cooldownMinutes = setupConfig.profileReopenCooldownEnabled
-      ? number(setupConfig.profileReopenCooldownMinutes, 30)
-      : 0
-    if (input.yieldWhenIdle && automation.routine && monitor.isActive()) {
+    if (input.yieldWhenIdle && monitor.isActive()) {
       const snapshot = await expandedRuntimeSnapshot(automationId, lists, monitor.snapshot)
-      await event('worker_waiting', { automationId, dueAt: Math.max(Date.now() + 1000, routineDueAt(snapshot)), nodeStates })
+      await event('worker_waiting', { automationId, dueAt: Math.max(Date.now() + 1000, routineDueAt(snapshot)) })
       return
     }
     while (monitor.isActive()) {
@@ -501,16 +414,15 @@ export async function runAutomation(
       // later windows too; otherwise a profile outside the first prefix
       // would never shorten the sleep.
       const snapshot = await expandedRuntimeSnapshot(automationId, lists, monitor.snapshot)
-      // Time-based readiness (warmup rest, cooldown, day rollover) produces
+      // Time-based readiness (warmup rest and day rollover) produces
       // no table write, so wake on a timeout as well as on subscription updates.
-      const sleepMs = nextWakeupDelayMs(snapshot, cooldownMinutes)
+      const sleepMs = nextWakeupDelayMs(snapshot)
       if (!await monitor.wait(sleepMs)) break
       if (monitor.error) break
       const current = await expandedRuntimeSnapshot(automationId, lists, monitor.snapshot)
       const fresh = (current?.profiles ?? []).filter(
         (profile: any) =>
-          !profileDone(String(profile.id)) &&
-          profileEligible(profile as DbProfileRow, lists, cooldownMinutes),
+          profileEligible(profile as DbProfileRow, lists),
       ) as DbProfileRow[]
       if (fresh.length) await runQueue(fresh, current)
     }
@@ -519,7 +431,6 @@ export async function runAutomation(
     await event('session_ended', {
       automationId: automationId,
       status: 'completed',
-      nodeStates: nodeStates,
     })
   } finally {
     monitor.stop()

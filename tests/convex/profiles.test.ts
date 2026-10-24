@@ -28,7 +28,7 @@ test('creates profiles and exposes model membership without leaking cookies', as
     modelId: list!._id,
   })
 
-  const available = (await t.query(api.profiles.queries.modelOptions, {})).filter(row => row.modelIds?.includes(list!._id))
+  const available = (await t.query(api.profiles.queries.modelOptions, {})).filter(row => row.modelId === list!._id)
 
   expect(profile).toMatchObject({
     cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
@@ -120,9 +120,9 @@ test('model batch creation assigns distinct proxy slots and is atomic when capac
   expect(created).toHaveLength(3)
   const rows = await t.query(api.profiles.queries.list, {})
   expect(rows).toHaveLength(3)
-  expect(rows.every(row => row.modelIds?.includes(model!._id))).toBe(true)
+  expect(rows.every(row => row.modelId === model!._id)).toBe(true)
   expect(rows.map(row => row.igAccountId)).toEqual(accounts.slice(0, 3).map(account => account._id))
-  expect((await t.query(api.profiles.queries.modelOptions, {})).filter(row => row.modelIds?.includes(model!._id)))
+  expect((await t.query(api.profiles.queries.modelOptions, {})).filter(row => row.modelId === model!._id))
     .toHaveLength(3)
   expect((await t.query(internal.igAccounts.availableInternal, { count: 4 })).page).toHaveLength(1)
   await expect(t.mutation(internal.profiles.mutations.createForModelInternal,

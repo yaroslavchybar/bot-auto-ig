@@ -45,7 +45,6 @@ test('new scraper leads count once even when the same liker is saved to another 
     }
     return sources
   })
-  await t.mutation(api.analytics.initialize, {})
   const likers = [{ igId: '123', username: 'liker' }]
   await t.mutation(internal.scraper.saveBatch, { ...sources[0], likers })
   await t.mutation(internal.scraper.saveBatch, { ...sources[0], likers })

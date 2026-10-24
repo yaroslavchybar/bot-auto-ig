@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { internalMutation, internalQuery, type QueryCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
-import { dayKey, profileOutreachRoutes } from './routinePolicy'
+import { dayKey, profileOutreach } from './routinePolicy'
 import { eligibility, ensureProgress, pendingDm, canSendDm } from './routines'
 import { reserveRequest } from './scraperRequests'
 
@@ -94,7 +94,7 @@ export const snapshot = internalMutation({
     const ids = [...new Set(likers.map((row) => row.igId))]
     if (previous?.ownerIgId === ownerIgId) {
       const seen = new Set(previous.ids),
-        routes = profileOutreachRoutes(e.policy, profileId),
+        route = profileOutreach(e.policy, profileId),
         now = Date.now()
       for (const liker of likers) {
         if (seen.has(liker.igId)) continue
@@ -116,7 +116,7 @@ export const snapshot = internalMutation({
             lead.outreachAutomationId !== automationId ||
             !lead.classification ||
             !(e.policy.allowedCategories ?? ['male']).includes(lead.classification) ||
-            !routes.some((route) => route.leadListId === lead.outreachListId) ||
+            route?.leadListId !== lead.outreachListId ||
             !lead.outreachListId ||
             !(await ctx.db.get(lead.outreachListId))
           )

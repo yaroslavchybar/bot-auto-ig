@@ -13,7 +13,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { dailyOutreachQuota, dayKey, routineModels, profileOutreachRoutes } from "./routinePolicy";
+import { dailyOutreachQuota, dayKey, profileOutreach } from "./routinePolicy";
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
 import { leadAvailable, setLeadAvailability } from './leadMemberships';
 import { isRetryableRoutineIssue, isRoutineLoginIssue, ROUTINE_RETRY_MS, routineRetryState,
@@ -43,8 +43,8 @@ export async function assertAssignments(
   const active = automations.filter((a) => a.isActive !== false);
   for (const profile of await ctx.db.query("profiles").collect()) {
     const matches = active.filter((a) =>
-      routineModels(a).some((id) =>
-        profile.modelIds?.includes(id as Id<"models">)),
+      (a.modelIds ?? []).some((id) =>
+        profile.modelId === id),
     );
     if (matches.length > 1)
       throw new Error(
@@ -60,7 +60,6 @@ export async function ensureProgress(ctx: MutationCtx, profileId: Id<"profiles">
   if (!await ctx.db.get(profileId)) throw new Error('Profile not found');
   const id = await ctx.db.insert("accountProgress", {
     profileId,
-    paused: false,
     activeDays: 0,
     outreachUsedToday: 0,
     outreachAllowanceToday: 0,
@@ -95,19 +94,19 @@ export async function eligibility(
   if (p.igAccountId && (igAccount?.status !== 'connected' ||
     (account?.status === 'assigned' && !account.browserLoggedInAt)))
     return null;
-  if (!routineModels(a).some((id) => p.modelIds?.includes(id as Id<"models">)))
+  if (!(a.modelIds ?? []).some((id) => p.modelId === id))
     return null;
   const matches = (await ctx.db.query("automations").collect()).filter(
     (other) =>
       other.isActive !== false &&
-      routineModels(other).some((id) => p.modelIds?.includes(id as Id<"models">)),
+      (other.modelIds ?? []).some((id) => p.modelId === id),
   );
-  if (matches.length !== 1 || !p.igLoggedIn || state?.paused || state?.issue)
+  if (matches.length !== 1 || !p.igLoggedIn || state?.issue)
     return null;
   return {
     automation: a,
     policy: a.routine,
-    routes: profileOutreachRoutes(a.routine, profileId),
+    outreach: profileOutreach(a.routine, profileId),
     state,
     profile: p,
     igAccount,
@@ -121,7 +120,7 @@ type OutreachContext = NonNullable<Awaited<ReturnType<typeof eligibility>>>;
 
 /** Shared gates; notifications/DMs intentionally ignore the daily follow block. */
 export function canOutreach(e: OutreachContext | null): e is OutreachContext {
-  return !!e && e.maintenance && e.policy.outreachEnabled && !!e.profile.outreachReady && e.routes.length > 0;
+  return !!e && e.maintenance && e.policy.outreachEnabled && !!e.profile.outreachReady && !!e.outreach;
 }
 export function canFollow(e: OutreachContext | null): e is OutreachContext {
   return canOutreach(e) && e.policy.followingEnabled !== false && !e.followsBlocked;
@@ -142,7 +141,6 @@ export const setAccount = mutation({
     const state = await ensureProgress(ctx, args.profileId);
     if (args.paused !== undefined) await setProfilePaused(ctx, args.profileId, args.paused)
     await ctx.db.patch(state._id, {
-      ...(args.paused !== undefined ? { paused: args.paused } : {}),
       ...(args.clearIssue ? { issue: undefined } : {}),
       updatedAt: Date.now(),
     });
@@ -173,7 +171,7 @@ async function accountSummary(ctx: QueryCtx, p: Doc<'profiles'>, a: Doc<'automat
   const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', p._id)).unique();
   return {
     profileId: p._id, name: p.name,
-    paused: p.paused === true || (state?.paused ?? false), issue: state?.issue,
+    paused: p.paused === true, issue: state?.issue,
     stage: !p.igLoggedIn ? 'Not logged in'
       : igAccount?.browserLoggedInAt && kyivDateKey(Date.now()) <= kyivDateKey(igAccount.browserLoggedInAt)
         ? 'Browser logged in' : !p.outreachReady || (warmup?.day ?? 0) < 8 ? 'Warm-up' : 'Outreach',
@@ -188,7 +186,7 @@ async function accountSummary(ctx: QueryCtx, p: Doc<'profiles'>, a: Doc<'automat
       remaining: Math.max(0, warmup.todayMinutes - (warmup.minutesUsedToday ?? 0)),
       running: Boolean(warmup.activeRun),
     } : null,
-    allowance: a?.routine && a.routine.outreachEnabled && a.routine.followingEnabled !== false && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
+    allowance: a?.routine && a.routine.outreachEnabled && a.routine.followingEnabled !== false && profileOutreach(a.routine, p._id) && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
       ? dailyOutreachQuota(a.routine, state, date, p._id).allowance
       : 0,
     nextRunAt: Math.max(state?.nextRunAt ?? 0, warmup?.nextRunAt ?? 0),
@@ -202,11 +200,11 @@ export const profileDetails = query({
     const profile = await ctx.db.get(profileId);
     if (!profile) return null;
     const assigned = (await ctx.db.query('automations').collect()).filter(a =>
-      a.routine && routineModels(a).some(id => profile.modelIds?.includes(id as Id<'models'>)));
+      a.routine && (a.modelIds ?? []).some(id => profile.modelId === id));
     const automation = assigned.find(a => a.isActive !== false) ?? assigned[0] ?? null;
     const setup = (await ctx.db.query('modelSetupStates').withIndex('by_profile', q => q.eq('profileId', profileId)).collect())
-      .find(row => profile.modelIds?.includes(row.modelId)) ?? null;
-    const modelId = profile.modelIds?.[0];
+      .find(row => profile.modelId === row.modelId) ?? null;
+    const modelId = profile.modelId;
     const model = modelId ? await ctx.db.get(modelId) : null;
     return {
       ...await accountSummary(ctx, profile, automation),
@@ -230,7 +228,7 @@ export const accounts = query({
     const a = await ctx.db.get(automationId);
     if (!a) return [];
     const profiles = (await ctx.db.query("profiles").collect()).filter((p) =>
-      routineModels(a).some((id) => p.modelIds?.includes(id as Id<"models">)),
+      (a.modelIds ?? []).some((id) => p.modelId === id),
     );
     return Promise.all(profiles.map(p => accountSummary(ctx, p, a)));
   },
@@ -324,59 +322,51 @@ export const reserve = internalMutation({
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!canFollow(e)) return null;
-    const routes = e.routes;
-    if (!routes.length) return null;
+    const route = e.outreach;
+    if (!route || !await ctx.db.get(route.leadListId)) return null;
     const date = dayKey();
     const state = await ensureProgress(ctx, args.profileId);
     const { used, allowance } = dailyOutreachQuota(e.policy, state, date, args.profileId);
     if (used >= allowance) return null;
     let lead: Doc<'leads'> | undefined;
-    let selected: (typeof routes)[number] | undefined;
-    const start = (routes.findIndex((route) => route.leadListId === state.lastLeadListId) + 1) % routes.length;
-    for (let offset = 0; offset < routes.length && !lead; offset++) {
-      const route = routes[(start + offset) % routes.length];
-      if (!(await ctx.db.get(route.leadListId))) continue;
-      for (const category of [undefined, ...(e.policy.allowedCategories ?? ['male'])]) {
-        const memberships = await ctx.db.query('leadMemberships')
-          .withIndex('by_list_category', q => q.eq('listId', route.leadListId).eq('available', true).eq('classification', category))
-          .take(100);
-        for (const membership of memberships) {
-          const candidate = await ctx.db.get(membership.leadId);
-          if (!candidate || !leadAvailable(candidate)) {
-            await ctx.db.patch(membership._id, { available: false })
-            continue
-          }
-          if ((candidate.screeningUntil ?? 0) > Date.now()) continue
-          if (
-            candidate.screenedAt !== undefined &&
-            candidate.classification &&
-            // A category this policy excludes, or a male lead that failed the
-            // English text check, is never screened again by the same policy.
-            (!(e.policy.allowedCategories ?? ['male']).includes(candidate.classification) ||
-              (candidate.classification === 'male' && candidate.englishTextCheckPassed !== true))
-          )
-            continue
-          lead = candidate
-          selected = route
-          break
+    for (const category of [undefined, ...(e.policy.allowedCategories ?? ['male'])]) {
+      const memberships = await ctx.db.query('leadMemberships')
+        .withIndex('by_list_category', q => q.eq('listId', route.leadListId).eq('available', true).eq('classification', category))
+        .take(100);
+      for (const membership of memberships) {
+        const candidate = await ctx.db.get(membership.leadId);
+        if (!candidate || !leadAvailable(candidate)) {
+          await ctx.db.patch(membership._id, { available: false })
+          continue
         }
-        if (lead) break;
+        if ((candidate.screeningUntil ?? 0) > Date.now()) continue
+        if (
+          candidate.screenedAt !== undefined &&
+          candidate.classification &&
+          // A category this policy excludes, or a male lead that failed the
+          // English text check, is never screened again by the same policy.
+          (!(e.policy.allowedCategories ?? ['male']).includes(candidate.classification) ||
+            (candidate.classification === 'male' && candidate.englishTextCheckPassed !== true))
+        )
+          continue
+        lead = candidate
+        break
       }
+      if (lead) break;
     }
-    if (!lead || !selected) return null
+    if (!lead) return null
     const screeningToken = `${Date.now()}:${Math.random().toString(36).slice(2)}`
     await ctx.db.patch(lead._id, {
       screeningToken,
       screeningProfileId: args.profileId,
       screeningAutomationId: args.automationId,
-      screeningListId: selected.leadListId,
+      screeningListId: route.leadListId,
       screeningUntil: Date.now() + 2 * 60_000,
     });
-    await ctx.db.patch(state._id, { lastLeadListId: selected.leadListId });
     return { leadId: lead._id, username: lead.username,
       fullName: lead.fullName,
       isPrivate: lead.isPrivate,
-      message: selected.message,
+      message: route.message,
       date,
       screeningToken,
     };
@@ -398,9 +388,7 @@ export const beginFollow = internalMutation({
       (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
       !lead.followed && lead.followStartedAt === undefined && !lead.dmSent && !lead.dmBlocked && lead.dmStartedAt === undefined &&
       canFollow(e) && today === args.date &&
-      (!lead.outreachListId || ((await ctx.db.get(lead.outreachListId)) && lead.outreachAutomationId === args.automationId && profileOutreachRoutes(e.policy, args.profileId).some(
-            (route) => route.leadListId === lead.outreachListId,
-          ))));
+      (!lead.outreachListId || ((await ctx.db.get(lead.outreachListId)) && lead.outreachAutomationId === args.automationId && profileOutreach(e.policy, args.profileId)?.leadListId === lead.outreachListId)));
     if (!allowed || !lead || !e) return false;
     // Screening already reserves the initial day's slot. A later-day follow
     // must reserve today's slot in the same transaction as its follow intent.
@@ -446,12 +434,12 @@ export const notifications = internalQuery({
       return { date, since: Math.max(lead.followDate!, (e.state?.lastNotificationsAt ?? 0) - 86_400_000) };
     }
     if (!canSendDm(e)) return null;
-    const routes = e.routes;
+    const route = e.outreach;
     for await (const lead of ctx.db.query('leads').withIndex('by_follow_due', q =>
       q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lt('followDate', Date.parse(date)))) {
       if (pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
         lead.classification && (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
-        routes.some(route => route.leadListId === lead.outreachListId)) {
+        route?.leadListId === lead.outreachListId) {
         return { date, since: Math.max(lead.followDate!, (e.state?.lastNotificationsAt ?? 0) - 86_400_000) };
       }
     }
@@ -467,7 +455,7 @@ export const recordNotifications = internalMutation({
     if (args.events.length > 1000) throw new Error('Too many notification rows');
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!e?.maintenance || args.date !== dayKey()) return false;
-    const routes = e.routes, now = Date.now();
+    const route = e.outreach, now = Date.now();
     let requestLikerScan = false;
     for (const event of args.events) {
       const username = event.username.trim().toLowerCase();
@@ -482,7 +470,7 @@ export const recordNotifications = internalMutation({
         // Preserve follow-back eligibility while delivery is off; sending still rechecks canSendDm.
         if ((event.kind === 'follow' || canSendDm(e)) && pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
           lead.classification && (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
-          routes.some(route => route.leadListId === lead.outreachListId) &&
+          route?.leadListId === lead.outreachListId &&
           lead.outreachListId && await ctx.db.get(lead.outreachListId)) {
           if (event.kind === 'like') requestLikerScan = true;
           await ctx.db.patch(lead._id, { dmEligible: true, ...(event.kind === 'follow'
@@ -501,12 +489,12 @@ export const dmTasks = internalQuery({
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!canSendDm(e)) return [];
-    const routes = e.routes;
+    const route = e.outreach;
     const tasks = [];
     for await (const lead of ctx.db.query('leads').withIndex('by_dm_pending', (q) =>
       q.eq('senderId', args.profileId).eq('dmEligible', true).eq('dmStartedAt', undefined),
       )) {
-      const route = routes.find((route) => route.leadListId === lead.outreachListId);
+      if (route?.leadListId !== lead.outreachListId) continue;
       if (
         lead.classification &&
         (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
@@ -538,9 +526,7 @@ export const beginSend = internalMutation({
       dayKey(now) !== args.date ||
       lead.outreachAutomationId !== args.automationId || !lead.outreachListId ||
       !(await ctx.db.get(lead.outreachListId)) ||
-      !profileOutreachRoutes(e.policy, args.profileId).some(
-        (route) => route.leadListId === lead.outreachListId,
-      )) return false;
+      profileOutreach(e.policy, args.profileId)?.leadListId !== lead.outreachListId) return false;
     await ctx.db.patch(lead._id, { dmStartedAt: now, dmStartedDate: args.date, dmEligible: false });
     return true;
   },

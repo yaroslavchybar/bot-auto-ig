@@ -236,12 +236,8 @@ export type DbAutomationRow = {
     ai?: import('./aiSettings.js').AiSettings }
   _id: string
   name: string
-  nodes: import('../automation/graph.js').AutomationNode[]
-  edges: import('../automation/graph.js').AutomationEdge[]
   status?: string
   isActive?: boolean
-  currentNodeId?: string
-  nodeStates?: Record<string, unknown>
 }
 
 export async function automationsGetById(automationId: string): Promise<DbAutomationRow | null> {
@@ -323,7 +319,7 @@ export type RuntimeProfile = {
   name: string
   status?: string
   inUse: boolean
-  modelIds?: string[]
+  modelId?: string
   lastOpenedAt?: number
   igLoggedIn?: boolean
   igAccountStatus?: string

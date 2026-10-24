@@ -146,7 +146,7 @@ test('DM tasks keep message variations intact and supply the recipient name for 
   const { t, args, loggedIn, profile, automation } = await setup();
   await loggedIn();
   const message = '{Hi|Hey} [name], [username]!';
-  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, message } }));
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreach: { ...automation.routine!.outreach!, message } } }));
   const claim = (await reserveFollow(t, args))!;
   await t.run(ctx => ctx.db.patch(claim.leadId, { fullName: 'Alice Smith' }));
   await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
@@ -159,10 +159,10 @@ test('DM tasks keep message variations intact and supply the recipient name for 
 
 test('routine saves reject broken or possibly empty message variations', () => {
   for (const message of ['{Hi|Hey', '{{username}', '{Hi| }']) {
-    expect(() => validateRoutine({ ...defaultRoutine, message })).toThrow(/variation|empty/);
+    expect(() => validateRoutine({ ...defaultRoutine, outreach: { leadListId: 'list' as Id<'leadLists'>, profileIds: [], allProfiles: true, message } })).toThrow(/variation|empty/);
   }
   const route = { leadListId: 'list' as Id<'leadLists'>, profileIds: [], message: '{Hey|Hi' };
-  expect(() => validateRoutine({ ...defaultRoutine, outreachRoutes: [route] })).toThrow(/variation/);
+  expect(() => validateRoutine({ ...defaultRoutine, outreach: route })).toThrow(/variation/);
 });
 
 test('outreach reservations move unique leads from ready to assigned without resetting after a follow', async () => {
@@ -171,7 +171,6 @@ test('outreach reservations move unique leads from ready to assigned without res
     const { t, args, loggedIn, profile } = await setup();
     await loggedIn();
     await t.mutation(api.leadStats.initialize, {});
-    await t.mutation(api.analytics.initialize, {});
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     const readStats = () => t.run(async ctx => (await ctx.db.query('leadStats').unique())!.counts);
     expect(await readStats()).toMatchObject({ total: 4, male: 4, assigned: 0 });
@@ -187,62 +186,33 @@ test('outreach reservations move unique leads from ready to assigned without res
   } finally { vi.useRealTimers(); }
 });
 
-test('saved multi-list routines cannot claim follows or send DMs until corrected', async () => {
-  const { t, args, loggedIn, profile, automation, leadListId } = await setup();
-  await loggedIn();
-  const claim = (await reserveFollow(t, args))!;
-  await authorizeDm(t, args, claim);
-  await t.run(ctx => ctx.db.patch(claim.leadId, { dmStartedAt: undefined, dmStartedDate: undefined, dmEligible: true }));
-  const other = await t.mutation(api.leads.createList, { name: 'Other purpose' });
-  await t.run(async ctx => {
-    await ctx.db.patch(automation._id, { routine: { ...automation.routine!, leadListId: undefined, message: '', outreachRoutes: [
-      { leadListId, profileIds: [profile._id], message: 'First {{username}}' },
-      { leadListId: other, profileIds: [profile._id], message: 'Second {{username}}' },
-    ] } });
-  });
-  expect(await reserveFollow(t, args)).toBeNull();
-  expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
-  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
-  await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });
-  await expect(t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: true })).rejects.toThrow('Use one scraped list per automation');
-});
-
 test('empty lists cannot claim leads; unassigned profiles do not reserve or report targets', async () => {
   const { t, args, loggedIn, profile, automation, leadListId } = await setup();
   await loggedIn();
   const empty = await t.mutation(api.leads.createList, { name: 'Empty' });
-  const routine = { ...automation.routine!, leadListId: undefined, outreachRoutes: [
-    { leadListId: empty, profileIds: [profile._id], message: 'Empty' },
-  ] };
+  const routine = { ...automation.routine!, outreach: { leadListId: empty, profileIds: [profile._id], message: 'Empty' } };
   await t.run(ctx => ctx.db.patch(automation._id, { routine }));
   expect(await reserveFollow(t, args)).toBeNull();
-  routine.outreachRoutes = [{ leadListId, profileIds: [profile._id], message: 'Available' }];
+  routine.outreach = { leadListId, profileIds: [profile._id], message: 'Available' };
   await t.run(ctx => ctx.db.patch(automation._id, { routine }));
   const claim = (await reserveFollow(t, args))!;
   expect(claim.message).toBe('Available');
   expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: claim.leadId, date: claim.date })).toBe(true);
-  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...routine, outreachRoutes: routine.outreachRoutes.map(route => ({ ...route, profileIds: [] })) } }));
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...routine, outreach: { ...routine.outreach!, profileIds: [] } } }));
   expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
   expect(await reserveFollow(t, args)).toBeNull();
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
   expect((await t.query(api.routines.accounts, { automationId: automation._id }))[0].allowance).toBe(0);
 });
 
-test('assignment validation prevents foreign profiles and multiple scraped lists', async () => {
+test('assignment validation prevents foreign profiles', async () => {
   const { t, automation, profile, leadListId } = await setup();
   await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });
   const foreign = (await seedProfile(t, { name: 'Outside model' }))!;
-  const routine = { ...automation.routine!, leadListId: undefined, outreachRoutes: [{ leadListId, profileIds: [foreign._id], message: 'Hi' }] };
+  const routine = { ...automation.routine!, outreach: { leadListId, profileIds: [foreign._id], message: 'Hi' } };
   await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine })).rejects.toThrow('Assigned profiles must belong');
   const route = { leadListId, profileIds: [profile._id], message: 'Hi' };
-  const other = await t.mutation(api.leads.createList, { name: 'Other purpose' });
-  for (const second of [route, { ...route, leadListId: other }]) {
-    const invalid = { ...routine, outreachRoutes: [route, second] };
-    await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: invalid })).rejects.toThrow('Use one scraped list per automation');
-    await expect(t.mutation(api.automations.mutations.create, { name: 'Invalid', nodes: [], edges: [], modelIds: automation.modelIds, routine: invalid })).rejects.toThrow('Use one scraped list per automation');
-  }
-  await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...routine, outreachRoutes: [route] } })).resolves.toBeTruthy();
+  await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...routine, outreach: route } })).resolves.toBeTruthy();
 });
 
 test('blocked DMs do not release follow slots or permit a DM retry', async () => {
@@ -311,16 +281,13 @@ async function setup(randomizeQuota = false) {
     name: "Recipients", });
   const automation = (await t.mutation(api.automations.mutations.create, {
     name: "Daily",
-    nodes: [],
-    edges: [],
     modelIds: [list._id],
     routine: {
       ...defaultRoutine,
       initialDms: 2,
       maxDms: 3,
       outreachEnabled: true,
-      leadListId,
-      message: "Hello {{username}}", }, }))!;
+      outreach: { leadListId: leadListId, profileIds: [], allProfiles: true, message: "Hello {{username}}" }, }, }))!;
   await t.mutation(api.automations.mutations.setActive, {
     id: automation._id,
     isActive: true, });
@@ -588,11 +555,9 @@ test("one automation owns each model; moving a profile changes its automation", 
   const { t, list, profile } = await setup();
   const secondList = (await seedModel(t, "Second"))!;
   await expect(t.mutation(api.automations.mutations.create, {
-    name: "Duplicate model", nodes: [], edges: [], modelIds: [list._id], routine: defaultRoutine, })).rejects.toThrow('already has an automation');
+    name: "Duplicate model", modelIds: [list._id], routine: defaultRoutine, })).rejects.toThrow('already has an automation');
   const second = (await t.mutation(api.automations.mutations.create, {
     name: "Second",
-    nodes: [],
-    edges: [],
     modelIds: [secondList._id],
     routine: defaultRoutine, }))!;
   await expect(t.mutation(api.automations.mutations.update, {
@@ -605,7 +570,7 @@ test("one automation owns each model; moving a profile changes its automation", 
     profileIds: [profile._id],
     modelId: secondList._id, });
   const moved = await t.run(async (ctx) => ctx.db.get(profile._id));
-  expect(moved?.modelIds?.map(String)).toEqual([String(secondList._id)]);
+  expect(moved?.modelId).toBe(secondList._id);
 });
 
 test('moving between models preserves account progress, warm-up budgets, and follow history', async () => {
@@ -629,7 +594,7 @@ test('moving between models preserves account progress, warm-up budgets, and fol
   const before = await snapshot();
   const destination = (await seedModel(t, 'Destination model'))!;
   const next = (await t.mutation(api.automations.mutations.create, {
-    name: 'Destination automation', nodes: [], edges: [], modelIds: [destination._id], routine: automation.routine, }))!;
+    name: 'Destination automation', modelIds: [destination._id], routine: automation.routine, }))!;
   await t.mutation(api.automations.mutations.setActive, { id: next._id, isActive: true });
   await t.mutation(api.profiles.mutations.bulkRemoveFromModel, { profileIds: [profile._id], modelId: list._id });
   expect(await snapshot()).toEqual(before);
@@ -843,7 +808,6 @@ test('daily follow-back discovery enables next-day DMs independently of follow q
   try {
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
     const { t, args, profile, loggedIn } = await setup(); await loggedIn();
-    await t.mutation(api.analytics.initialize, {});
     const claims = [];
     for (let i = 0; i < 2; i++) {
       const claim = (await reserveFollow(t, args))!;
@@ -907,7 +871,7 @@ test.each(['expired', 'unfollowed', 'paused', 'route removed', 'automation disab
     if (reason === 'expired') await t.run(ctx => ctx.db.patch(claim.leadId, { unfollowAt: Date.now() }));
     if (reason === 'unfollowed') await t.run(ctx => ctx.db.patch(claim.leadId, { followed: false }));
     if (reason === 'paused') await t.mutation(api.routines.setAccount, { profileId: args.profileId, paused: true });
-    if (reason === 'route removed') await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreachRoutes: [] } }));
+    if (reason === 'route removed') await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreach: undefined } }));
     if (reason === 'automation disabled') await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });
     if (reason === 'DMs disabled') await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, notificationDmsEnabled: false } }));
     expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: task.leadId, date: task.date })).toBe(false);
@@ -963,7 +927,7 @@ test('turning following off rejects a screening result already in progress witho
 
 test('follow-only routines accept an empty message, while notification DMs require one', () => {
   const policy = { ...defaultRoutine, outreachEnabled: true, followingEnabled: true,
-    notificationDmsEnabled: false, leadListId: 'list' as Id<'leadLists'>, message: '' };
+    notificationDmsEnabled: false, outreach: { leadListId: 'list' as Id<'leadLists'>, profileIds: [], allProfiles: true, message: '' },  };
   expect(() => validateRoutine(policy)).not.toThrow();
   expect(() => validateRoutine({ ...policy, followingEnabled: false, notificationDmsEnabled: true })).toThrow('Write a message');
 });
@@ -1390,7 +1354,7 @@ test.each(['pause', 'categories', 'route', 'disabled'] as const)(
                   ...automation.routine!,
                   ...(change === 'categories'
                     ? { allowedCategories: ['business'] as const as ['business'] }
-                    : { leadListId: undefined }), }, },
+                    : { outreach: undefined }), }, },
         ),
       )
     expect(

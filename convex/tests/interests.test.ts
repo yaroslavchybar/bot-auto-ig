@@ -12,8 +12,6 @@ test('automation interest tags and rewritten intent persist and can be removed w
   ]
   const automation = await t.mutation(api.automations.mutations.create, {
     name: 'Interests',
-    nodes: [],
-    edges: [],
     modelIds: [list!._id],
     routine: { ...defaultRoutine, interests },
   })

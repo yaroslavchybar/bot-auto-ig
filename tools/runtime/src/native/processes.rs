@@ -29,7 +29,6 @@ struct Registry {
 struct Progress {
     due_at: Option<u64>,
     terminal: Option<String>,
-    checkpoint: Option<Value>,
     error: Option<String>,
     profiles: HashSet<String>,
     diagnostics: VecDeque<Value>,
@@ -38,9 +37,8 @@ struct Progress {
     session_error: Option<Value>,
 }
 #[derive(Clone)]
-struct CheckpointUpdate {
+struct StatusUpdate {
     status: String,
-    checkpoint: Option<Value>,
     error: Option<String>,
 }
 enum Control {
@@ -55,7 +53,7 @@ struct Job {
     control: mpsc::Sender<Control>,
     done: watch::Receiver<bool>,
     progress: Mutex<Progress>,
-    checkpoints: watch::Sender<Option<CheckpointUpdate>>,
+    status_updates: watch::Sender<Option<StatusUpdate>>,
 }
 pub struct Processes {
     api: Arc<Api>,
@@ -214,9 +212,9 @@ impl Processes {
         if automation.is_null() {
             return Err(Failure::missing("Automation not found"));
         }
-        let payload = json!({"automationId": id, "automation": automation, "parallelProfiles": 1, "yieldWhenIdle": !automation["routine"].is_null()});
+        let payload = json!({"automationId": id, "automation": automation, "yieldWhenIdle": true});
         if let Err(error) = self.spawn(true, id, vec![], Some(payload)).await {
-            let _ = self.status(id, "failed", None, None).await;
+            let _ = self.status(id, "failed", None).await;
             return Err(error);
         }
         let _ = self
@@ -363,8 +361,8 @@ impl Processes {
         }
         let (control, mut controls) = mpsc::channel(4);
         let (done, done_rx) = watch::channel(false);
-        let (checkpoints, mut checkpoint_updates) =
-            watch::channel::<Option<CheckpointUpdate>>(None);
+        let (status_updates, mut pending_status_updates) =
+            watch::channel::<Option<StatusUpdate>>(None);
         let job = Arc::new(Job {
             automation,
             id: id.into(),
@@ -373,34 +371,29 @@ impl Processes {
             control,
             done: done_rx,
             progress: Default::default(),
-            checkpoints,
+            status_updates,
         });
         let key = Self::key(automation, id);
         self.jobs.lock().await.insert(key.clone(), job.clone());
         let owner = self.clone();
-        let checkpoint_owner = owner.clone();
-        let checkpoint_id = id.to_owned();
-        let (finish_checkpoints, mut finish_updates) = oneshot::channel();
-        // Keep only the latest cumulative checkpoint while a Convex write is in flight.
-        let checkpoint_writer = tokio::spawn(async move {
+        let status_owner = owner.clone();
+        let status_id = id.to_owned();
+        let (finish_status_updates, mut finish_updates) = oneshot::channel();
+        // Keep only the latest status while a Convex write is in flight.
+        let status_writer = tokio::spawn(async move {
             loop {
                 tokio::select! {
                     _ = &mut finish_updates => break,
-                    changed = checkpoint_updates.changed() => if changed.is_err() { break; },
+                    changed = pending_status_updates.changed() => if changed.is_err() { break; },
                 }
-                let update = checkpoint_updates.borrow_and_update().clone();
+                let update = pending_status_updates.borrow_and_update().clone();
                 if let Some(update) = update {
-                    if let Err(error) = checkpoint_owner
-                        .status(
-                            &checkpoint_id,
-                            &update.status,
-                            update.checkpoint.as_ref(),
-                            update.error.as_deref(),
-                        )
+                    if let Err(error) = status_owner
+                        .status(&status_id, &update.status, update.error.as_deref())
                         .await
                     {
                         ig_service_common::service_error(
-                            "automation.checkpoint_failed",
+                            "automation.status_failed",
                             &error.message,
                         );
                     }
@@ -459,8 +452,8 @@ impl Processes {
             }
             #[cfg(unix)]
             kill_tree(pid, true).await;
-            let _ = finish_checkpoints.send(());
-            let _ = checkpoint_writer.await;
+            let _ = finish_status_updates.send(());
+            let _ = status_writer.await;
             let progress = job.progress.lock().await;
             let stopped = job.stopping.load(Ordering::Relaxed);
             let success = status.as_ref().is_ok_and(|status| status.success());
@@ -478,7 +471,6 @@ impl Processes {
             } else {
                 None
             };
-            let checkpoint = progress.checkpoint.clone();
             let error = progress.error.clone();
             let diagnostics = progress.diagnostics.clone();
             let diagnostic_count = progress.diagnostic_count;
@@ -487,15 +479,7 @@ impl Processes {
             let final_status = final_status.to_owned();
             drop(progress);
             if automation {
-                if let Err(error) = owner
-                    .status(
-                        &job.id,
-                        &final_status,
-                        checkpoint.as_ref(),
-                        error.as_deref(),
-                    )
-                    .await
-                {
+                if let Err(error) = owner.status(&job.id, &final_status, error.as_deref()).await {
                     ig_service_common::service_error("automation.status_failed", &error.message);
                 }
             }
@@ -573,9 +557,6 @@ impl Processes {
             let kind = data["type"].as_str().unwrap_or("").to_owned();
             if job.automation {
                 let mut progress = job.progress.lock().await;
-                if !data["nodeStates"].is_null() {
-                    progress.checkpoint = Some(data.clone());
-                }
                 match kind.as_str() {
                     "worker_waiting" => {
                         progress.due_at = api::timestamp_ms(&data["dueAt"]);
@@ -590,9 +571,6 @@ impl Processes {
                             progress.profiles.remove(name);
                         }
                     }
-                    "checkpoint" => {
-                        progress.checkpoint = Some(data.clone());
-                    }
                     "session_ended" => {
                         progress.terminal = Some(terminal(data["status"].as_str().unwrap_or("")));
                         progress.error = data["error"].as_str().map(str::to_owned);
@@ -606,21 +584,15 @@ impl Processes {
                 }
                 if matches!(
                     kind.as_str(),
-                    "checkpoint" | "session_started" | "session_ended" | "worker_waiting"
+                    "session_started" | "session_ended" | "worker_waiting"
                 ) {
                     let status = if kind == "session_ended" {
                         progress.terminal.as_deref().unwrap_or("completed")
                     } else {
                         "running"
                     };
-                    let checkpoint = if kind == "session_ended" && data["nodeStates"].is_null() {
-                        progress.checkpoint.as_ref()
-                    } else {
-                        Some(&data)
-                    };
-                    job.checkpoints.send_replace(Some(CheckpointUpdate {
+                    job.status_updates.send_replace(Some(StatusUpdate {
                         status: status.into(),
-                        checkpoint: checkpoint.cloned(),
                         error: data["error"].as_str().map(str::to_owned),
                     }));
                 }
@@ -628,15 +600,11 @@ impl Processes {
             }
             if !matches!(
                 kind.as_str(),
-                "checkpoint"
-                    | "worker_waiting"
+                "worker_waiting"
                     | "model_setup_after_session"
                     | "display_allocated"
                     | "display_released"
             ) {
-                if let Some(object) = data.as_object_mut() {
-                    object.remove("nodeStates");
-                }
                 let _ = self.api.events.send(data);
             }
         } else if let Ok(value) = serde_json::from_str::<Value>(text) {
@@ -680,22 +648,8 @@ impl Processes {
             progress.diagnostics.pop_front();
         }
     }
-    async fn status(
-        &self,
-        id: &str,
-        status: &str,
-        checkpoint: Option<&Value>,
-        error: Option<&str>,
-    ) -> Result<()> {
+    async fn status(&self, id: &str, status: &str, error: Option<&str>) -> Result<()> {
         let mut body = json!({"id": id, "status": status});
-        if let Some(checkpoint) = checkpoint {
-            if !checkpoint["nodeStates"].is_null() {
-                body["nodeStates"] = checkpoint["nodeStates"].clone();
-            }
-            if !checkpoint["nodeId"].is_null() {
-                body["currentNodeId"] = checkpoint["nodeId"].clone();
-            }
-        }
         if let Some(error) = error {
             body["error"] = json!(error);
         }

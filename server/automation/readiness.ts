@@ -15,7 +15,7 @@ export function routineDueAt(snapshot: RuntimeSnapshot, now = Date.now()): numbe
     if (profile.paused || profile.inUse || profile.status === 'running' || profile.status === 'deleting' || profile.pendingRenameFrom) continue
     const state = progress.get(String(profile.id))
     const warmup = warmups.get(String(profile.id))
-    if (state?.paused || state?.issue) continue
+    if (state?.issue) continue
     let at = Math.max(now, state?.nextRunAt ?? 0, warmup?.nextRunAt ?? 0)
     if (warmup?.date === today && (warmup.activeRun || (warmup.minutesUsedToday ?? 0) >= (warmup.todayMinutes ?? Infinity)))
       at = Math.max(at, midnight)

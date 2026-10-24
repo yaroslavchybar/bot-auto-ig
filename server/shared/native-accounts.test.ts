@@ -85,7 +85,7 @@ async function fixture() {
     status: 'running',
     inUse: true,
     cookiesJson: '[]',
-    modelIds: ['model'],
+    modelId: 'model',
     igLoggedIn: true,
     proxy: 'work.test:80',
   }

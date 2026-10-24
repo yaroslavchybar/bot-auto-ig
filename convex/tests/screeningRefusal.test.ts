@@ -14,8 +14,8 @@ async function setup() {
   await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: list._id })
   const leadListId = await t.mutation(api.leads.createList, { name: 'Recipients' })
   const automation = (await t.mutation(api.automations.mutations.create, {
-    name: 'Daily', nodes: [], edges: [], modelIds: [list._id],
-    routine: { ...defaultRoutine, initialDms: 2, maxDms: 3, outreachEnabled: true, leadListId, message: 'Hello {{username}}' },
+    name: 'Daily', modelIds: [list._id],
+    routine: { ...defaultRoutine, initialDms: 2, maxDms: 3, outreachEnabled: true, outreach: { leadListId: leadListId, profileIds: [], allProfiles: true, message: 'Hello {{username}}' },  },
   }))!
   await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: true })
   await t.mutation(api.profiles.mutations.setIgState, { profileId: profile._id, igLoggedIn: true })

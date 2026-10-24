@@ -18,10 +18,8 @@ async function setup() {
   })
   const automation = (await t.mutation(api.automations.mutations.create, {
     name: 'Outreach',
-    nodes: [],
-    edges: [],
     modelIds: [model._id],
-    routine: { ...defaultRoutine, outreachEnabled: true, leadListId: listId, message: 'Hello' },
+    routine: { ...defaultRoutine, outreachEnabled: true, outreach: { leadListId: listId, profileIds: [], allProfiles: true, message: 'Hello' },  },
   }))!
   await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: true })
   const args = { automationId: automation._id, profileId: profile._id }

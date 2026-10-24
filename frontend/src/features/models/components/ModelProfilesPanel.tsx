@@ -23,10 +23,10 @@ export function ModelProfilesPanel({ model, active = true }: { model: Model; act
   const [error, setError] = useState('')
   const modelId = model.id as Id<'models'>
   const connected = (profiles ?? [])
-    .filter((profile) => profile.modelIds?.includes(modelId))
+    .filter((profile) => profile.modelId === modelId)
     .sort(byName)
   const available = (profiles ?? [])
-    .filter((profile) => !profile.modelIds?.length && profile.status !== 'deleting')
+    .filter((profile) => !profile.modelId && profile.status !== 'deleting')
     .sort(byName)
   const notLoggedInCount = connected.filter((profile) => !profile.igLoggedIn).length
 

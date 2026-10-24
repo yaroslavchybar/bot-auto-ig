@@ -49,25 +49,23 @@ test('day one reserves only browsing and preserves the plan across retries', asy
   expect(await t.mutation(internal.warmup.mutations.beginRunInternal, input)).toEqual(plan)
 })
 
-test.each([true, false])('week-one follows have an independent quota and count once (analytics initialized before: %s)', async initializeBefore => {
+test('week-one follows have an independent quota and count once without analytics initialization', async () => {
   const { t, args, begin } = await setup()
   const listId = (await seedModel(t))!._id
   const automation = await seedAutomation(t, { modelIds: [listId], routine: { ...defaultRoutine, outreachEnabled: false } })
-  await t.run(ctx => ctx.db.patch(args.profileId, { modelIds: [listId], igLoggedIn: true }))
+  await t.run(ctx => ctx.db.patch(args.profileId, { modelId: listId, igLoggedIn: true }))
   const plan = await begin()
   await t.run(async ctx => {
     const state = await ctx.db.query('warmupStates').unique()
     await ctx.db.patch(state!._id, { day: 3, lastAutomationId: automation!._id,
       activityPlan: { ...plan.activityPlan!, follows: 2 } })
   })
-  if (initializeBefore) await t.mutation(api.analytics.initialize, {})
   const follow = { profileId: args.profileId, runId: args.runId, date: plan.date, username: 'fitness_one' }
   expect(await t.mutation(internal.warmup.mutations.beginFollowInternal, { ...follow, runId: 'wrong' })).toBe(false)
   expect(await t.mutation(internal.warmup.mutations.beginFollowInternal, follow)).toBe(true)
   expect(await t.mutation(internal.warmup.mutations.beginFollowInternal, follow)).toBe(false)
   await t.mutation(internal.warmup.mutations.confirmFollowInternal, follow)
   await t.mutation(internal.warmup.mutations.confirmFollowInternal, follow)
-  if (!initializeBefore) await t.mutation(api.analytics.initialize, {})
   expect(await t.mutation(internal.warmup.mutations.beginFollowInternal, { ...follow, username: 'fitness_two' })).toBe(true)
   expect(await t.mutation(internal.warmup.mutations.beginFollowInternal, { ...follow, username: 'fitness_three' })).toBe(false)
   await t.mutation(internal.warmup.mutations.finishRunInternal, { profileId: args.profileId, runId: args.runId,
@@ -145,7 +143,6 @@ test('recovery exhausts uncertain activity attempts so a crash cannot repeat eng
 
 test('records actual time once, and releases unused time for another run', async () => {
   const { t, begin, finish, state } = await setup()
-  await t.mutation(api.analytics.initialize, {})
   const { date } = await begin()
   await finish(date, 5)
   await finish(date, 5)
@@ -189,7 +186,6 @@ test('restart recovery rounds rest deadlines and preserves a later stored deadli
   vi.setSystemTime(now)
   for (const previous of [0, now + 120_000.25]) {
     const { t, begin, state } = await setup({ restMinMinutes: 1.000001, restMaxMinutes: 1.000001 })
-    await t.mutation(api.analytics.initialize, {})
     await begin()
     const row = (await t.run(ctx => ctx.db.query('warmupStates').collect()))[0]
     await t.run(ctx => ctx.db.patch(row._id, { nextRunAt: previous }))

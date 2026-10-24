@@ -33,7 +33,7 @@ test('routine wakeups honor rest, login, daily budgets and paused profiles', () 
     { ...ready, paused: true }, { ...ready, igLoggedIn: false }, { ...ready, inUse: true }, { ...ready, pendingRenameFrom: 'old' },
     { ...ready, igAccountStatus: 'assigned', browserLoggedInAt: now - 1000 },
   ]) assert.equal(routineDueAt({ automation, profiles: [blocked] }, now), now + 15 * 60_000)
-  assert.equal(routineDueAt({ automation, profiles: [ready], progress: [{ profileId: 'ready', paused: true }] }, now), now + 15 * 60_000)
+  assert.equal(routineDueAt({ automation, profiles: [{ ...ready, paused: true }], progress: [{ profileId: 'ready' }] }, now), now + 15 * 60_000)
   assert.equal(routineDueAt({ automation, profiles: [ready], warmups: [{ profileId: 'ready', date: '2026-09-30', todayMinutes: 10, minutesUsedToday: 10 }] }, now), Date.parse('2026-10-01T00:00:00Z'))
   assert.equal(routineDueAt({ automation, profiles: [{ ...ready, igAccountStatus: 'assigned', browserLoggedInAt: now - 24 * 60 * 60_000 }] }, now), now)
 })

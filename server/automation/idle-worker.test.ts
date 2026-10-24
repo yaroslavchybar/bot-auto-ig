@@ -8,7 +8,7 @@ test('a resting routine yields its deadline and closes its realtime subscription
     let closed = 0
     const dueAt = Date.now() + 60_000
     const snapshot = { automation: { isActive: true, status: 'running' },
-      profiles: [{ id: 'resting', name: 'Resting', modelIds: ['list'], igLoggedIn: true, inUse: false }],
+      profiles: [{ id: 'resting', name: 'Resting', modelId: 'list', igLoggedIn: true, inUse: false }],
       progress: [{ profileId: 'resting', nextRunAt: dueAt }] }
     const realtime = await import('./server/shared/convexRealtime.ts')
     mock.module('./server/shared/convexRealtime.ts', () => ({

@@ -13,7 +13,6 @@ export type RuntimeWarmup = {
 export type RuntimeProgress = {
   profileId: string
   nextRunAt?: number
-  paused?: boolean
   issue?: string
 }
 export type RuntimeSnapshot = {
@@ -122,10 +121,3 @@ export const watchRoutineAccess = (
 export async function closeConvexRealtime(): Promise<void> {
   for (const close of subscriptions) close()
 }
-
-export const watchProfileAccess = (
-  profileId: string,
-  update: (value: boolean) => void,
-  error: (error: Error) => void,
-  signal?: AbortSignal,
-) => subscribeToConvexQuery('profiles/queries:automationAccess', { profileId }, update, error, signal)

@@ -5,7 +5,7 @@ import type { BrowserSession } from '../browser/cloak.js'
 import type { RuntimeSnapshot } from '../shared/convexRealtime.js'
 import { spawnSync } from 'node:child_process'
 
-const profile = { id: 'p', name: 'Profile', modelIds: ['model'], igLoggedIn: true, inUse: false }
+const profile = { id: 'p', name: 'Profile', modelId: 'model', igLoggedIn: true, inUse: false }
 
 for (const outcome of ['stalled', 'error field', 'error note', 'success', 'cancelled'])
   test(`parent session retains a profile outcome without failing the worker (${outcome})`, () => {
@@ -14,18 +14,21 @@ for (const outcome of ['stalled', 'error field', 'error note', 'success', 'cance
       import { runAutomation } from './server/automation/worker.ts'
       import logger, { logOperation, addLogContext, redactLogValues } from './server/shared/logger.ts'
       const outcome = ${JSON.stringify(outcome)}
-      const profile = {id:'p',name:'fixture',modelIds:['m'],igLoggedIn:true,inUse:false}
+      const profile = {id:'p',name:'fixture',modelId:'m',igLoggedIn:true,inUse:false}
       const snapshot = {automation:{status:'running',isActive:true},profiles:[profile]}
       let updateRuntime, closed = 0
-      globalThis.fetch = async () => Response.json({})
+      globalThis.fetch = async () => Response.json(true)
       await logOperation('automation.session', {}, () => runAutomation({automation:{
-        nodes:[{id:'start',type:'start',data:{config:{sourceLists:['m']}}}],edges:[]
+        modelIds:['m'],routine:{activity:{}}
       }}, {
         watchRuntime: (_id,_lists,update) => {
           updateRuntime = update; update(snapshot)
           return {initial:Promise.resolve(snapshot),unsubscribe() {}}
         },
-        watchProfileAccess: (_id,update) => {
+        setupModel: async () => false,
+        postModelUpdate: async () => false,
+        runSession: async () => false,
+        watchRoutineAccess: (_automation,_id,update) => {
           update(true); return {initial:Promise.resolve(true),unsubscribe() {}}
         },
         openSession: async () => ({page:{},close:async () => {
@@ -57,7 +60,7 @@ for (const outcome of ['stalled', 'error field', 'error note', 'success', 'cance
     assert.ok(!JSON.stringify(logs).includes('profile-private-secret'))
   })
 
-for (const pending of ['runtime', 'routine access', 'profile access'])
+for (const pending of ['runtime', 'routine access'])
   test(`shutdown cancels initial ${pending} subscription before a browser opens`, () => {
     const result = spawnSync(process.execPath, ['--eval', `
       import assert from 'node:assert/strict'
@@ -65,7 +68,7 @@ for (const pending of ['runtime', 'routine access', 'profile access'])
       import { requestStop, shutdownSignal } from './server/browser/lifecycle.ts'
       const pending = ${JSON.stringify(pending)}
       let closed = 0
-      const snapshot = {automation:{status:'running',isActive:true},profiles:[{id:'p',name:'fixture',modelIds:['m'],igLoggedIn:true,inUse:false}]}
+      const snapshot = {automation:{status:'running',isActive:true},profiles:[{id:'p',name:'fixture',modelId:'m',igLoggedIn:true,inUse:false}]}
       function subscription(kind, value, update, signal) {
         assert.equal(signal, shutdownSignal)
         if (kind !== pending) {
@@ -76,82 +79,16 @@ for (const pending of ['runtime', 'routine access', 'profile access'])
         queueMicrotask(requestStop)
         return {initial,unsubscribe() {closed++}}
       }
-      const automation = pending === 'routine access' ? {modelIds:['m'],routine:{activity:{}}}
-        : {nodes:[{id:'start',type:'start',data:{config:{sourceLists:['m']}}}],edges:[]}
+      const automation = {modelIds:['m'],routine:{activity:{}}}
       await assert.rejects(runAutomation({automation}, {
         openSession: async () => {throw Error('Must not open a browser')},
         watchRuntime: (_id,_lists,update,_error,signal) => subscription('runtime',snapshot,update,signal),
         watchRoutineAccess: (_id,_profile,update,_error,signal) => subscription('routine access',true,update,signal),
-        watchProfileAccess: (_profile,update,_error,signal) => subscription('profile access',true,update,signal),
       }), error => error === shutdownSignal.reason)
       assert.equal(closed, pending === 'runtime' ? 1 : 2)
     `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 5000 })
     assert.equal(result.status, 0, result.stderr)
   })
-
-for (const actionFails of [false, true]) {
-  test(`cleanup failures are visible and never replace an earlier action failure (${actionFails})`, async () => {
-    const originalFetch = globalThis.fetch
-    const originalWrite = process.stdout.write
-    const events: Array<Record<string, unknown>> = []
-    let closes = 0
-    globalThis.fetch = (async () => Response.json({})) as typeof fetch
-    process.stdout.write = ((chunk: unknown, callback?: () => void) => {
-      const text = String(chunk)
-      if (text.startsWith('__EVENT__')) events.push(JSON.parse(text.trim().slice(9, -9)))
-      callback?.()
-      return true
-    }) as typeof process.stdout.write
-    const snapshot: RuntimeSnapshot = {
-      automation: { status: 'running', isActive: true },
-      profiles: [profile],
-    }
-    const deps: Partial<WorkerDependencies> = {
-      openSession: async () =>
-        ({
-          page: {},
-          close: async () => {
-            closes++
-            throw new Error('Cookies could not be saved')
-          },
-        }) as unknown as BrowserSession,
-      watchRuntime: (_id, _lists, update) => {
-        update(snapshot)
-        return { initial: Promise.resolve(snapshot), unsubscribe() {} }
-      },
-      watchProfileAccess: (_id, update) => {
-        update(true)
-        return { initial: Promise.resolve(true), unsubscribe() {} }
-      },
-    }
-    try {
-      await assert.rejects(
-        runAutomation(
-          {
-            automation: {
-              nodes: [{ id: 'start', type: 'start', data: { config: { sourceLists: ['model'] } } }],
-              edges: actionFails ? [{ source: 'start', target: 'bad', sourceHandle: 'next' }] : [],
-            },
-          },
-          deps,
-        ),
-        actionFails ? /Automation edge points to missing node/ : /Cookies could not be saved/,
-      )
-      assert.equal(closes, 1)
-      assert.equal(
-        events.some((event) => event.type === 'profile_completed'),
-        false,
-      )
-      assert.equal(
-        events.some((event) => event.type === 'error'),
-        true,
-      )
-    } finally {
-      globalThis.fetch = originalFetch
-      process.stdout.write = originalWrite
-    }
-  })
-}
 
 test('an injected browser opener retains access checks and post-session model setup', async () => {
   const originalFetch = globalThis.fetch

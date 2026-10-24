@@ -20,8 +20,6 @@ const automation: Automation = {
   createdAt: 1,
   updatedAt: 1,
   name: 'Routine',
-  nodes: [],
-  edges: [],
   routine: defaultRoutine,
   status: 'cancelled',
   isActive: false,

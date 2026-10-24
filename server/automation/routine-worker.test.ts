@@ -8,7 +8,7 @@ test('a failed profile does not prevent the next eligible profile from starting'
   const opened: string[] = [], issues: string[] = []
   globalThis.fetch = (async (url, options) => {
     const path = String(url)
-    if (path.endsWith('/api/profiles')) return Response.json(['broken', 'healthy'].map(name => ({ id: name, name, modelIds: ['list'], inUse: false })))
+    if (path.endsWith('/api/profiles')) return Response.json(['broken', 'healthy'].map(name => ({ id: name, name, modelId: 'list', inUse: false })))
     if (path.endsWith('/api/routines/ready')) {
       const body = JSON.parse(String(options?.body))
       return Response.json(!body.checkpoint)

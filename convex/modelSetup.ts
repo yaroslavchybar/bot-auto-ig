@@ -15,7 +15,7 @@ export const modelSetupEnrollInternal = internalMutation({
     if (startedAt < 1 || !Number.isSafeInteger(Math.ceil(startedAt)))
       throw new DomainError('VALIDATION', 'Invalid setup start time')
     const profile = await ctx.db.get(profileId)
-    if (!profile?.modelIds?.includes(modelId) || !(await ctx.db.get(modelId)))
+    if (profile?.modelId !== modelId || !(await ctx.db.get(modelId)))
       throw new DomainError('VALIDATION', 'Profile is not assigned to this model')
     const existing = await ctx.db
       .query('modelSetupStates')
@@ -91,7 +91,7 @@ export const modelSetupPatchInternal = internalMutation({
       .first()
     if (!state) throw new DomainError('NOT_FOUND', 'Model setup not found')
     const profile = await ctx.db.get(profileId)
-    if (state.modelId !== modelId || !profile?.modelIds?.includes(modelId))
+    if (state.modelId !== modelId || profile?.modelId !== modelId)
       throw new DomainError('CONFLICT', 'Profile moved to another model')
     const postsChanged = patch.postSourceIds !== undefined || patch.postDates !== undefined
     const ready = recordedPostsReady(
@@ -126,7 +126,7 @@ export const modelSetupReconcileInternal = internalMutation({
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .first()
     const profile = await ctx.db.get(profileId)
-    if (!state?.pending || !profile?.modelIds?.includes(state.modelId))
+    if (!state?.pending || profile?.modelId !== state.modelId)
       throw new DomainError('CONFLICT', 'No active model setup action needs review')
     const action = state.pending
     if (resolution === 'failed') {

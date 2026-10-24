@@ -1,367 +1,119 @@
-import { test } from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { BrowserSession } from '../browser/cloak.js'
-import { errors } from 'playwright-core'
-import { runTestAutomation as runAutomation, setProfilePollIntervalMs } from '../../tests/server/worker-runtime.js'
+import { runAutomation, type WorkerDependencies } from './worker.js'
+import type { RuntimeSnapshot } from '../shared/convexRealtime.js'
 
-for (const initialState of ['empty', 'busy', 'cooldown'] as const) {
-  test(`initially ${initialState} profiles are picked up when available`, async () => {
-    const originalFetch = globalThis.fetch
-    setProfilePollIntervalMs(1)
-    let reads = 0
-    let checks = 0
-    const opened: string[] = []
-    globalThis.fetch = (async url => {
-      const u = String(url)
-      if (u.endsWith('/api/profiles')) {
-        const first = ++reads === 1
-        return Response.json(first && initialState === 'empty' ? [] : [{
-          id: 'chosen', name: 'chosen', modelIds: ['chosen'],
-          inUse: first && initialState === 'busy',
-          lastOpenedAt: first && initialState === 'cooldown' ? Date.now() : 0,
-        }])
-      }
-      if (u.includes('/api/automations/by-id')) {
-        return Response.json({ status: ++checks === 1 ? 'pending' : opened.length ? 'completed' : 'running', isActive: true })
-      }
-      return Response.json({})
-    }) as typeof fetch
-    try {
-      await runAutomation({ automation: { nodes: [{
-        id: 'start_node', type: 'start', data: { config: {
-          sourceLists: ['chosen'], profileReopenCooldownEnabled: true, profileReopenCooldownMinutes: 30,
-        } },
-      }] } }, async name => {
-        opened.push(name)
-        return { page: {}, close: async () => {} } as unknown as BrowserSession
-      })
-      assert.deepEqual(opened, ['chosen'])
-      assert.equal(reads, 2)
-    } finally {
-      globalThis.fetch = originalFetch
-      setProfilePollIntervalMs(5 * 60 * 1000)
+function fixture() {
+  const profile = (id: string, extra = {}) => ({ id, name: id, modelId: 'model', inUse: false, ...extra })
+  const snapshot: NonNullable<RuntimeSnapshot> = {
+    automation: { status: 'running', isActive: true }, profiles: [profile('first'), profile('second')],
+  }
+  const opened: string[] = [], closed: string[] = [], issues: string[] = []
+  let unsubscribed = 0
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (url, init) => {
+    if (String(url).endsWith('/api/routines/session')) {
+      const body = JSON.parse(String(init?.body))
+      issues.push(body.profileId)
     }
-  })
+    return Response.json(true)
+  }) as typeof fetch
+  const deps: Partial<WorkerDependencies> = {
+    watchRuntime: (_id, _models, update) => {
+      update(snapshot)
+      return { initial: Promise.resolve(snapshot), unsubscribe() { unsubscribed++ } }
+    },
+    watchRoutineAccess: (_id, _profile, update) => {
+      update(true)
+      return { initial: Promise.resolve(true), unsubscribe() { unsubscribed++ } }
+    },
+    openSession: async name => {
+      opened.push(name)
+      return { page: {}, close: async () => { closed.push(name) } } as unknown as BrowserSession
+    },
+    runSession: async () => false,
+    setupModel: async () => false,
+    postModelUpdate: async () => false,
+  }
+  return {
+    profile, snapshot, opened, closed, issues, deps,
+    run: (overrides: Partial<WorkerDependencies> = {}) => runAutomation({
+      automationId: 'automation', yieldWhenIdle: true,
+      automation: { modelIds: ['model'], routine: { activity: {}, headless: true } },
+    }, { ...deps, ...overrides }),
+    restore: () => { globalThis.fetch = originalFetch },
+    subscriptions: () => unsubscribed,
+  }
 }
 
-test('retry skips completed profiles without launching or changing their status', async () => {
-  const originalFetch = globalThis.fetch
-  let launches = 0
-  globalThis.fetch = (async url => {
-    assert.ok(String(url).endsWith('/api/profiles'))
-    return Response.json([{ name: 'done', id: 'done', modelIds: ['chosen'], inUse: false }])
-  }) as typeof fetch
+test('routine queue excludes paused, busy, unrelated, resting and exhausted profiles', async () => {
+  const s = fixture()
+  s.snapshot.profiles.push(s.profile('paused', { paused: true }), s.profile('busy', { inUse: true }),
+    s.profile('other', { modelId: 'other' }), s.profile('resting'), s.profile('exhausted'), s.profile('issue'))
+  s.snapshot.progress = [{ profileId: 'resting', nextRunAt: Date.now() + 60_000 }, { profileId: 'issue', issue: 'Check delivery' }]
+  s.snapshot.warmups = [{ profileId: 'exhausted', date: new Date().toISOString().slice(0, 10), todayMinutes: 10, minutesUsedToday: 10 }]
   try {
-    await runAutomation({ automation: {
-      nodes: [{ id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } }],
-      nodeStates: { __profileRuns: { done: { completed: true } } },
-    } }, async () => { launches++; throw new Error('Must not launch') })
-    assert.equal(launches, 0)
-  } finally { globalThis.fetch = originalFetch }
+    await s.run()
+    assert.deepEqual(s.opened, ['first', 'second'])
+    assert.deepEqual(s.closed, s.opened)
+    assert.equal(s.subscriptions(), 3)
+  } finally { s.restore() }
 })
 
-for (const mode of ['routine', 'graph'] as const) {
-  test(`${mode} plans a rest day before launching a browser or marking the profile busy`, async () => {
-    const originalFetch = globalThis.fetch
-    let prepared = 0, launches = 0
-    const config = { warmup_min_minutes: 30, warmup_max_minutes: 40 }
-    globalThis.fetch = (async (url, init) => {
-      const path = new URL(String(url)).pathname
-      if (path === '/api/profiles') return Response.json([{ id: 'rest-day', name: 'rest-day', modelIds: ['chosen'], inUse: false }])
-      if (path === '/api/warmup/by-profile') return Response.json(null)
-      if (path === '/api/routines/ready') return Response.json(true)
-      if (path === '/api/warmup/prepare') {
-        prepared++
-        assert.deepEqual(JSON.parse(String(init?.body)), { profileId: 'rest-day', minMinutes: 30, maxMinutes: 40 })
-        return Response.json(false)
-      }
-      if (path === '/api/automations/by-id') return Response.json({ status: 'completed', isActive: false })
-      throw new Error(`Unexpected request before rest-day skip: ${path}`)
-    }) as typeof fetch
-    try {
-      await runAutomation({ automation: mode === 'routine'
-        ? { routine: { activity: config }, modelIds: ['chosen'] }
-        : { nodes: [
-          { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
-          { id: 'warm', data: { activityId: 'browse_feed', config } },
-        ], edges: [{ source: 'start_node', target: 'warm', sourceHandle: 'next' }] },
-      }, async () => { launches++; throw new Error('A rest day must not launch a browser') })
-      assert.equal(prepared, 1)
-      assert.equal(launches, 0)
-    } finally { globalThis.fetch = originalFetch }
-  })
-}
-
-test('repeating warm-ups requeue completed profiles but never open resting or exhausted profiles', async () => {
-  const originalFetch = globalThis.fetch
-  setProfilePollIntervalMs(10)
-  const date = new Date().toISOString().slice(0, 10)
-  const profiles = ['ready', 'resting', 'exhausted'].map(id => ({ name: id, id, modelIds: ['chosen'], inUse: false }))
-  let used = 0
-  let nextRunAt = 0
-  let checks = 0
-  globalThis.fetch = (async url => {
-    const u = String(url)
-    if (u.endsWith('/api/profiles')) return Response.json(profiles)
-    if (u.includes('/api/warmup/by-profile')) {
-      const id = new URL(u).searchParams.get('profileId')
-      return Response.json({ date, todayMinutes: 20, reservedMinutes: 0,
-        minutesUsedToday: id === 'exhausted' ? 20 : used,
-        nextRunAt: id === 'resting' ? Date.now() + 60_000 : nextRunAt })
-    }
-    // Scheduling test: skip browser actions; closing simulates completed session accounting.
-    if (u.endsWith('/api/warmup/begin')) return Response.json({ date, minutes: 0 })
-    if (u.includes('/api/automations/by-id')) return Response.json({ status: ++checks <= 12 ? 'running' : 'completed' })
-    return Response.json({})
-  }) as typeof fetch
-  const opened: string[] = []
+test('one failed browser startup records its issue and still runs the next profile', async () => {
+  const s = fixture()
   try {
-    await runAutomation({ automation: {
-      nodes: [
-        { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'], repeatWhileActive: true } } },
-        { id: 'warm', data: { activityId: 'browse_feed' } },
-      ],
-      edges: [{ source: 'start_node', target: 'warm', sourceHandle: 'next' }],
-      nodeStates: { __profileRuns: { ready: { completed: true, date } } },
-    } }, async name => {
-      assert.ok(Date.now() >= nextRunAt)
-      opened.push(name)
-      return { page: {}, close: async () => { used += 10; nextRunAt = Date.now() + 20 } } as unknown as BrowserSession
-    })
-    assert.deepEqual(opened, ['ready', 'ready'])
-  } finally { globalThis.fetch = originalFetch; setProfilePollIntervalMs(5 * 60 * 1000) }
+    await s.run({ openSession: async (name, options) => {
+      if (name === 'first') throw new Error('Profile is already open')
+      return s.deps.openSession!(name, options)
+    } })
+    assert.deepEqual(s.opened, ['second'])
+    assert.deepEqual(s.issues, ['first'])
+    assert.equal(s.subscriptions(), 3)
+  } finally { s.restore() }
 })
 
-test('close browser ends the session and final cleanup stays safe', async () => {
-  const originalFetch = globalThis.fetch
-  const profile = { name: 'chosen', id: 'chosen', modelIds: ['chosen'], inUse: false }
-  globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
-  const sessions: Array<{ closed: boolean; visits: number }> = []
+test('action and cleanup failures close each session once and do not stop later profiles', async () => {
+  const s = fixture()
   try {
-    await runAutomation({ automation: {
-      nodes: [
-        { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
-        { id: 'close', data: { activityId: 'close_browser' } },
-      ],
-      edges: [{ source: 'start_node', target: 'close', sourceHandle: 'next' }],
-    } }, async () => {
-      const state = { closed: false, visits: 0 }
-      sessions.push(state)
-      return { page: { goto: async () => { assert.equal(state.closed, false); state.visits++ } }, close: async () => { state.closed = true } } as unknown as BrowserSession
-    })
-    assert.deepEqual(sessions, [{ closed: true, visits: 0 }])
-  } finally { globalThis.fetch = originalFetch }
+    await s.run({ runSession: async () => { throw new Error('Action failed') }, openSession: async (name, options) => {
+      const session = await s.deps.openSession!(name, options)
+      return { ...session, close: async () => { await session.close(); throw new Error('Cleanup failed') } }
+    } })
+    assert.deepEqual(s.closed, ['first', 'second'])
+    assert.deepEqual(s.issues, ['first', 'second'])
+  } finally { s.restore() }
 })
 
-test('nodes after close browser never run against the closed session', async () => {
-  const originalFetch = globalThis.fetch
-  const profile = { name: 'chosen', id: 'chosen', modelIds: ['chosen'], inUse: false }
-  globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
-  let navigations = 0
+test('revoked routine access prevents opening a browser', async () => {
+  const s = fixture()
   try {
-    await runAutomation({ automation: {
-      nodes: [
-        { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
-        { id: 'close', data: { activityId: 'close_browser' } },
-        { id: 'feed', data: { activityId: 'browse_feed', config: { feed_min_time_minutes: 0, feed_max_time_minutes: 0 } } },
-      ],
-      edges: [
-        { source: 'start_node', target: 'close', sourceHandle: 'next' },
-        { source: 'close', target: 'feed', sourceHandle: 'next' },
-      ],
-    } }, async () => ({
-      page: { goto: async () => { navigations++ } },
-      close: async () => {},
-    } as unknown as BrowserSession))
-    assert.equal(navigations, 0)
-  } finally { globalThis.fetch = originalFetch }
+    await s.run({ watchRoutineAccess: (_id, _profile, update) => {
+      update(false)
+      return { initial: Promise.resolve(false), unsubscribe() {} }
+    } })
+    assert.deepEqual(s.opened, [])
+  } finally { s.restore() }
 })
 
-test('automation action failures reject the run and close the browser', async () => {
-  const originalFetch = globalThis.fetch
-  let closed = false
-  const statuses: string[] = []
-  globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
-    if (String(url).endsWith('/api/profiles'))
-      return Response.json([
-        {
-          name: 'excluded',
-          id: 'other',
-          modelIds: ['other'],
-          inUse: false,
-        },
-        {
-          name: 'chosen',
-          id: 'chosen',
-          modelIds: ['chosen'],
-          inUse: false,
-        },
-      ])
-    if (String(url).includes('/api/warmup/by-profile')) return Response.json(null)
-    if (String(url).endsWith('/api/warmup/prepare')) return Response.json(true)
-    if (String(url).endsWith('/api/warmup/begin')) return Response.json({ date: new Date().toISOString().slice(0, 10), minutes: 30 })
-    if (String(url).endsWith('/api/warmup/finish')) return Response.json({ ok: true })
-    assert.match(String(url), /sync-status$/)
-    statuses.push(JSON.parse(String(init?.body)).status)
-    return Response.json({})
-  }) as typeof fetch
+test('a configuration change terminates the old worker after cleanup', async () => {
+  const s = fixture()
+  let notify!: (snapshot: RuntimeSnapshot) => void
   try {
-    await assert.rejects(
-      runAutomation(
-        {
-          automationId: 'test',
-          automation: {
-            nodes: [
-              {
-                id: 'start_node',
-                type: 'start',
-                data: {
-                  config: { sourceLists: ['chosen'] },
-                },
-              },
-              { id: 'feed', data: { activityId: 'browse_feed' } },
-            ],
-            edges: [{ source: 'start_node', target: 'feed', sourceHandle: 'next' }],
-          },
-        },
-        async (name) => {
-          assert.equal(name, 'chosen')
-          return {
-            page: {
-              url: () => 'https://www.instagram.com/',
-              locator: (selector: string) => {
-                if (selector === 'article') throw new Error('Feed content failed')
-                return { count: async () => 0, filter() { return this }, first() { return this },
-                  waitFor: async () => { throw new errors.TimeoutError('No active stories') },
-                  evaluateAll: async () => false, isVisible: async () => false }
-              },
-              getByRole: () => ({ filter() { return this }, first() { return this }, isVisible: async () => false }),
-              goto: async () => {
-                throw new Error('Home must not be refreshed')
-              },
-            },
-            close: async () => {
-              closed = true
-            },
-          } as unknown as BrowserSession
-        },
-      ),
-      /Feed content failed/,
-    )
-    assert.equal(closed, true)
-    assert.deepEqual(statuses, [], 'the browser lease publishes status; the automation finalizer cannot clear another owner')
-  } finally {
-    globalThis.fetch = originalFetch
-  }
-})
-
-test('browser startup failures never clear another session’s busy status', async () => {
-  const originalFetch = globalThis.fetch
-  let calls = 0
-  globalThis.fetch = (async (url: RequestInfo | URL) => {
-    calls++
-    assert.match(String(url), /api\/profiles$/)
-    return Response.json([
-      {
-        name: 'chosen',
-        id: 'chosen',
-        modelIds: ['chosen'],
-        inUse: false,
+    await assert.rejects(s.run({
+      watchRuntime: (_id, _models, update) => {
+        notify = update; update(s.snapshot)
+        return { initial: Promise.resolve(s.snapshot), unsubscribe() {} }
       },
-    ])
-  }) as typeof fetch
-  try {
-    await assert.rejects(
-      runAutomation(
-        {
-          automation: {
-            nodes: [
-              {
-                id: 'start_node',
-                type: 'start',
-                data: {
-                  config: { sourceLists: ['chosen'] },
-                },
-              },
-            ],
-          },
-        },
-        async () => {
-          throw new Error('Profile is already open')
-        },
-      ),
-      /Profile is already open/,
-    )
-    assert.equal(calls, 1)
-  } finally {
-    globalThis.fetch = originalFetch
-  }
-})
-
-test('running automations pick up newly added profiles on each poll', async () => {
-  setProfilePollIntervalMs(10)
-  const originalFetch = globalThis.fetch
-  const profiles = [{ name: 'old', id: 'old', modelIds: ['chosen'], inUse: false, proxy: 'proxy-a:8080' }]
-  let watchChecks = 0
-  globalThis.fetch = (async (url: RequestInfo | URL) => {
-    const u = String(url)
-    if (u.endsWith('/api/profiles')) return Response.json(profiles)
-    if (u.includes('/api/automations/by-id')) {
-      watchChecks++
-      if (watchChecks <= 2) {
-        if (watchChecks === 1) {
-          profiles.push(
-            { name: 'same', id: 'same', modelIds: ['chosen'], inUse: false, proxy: 'proxy-a:8080' },
-            { name: 'different', id: 'different', modelIds: ['chosen'], inUse: false, proxy: 'proxy-b:8080' },
-          )
-        }
-        return Response.json({ status: 'running', isActive: true })
-      }
-      return Response.json({ status: 'completed', isActive: true })
-    }
-    return Response.json({})
-  }) as typeof fetch
-  const opened: string[] = []
-  try {
-    await runAutomation(
-      {
-        automationId: 'test',
-        automation: {
-          nodes: [
-            { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
-            { id: 'close', data: { activityId: 'close_browser' } },
-          ],
-          edges: [{ source: 'start_node', target: 'close', sourceHandle: 'next' }],
-        },
+      openSession: async (name, options) => {
+        const session = await s.deps.openSession!(name, options)
+        return { ...session, close: async () => {
+          await session.close()
+          notify({ ...s.snapshot, automation: { ...s.snapshot.automation, configRevision: 'changed' } })
+        } }
       },
-      async (name) => {
-        opened.push(name)
-        return { page: {}, close: async () => {} } as unknown as BrowserSession
-      },
-    )
-    assert.deepEqual(opened, ['old', 'different', 'same'])
-    assert.equal(watchChecks, 3)
-  } finally {
-    globalThis.fetch = originalFetch
-    setProfilePollIntervalMs(5 * 60 * 1000)
-  }
-})
-
-test('queue interleaves proxies after excluding completed checkpoints', async () => {
-  const originalFetch = globalThis.fetch
-  const profiles = ['a1', 'a2', 'b1', 'b2', 'b3'].map(id => ({
-    id, name: id, modelIds: ['chosen'], inUse: false, proxy: `proxy-${id[0]}:8080`,
-  }))
-  globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? profiles : {})) as typeof fetch
-  const opened: string[] = []
-  try {
-    await runAutomation({ automation: {
-      nodes: [{ id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } }],
-      nodeStates: { __profileRuns: { b2: { completed: true }, b3: { completed: true } } },
-    } }, async name => {
-      opened.push(name)
-      return { page: {}, close: async () => {} } as unknown as BrowserSession
-    })
-    assert.deepEqual(opened, ['a1', 'b1', 'a2'])
-  } finally { globalThis.fetch = originalFetch }
+    }), /configuration changed/)
+    assert.deepEqual(s.closed, s.opened)
+  } finally { s.restore() }
 })

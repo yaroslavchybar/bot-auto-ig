@@ -13,8 +13,8 @@ async function setup() {
   await t.mutation(api.profiles.mutations.bulkAddToModel, { profileIds: [profile._id], modelId: list._id })
   const leadListId = await t.mutation(api.leads.createList, { name: 'Recipients' })
   const automation = (await t.mutation(api.automations.mutations.create, {
-    name: 'Outreach', nodes: [], edges: [], modelIds: [list._id],
-    routine: { ...defaultRoutine, initialDms: 3, maxDms: 10, outreachEnabled: true, leadListId, message: 'Hello' },
+    name: 'Outreach', modelIds: [list._id],
+    routine: { ...defaultRoutine, initialDms: 3, maxDms: 10, outreachEnabled: true, outreach: { leadListId: leadListId, profileIds: [], allProfiles: true, message: 'Hello' },  },
   }))!
   await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: true })
   await t.mutation(api.profiles.mutations.setIgState, { profileId: profile._id, igLoggedIn: true })
@@ -199,7 +199,6 @@ test.each(['follow', 'like', 'comment'] as const)('%s notifications cannot messa
 test.each(['DMs disabled', 'sent', 'blocked', 'uncertain'] as const)('follow-back analytics count once when %s without authorizing DMs', async condition => {
   const { t, args, claim } = await setup()
   const lead = await claim()
-  await t.mutation(api.analytics.initialize, {})
   const follow = { profileId: args.profileId, leadId: lead.leadId, followed: true }
   await t.mutation(internal.routines.recordFollow, follow)
   await t.mutation(internal.routines.recordFollow, follow)
@@ -233,7 +232,6 @@ test.each(['DMs disabled', 'sent', 'blocked', 'uncertain'] as const)('follow-bac
 
 test('conversion history survives unfollow and a late follow-back does not consume another lead pending count', async () => {
   const { t, args, claim } = await setup()
-  await t.mutation(api.analytics.initialize, {})
   const first = await claim(), second = await claim()
   for (const lead of [first, second]) await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
   await t.run(ctx => ctx.db.patch(first.leadId, { unfollowAt: Date.now() }))
@@ -269,8 +267,7 @@ test('follow-back history stays with the original automation after the profile c
   const automationId = await t.run(async ctx => {
     const previous = (await ctx.db.get(args.automationId))!
     await ctx.db.patch(previous._id, { isActive: false })
-    return ctx.db.insert('automations', { name: 'Replacement', nodes: [], edges: [],
-      modelIds: previous.modelIds, routine: previous.routine, isActive: true, createdAt: Date.now(), updatedAt: Date.now() })
+    return ctx.db.insert('automations', { name: 'Replacement', modelIds: previous.modelIds, routine: previous.routine, isActive: true, createdAt: Date.now(), updatedAt: Date.now() })
   })
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
   const current = { ...args, automationId }

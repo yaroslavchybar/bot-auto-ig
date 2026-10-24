@@ -10,15 +10,11 @@ test('AI settings save per automation and reset without affecting another automa
   const ai = { interestMatch: { model: 'liquid/d1-ultra', prompt: 'Only fishing activities.' } }
   const a = await t.mutation(api.automations.mutations.create, {
     name: 'First',
-    nodes: [],
-    edges: [],
     modelIds: [first!._id],
     routine: { ...defaultRoutine, ai },
   })
   const b = await t.mutation(api.automations.mutations.create, {
     name: 'Second',
-    nodes: [],
-    edges: [],
     modelIds: [second!._id],
     routine: defaultRoutine,
   })
@@ -48,8 +44,6 @@ test('saved profile screening prompts and models round-trip and reject unusable 
   }
   const created = await t.mutation(api.automations.mutations.create, {
     name: 'Screening',
-    nodes: [],
-    edges: [],
     modelIds: [list!._id],
     routine: { ...defaultRoutine, ai: { profileScreening } },
   })

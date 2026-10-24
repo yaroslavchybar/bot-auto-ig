@@ -4,7 +4,7 @@ import { eligibility, ensureProgress, canFollow } from './routines'
 import {
   dayKey,
   dailyOutreachQuota,
-  profileOutreachRoutes,
+  profileOutreach,
   randomInRange,
   unfollowRange,
 } from './routinePolicy'
@@ -79,9 +79,7 @@ export const finish = internalMutation({
       lead.screeningListId &&
       (await ctx.db.get(lead.screeningListId)) &&
       membership?.available &&
-      profileOutreachRoutes(e.policy, args.profileId).some(
-        (route) => route.leadListId === lead.screeningListId,
-      )
+      profileOutreach(e.policy, args.profileId)?.leadListId === lead.screeningListId
     )
     const failures = (lead.screeningFailures ?? 0) + 1
     const patch = {

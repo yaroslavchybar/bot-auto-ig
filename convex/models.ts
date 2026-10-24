@@ -72,9 +72,7 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const model = await ctx.db.get(id)
     if (!model) return true
-    const profiles = (await ctx.db.query('profiles').collect()).filter((p) =>
-      p.modelIds?.includes(id),
-    )
+    const profiles = await ctx.db.query('profiles').withIndex('by_model', q => q.eq('modelId', id)).collect()
     const automations = (await ctx.db.query('automations').collect()).filter((a) =>
       a.modelIds?.includes(id),
     )
@@ -102,14 +100,9 @@ export const remove = mutation({
       )
     for (const profile of profiles)
       await ctx.db.patch(profile._id, {
-        modelIds: profile.modelIds?.filter((value) => value !== id),
+        modelId: undefined,
         outreachReady: false,
       })
-    for (const row of await ctx.db
-      .query('profileModelAssignments')
-      .withIndex('by_model', (q) => q.eq('modelId', id))
-      .collect())
-      await ctx.db.delete(row._id)
     for (const automation of automations)
       await ctx.db.patch(automation._id, {
         modelIds: automation.modelIds?.filter((value) => value !== id),

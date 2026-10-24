@@ -77,7 +77,6 @@ export const finishRenameInternal = internalMutation({
 	},
 });
 import { createProfileRow, insertProfileRow, updateProfileByNameRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkAddProfilesToModelRow, bulkRemoveProfilesFromModelRow } from "./helpers";
-import { routineModels } from '../routinePolicy';
 
 /** Create a batch and reserve permanent proxies in one Convex transaction. */
 export const createForModelInternal = internalMutation({
@@ -102,7 +101,7 @@ export const createForModelInternal = internalMutation({
       throw new DomainError('CONFLICT', 'An account username already has a profile');
     const owners = (await ctx.db.query('automations').collect())
       .filter(automation => automation.isActive !== false &&
-        routineModels(automation).some(id => id === modelId));
+        (automation.modelIds ?? []).some(id => id === modelId));
     if (owners.length > 1)
       throw new DomainError('CONFLICT', 'Model belongs to multiple enabled automations');
     const proxies = await ctx.db.query('proxies').collect();
@@ -128,9 +127,8 @@ export const createForModelInternal = internalMutation({
     for (let i = 0; i < usernames.length; i++) {
       const proxy = selected[i];
       const id = await insertProfileRow(ctx, { name: usernames[i], proxy: proxy.proxy,
-        proxyType: proxy.proxyType, fingerprintOs: 'windows', modelIds: [modelId],
+        proxyType: proxy.proxyType, fingerprintOs: 'windows', modelId,
         igAccountId: accounts[i].id });
-      await ctx.db.insert('profileModelAssignments', { profileId: id, modelId: modelId });
       await ctx.db.patch(accounts[i].id, { status: 'assigned', profileId: id,
         error: undefined, retryAfter: undefined, browserLoggedInAt: undefined });
       ids.push(id);

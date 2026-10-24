@@ -404,7 +404,7 @@ pub fn due_at(snapshot: &Value, now: u64) -> u64 {
         let empty = Value::Null;
         let state = progress.get(&id).unwrap_or(&empty);
         let warmup = warmups.get(&id).unwrap_or(&empty);
-        if state["paused"] == true || state["issue"].as_str().is_some_and(|s| !s.is_empty()) {
+        if state["issue"].as_str().is_some_and(|s| !s.is_empty()) {
             continue;
         }
         let mut at = now

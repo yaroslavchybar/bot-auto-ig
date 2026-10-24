@@ -79,7 +79,7 @@ and request-limit/rate-limit pauses use `info` with an explicit outcome.
 
 `X-Request-Id` links API requests, Convex HTTP calls, worker processes, and
 image-processing requests. Worker `__EVENT__` messages remain a separate control
-protocol for automation checkpoints and live displays; they are not logs.
+protocol for automation status and live displays; they are not logs.
 
 The API logger collects bounded step details and counts into each completion
 event. Add business fields with `addLogContext`, and wrap background work with
@@ -258,7 +258,7 @@ Bun also drains logins before its own exit. Rust then stops subscription coordin
 over stdin. It waits up to 20 seconds before killing their process trees, then allows
 up to 15 seconds for final cleanup. Windows Job Objects and Linux process groups
 keep browser descendants under their worker's ownership. Ownership is released only
-after final status/checkpoint writes. Displays end when their owner's lease closes.
+after final status writes. Displays end when their owner's lease closes.
 The managed controller then signals the private Bun server and allows up to 60 seconds
 for it to finish. These are maximum waits; clean shutdowns finish sooner.
 Convex reads and idempotent worker status saves retry transient failures up to
@@ -393,7 +393,7 @@ areas: `tools/runtime/src/api/`, `tools/runtime/src/scraper/`,
 
 ## Automation & Quality Gates
 
-- Automation checkpoints are separate from UI events. Pending database snapshots
+- Automation status writes are separate from UI events. Pending status updates
   coalesce in Rust. Event sockets have a 1 MiB message limit and five-second send
   timeouts; lagging clients disconnect when the bounded broadcast queue overflows.
 

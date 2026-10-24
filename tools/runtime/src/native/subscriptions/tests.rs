@@ -60,10 +60,17 @@ async fn subscriptions_share_one_convex_connection_inject_auth_and_unsubscribe_o
     tokio::time::timeout(Duration::from_secs(5), removed.notified())
         .await
         .unwrap();
-    assert!(owner
-        .subscribe("profiles/private:all", json!({}))
-        .await
-        .is_err());
+    for name in ["profiles/private:all", "profiles/queries:automationAccess"] {
+        assert_eq!(
+            owner
+                .subscribe(name, json!({}))
+                .await
+                .err()
+                .unwrap()
+                .message,
+            "Unknown subscription"
+        );
+    }
 }
 
 #[tokio::test]

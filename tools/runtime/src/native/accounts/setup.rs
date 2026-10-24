@@ -114,13 +114,7 @@ impl Accounts {
             {
                 continue;
             }
-            let Some(model) = profile["modelIds"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .find(|id| owners.contains(id))
-            else {
+            let Some(model) = profile["modelId"].as_str().filter(|id| owners.contains(id)) else {
                 continue;
             };
             let id = profiles::text(profile, "id");
@@ -184,9 +178,7 @@ impl Accounts {
             || !automation["modelIds"]
                 .as_array()
                 .is_some_and(|models| models.len() == 1 && models[0] == state["modelId"])
-            || !profile["modelIds"]
-                .as_array()
-                .is_some_and(|models| models.contains(&state["modelId"]))
+            || profile["modelId"] != state["modelId"]
         {
             return Ok(());
         }
@@ -237,9 +229,7 @@ impl Accounts {
         else {
             return Ok(Value::Null);
         };
-        if !profile["modelIds"]
-            .as_array()
-            .is_some_and(|v| v.iter().any(|v| v == model_id))
+        if profile["modelId"] != model_id
             || profile["igLoggedIn"] != true
             || profile["paused"] == true
             || profiles::text(profile, "proxy").is_empty()
@@ -314,12 +304,7 @@ impl Accounts {
             .as_array()
             .into_iter()
             .flatten()
-            .filter(|p| {
-                enrolled.contains(profiles::text(p, "id"))
-                    && p["modelIds"]
-                        .as_array()
-                        .is_some_and(|v| v.iter().any(|v| v == model_id))
-            })
+            .filter(|p| enrolled.contains(profiles::text(p, "id")) && p["modelId"] == model_id)
             .collect();
         members.sort_by_key(|p| api::timestamp_ms(&p["createdAt"]).unwrap_or(0));
         let Some(index) = members.iter().position(|p| p["id"] == id) else {
