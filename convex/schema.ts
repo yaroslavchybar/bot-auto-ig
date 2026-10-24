@@ -87,7 +87,6 @@ export default defineSchema({
     followBackAt: v.optional(v.number()),
     outreachDayId: v.optional(v.id('outreachDays')),
     postEngagement: v.optional(v.object({ kind: v.union(v.literal('like'), v.literal('comment')), at: v.number() })),
-    lastDmCheckDate: v.optional(v.string()),
     dmStartedAt: v.optional(v.number()),
     dmStartedDate: v.optional(v.string()),
   })

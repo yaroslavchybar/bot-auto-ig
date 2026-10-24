@@ -7,16 +7,12 @@ import {
 import { runAutomation, type WorkerDependencies } from '../../server/automation/worker.js'
 import type { RuntimeSnapshot } from '../../server/shared/convexRealtime.js'
 
-let intervalMs = 5
-export function setProfilePollIntervalMs(ms: number) {
-  intervalMs = Math.min(ms, 20)
-}
+const intervalMs = 5
 
 export function runTestAutomation(
   input: Record<string, any>,
   openSession: WorkerDependencies['openSession'],
 ) {
-  const usesWarmup = true
   const allowed = (_id: string, update: (value: boolean) => void) => {
     update(true)
     return { initial: Promise.resolve(true), unsubscribe() {} }
@@ -31,16 +27,14 @@ export function runTestAutomation(
       let timer: ReturnType<typeof setTimeout> | undefined
       const snapshot = async (automation: Record<string, any>): Promise<RuntimeSnapshot> => {
         const profiles = await profilesList()
-        const warmups = usesWarmup
-          ? (
-              await Promise.all(
-                profiles.map(async (p) => {
-                  const state = await warmupGetByProfile(p.id)
-                  return state ? { ...state, profileId: p.id } : null
-                }),
-              )
-            ).filter((row) => row !== null)
-          : []
+        const warmups = (
+          await Promise.all(
+            profiles.map(async (p) => {
+              const state = await warmupGetByProfile(p.id)
+              return state ? { ...state, profileId: p.id } : null
+            }),
+          )
+        ).filter((row) => row !== null)
         return { automation, profiles, warmups }
       }
       const tick = async () => {

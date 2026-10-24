@@ -42,7 +42,6 @@ export type RouteMeta = {
   Page: React.ComponentType
   breadcrumb: string
   navId?: NavId
-  appChrome?: 'default' | 'immersive'
 }
 
 export const ROUTE_META: Record<string, RouteMeta> = {

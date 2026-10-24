@@ -9,7 +9,7 @@ export function captureConsole(): () => void {
       if (!args.length) return
       const first = args[0]
       const message = typeof first === 'string' ? first : first instanceof Error ? first.message : undefined
-      const entry = typeof first === 'string' ? parseLogLine(first)?.logEntry : undefined
+      const entry = typeof first === 'string' ? parseLogLine(first) : undefined
       if (entry) { ingestLogEntry(entry); return }
       const level = method === 'error' && !isBenignBrowserStderr(message || '') ? 'error' : 'info'
       logger[level]({ event: 'runtime.console', consoleMethod: method, message,

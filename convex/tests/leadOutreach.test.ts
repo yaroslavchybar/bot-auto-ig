@@ -78,7 +78,7 @@ test('later-day public or private follows atomically reserve the remaining quota
 test('old public-DM eligibility cannot bypass following and notification evidence', async () => {
   const { t, args, claim } = await setup()
   const lead = await claim()
-  await t.run(ctx => ctx.db.patch(lead.leadId, { isPrivate: false, dmEligible: true, lastDmCheckDate: dayKey() }))
+  await t.run(ctx => ctx.db.patch(lead.leadId, { isPrivate: false, dmEligible: true }))
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
   const input = { ...args, leadId: lead.leadId, date: dayKey() }
   expect(await t.query(internal.routines.notifications, args)).toBeNull()

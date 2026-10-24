@@ -111,7 +111,6 @@ test('deletion clears lead leases and scraper ownership without losing shared da
         dmEligible: true,
         followBackAt: Date.now(),
         postEngagement: { kind: 'like', at: Date.now() },
-        lastDmCheckDate: '2026-10-16',
         classification: 'male',
         screeningStatus: 'ready', })
       const membership = await ctx.db.insert('leadMemberships', {

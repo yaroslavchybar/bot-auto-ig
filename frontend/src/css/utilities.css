@@ -156,30 +156,6 @@
   }
 }
 
-@utility button-toolbar {
-  border-width: 0.8px;
-  border-style: solid;
-  border-color: transparent;
-  color: var(--button-toolbar-foreground);
-  background-color: transparent;
-
-  & svg {
-    color: currentColor;
-  }
-
-  @media (hover: hover) {
-    &:hover:not(:disabled) {
-      background-color: var(--button-toolbar-bg-hover);
-      color: var(--button-toolbar-foreground-hover);
-    }
-  }
-
-  &:focus-visible {
-    outline: 4px solid var(--button-toolbar-focus);
-    outline-offset: 1px;
-  }
-}
-
 @utility button-toolbar-group {
   border: 1px solid var(--button-toolbar-border);
   background-color: var(--button-toolbar-bg);
@@ -218,14 +194,6 @@
   background-clip: text;
   color: transparent;
 }
-
-
-
-@utility brand-text {
-  color: var(--copy);
-}
-
-
 
 @utility brand-focus {
   &:focus,

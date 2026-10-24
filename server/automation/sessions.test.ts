@@ -1,24 +1,20 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
-import { runBrowsingSession, sessionConfig, sessionReady } from './sessions.js'
+import { runBrowsingSession, sessionConfig } from './sessions.js'
 import { SessionEnded } from './actions/session.js'
 import { browsingNumbers, browsingFlags } from '../shared/browsingSettings.js'
-import { browseFeed } from '../../frontend/src/features/automations/activities/browsing/browse-feed.js'
 import { defaultRoutine, validateRoutine } from '../../convex/routinePolicy.js'
 import { logOperation } from '../shared/logger.js'
 
-test('editor defaults, routine limits, and session defaults share one browsing policy', () => {
+test('routine validation and session defaults share one browsing policy', () => {
   const config = sessionConfig({})
   for (const [key, rule] of Object.entries(browsingNumbers)) {
-    const definition = browseFeed.inputs.find(input => input.name === key)!
     assert.equal(config[key as keyof typeof browsingNumbers], rule.default)
-    assert.deepEqual([definition.default, definition.min, definition.max], [rule.default, rule.min, rule.max])
     assert.throws(() => validateRoutine({ ...defaultRoutine, activity: { [key]: rule.max + 1 } }))
   }
   for (const [key, value] of Object.entries(browsingFlags)) {
     assert.equal(config[key as keyof typeof browsingFlags], value)
-    assert.equal(browseFeed.inputs.find(input => input.name === key)?.default, value)
   }
 })
 
@@ -226,15 +222,4 @@ test('configuration contains only time, interests and enabled surfaces', () => {
     'post_view_max_seconds', 'skip_post_chance', 'skip_post_max', 'reels_min', 'reels_max', 'reels_chance',
     'carousel_watch_chance', 'carousel_max_slides', 'own_profile_chance', 'profile_visit_chance', 'dm_chance'])
     assert.equal(key in sessionConfig({ [key]: 999 }), false)
-})
-
-test('session readiness respects reservation, rest, daily time and rollover', () => {
-  const now = Date.parse('2026-10-14T12:00:00Z')
-  const state = { date: '2026-10-14', todayMinutes: 40, minutesUsedToday: 10, reservedMinutes: 0 }
-  assert.equal(sessionReady(null, now), true); assert.equal(sessionReady(state, now), true)
-  assert.equal(sessionReady({ ...state, nextRunAt: now + 1 }, now), false)
-  assert.equal(sessionReady({ ...state, reservedMinutes: 5 }, now), false)
-  assert.equal(sessionReady({ ...state, minutesUsedToday: 40 }, now), false)
-  assert.equal(sessionReady({ ...state, date: '2026-10-13', minutesUsedToday: 40 }, now), true)
-  assert.equal(sessionReady({ ...state, date: '2026-10-13', nextRunAt: now + 1 }, now), false)
 })

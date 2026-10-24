@@ -9,13 +9,11 @@
   --background: rgb(246 246 247);
   --foreground: rgb(33 33 38);
   --card: rgb(255 255 255);
-  --card-foreground: rgb(33 33 38);
   --popover: rgb(255 255 255);
   --popover-foreground: rgb(33 33 38);
   --primary: rgb(33 33 38);
   --primary-foreground: rgb(246 246 247);
   --secondary: rgb(238 238 240);
-  --secondary-foreground: rgb(33 33 38);
   --muted: rgb(238 238 240);
   --muted-foreground: rgb(116 118 134);
   --accent: rgb(238 238 240);
@@ -26,17 +24,12 @@
   --input: rgb(217 217 222);
   --ring: rgb(116 118 134 / 0.38);
 
-  --brand-300: rgb(238 238 240);
-  --brand-400: rgb(217 217 222);
-  --brand-500: rgb(94 95 110);
-  --brand-600: rgb(47 48 55);
   --brand-ring-soft: rgb(116 118 134 / 0.18);
 
   --shell: rgb(238 238 240);
   --panel: rgb(255 255 255);
   --panel-strong: rgb(246 246 247);
   --panel-subtle: rgb(116 118 134 / 0.06);
-  --panel-soft: rgb(116 118 134 / 0.1);
   --panel-muted: rgb(116 118 134 / 0.14);
   --panel-hover: rgb(116 118 134 / 0.18);
   --panel-selected: rgb(116 118 134 / 0.2);
@@ -49,7 +42,6 @@
   --copy: rgb(33 33 38);
   --muted-copy: rgb(94 95 110);
   --subtle-copy: rgb(116 118 134);
-  --dim-copy: rgb(147 148 161);
   --inverse: rgb(255 255 255);
 
   --line: rgb(217 217 222);
@@ -59,22 +51,18 @@
 
   --status-info: hsl(217.2 91.2% 59.8%);
   --status-info-soft: hsl(217.2 91.2% 59.8% / 0.14);
-  --status-info-strong: hsl(217.2 91.2% 59.8% / 0.22);
   --status-info-border: hsl(217.2 91.2% 59.8% / 0.28);
 
   --status-success: hsl(142 71% 45%);
   --status-success-soft: hsl(142 71% 45% / 0.14);
-  --status-success-strong: hsl(142 71% 45% / 0.22);
   --status-success-border: hsl(142 71% 45% / 0.28);
 
   --status-warning: hsl(27 96% 61%);
   --status-warning-soft: hsl(27 96% 61% / 0.14);
-  --status-warning-strong: hsl(27 96% 61% / 0.22);
   --status-warning-border: hsl(27 96% 61% / 0.28);
 
   --status-danger: hsl(0 84.2% 60.2%);
   --status-danger-soft: hsl(0 84.2% 60.2% / 0.14);
-  --status-danger-strong: hsl(0 84.2% 60.2% / 0.22);
   --status-danger-border: hsl(0 84.2% 60.2% / 0.28);
 
   --title-gradient-start: var(--ink);
@@ -118,11 +106,7 @@
   --button-ghost-focus: rgb(143 143 143 / 0.16);
 
   --button-toolbar-bg: rgb(237 237 237 / 0.96);
-  --button-toolbar-bg-hover: rgb(224 224 224);
   --button-toolbar-border: rgb(143 143 143 / 0.6);
-  --button-toolbar-foreground: rgb(115 115 115);
-  --button-toolbar-foreground-hover: rgb(23 23 23);
-  --button-toolbar-focus: rgb(143 143 143 / 0.16);
 
   --button-panel-bg: rgb(255 255 255);
   --button-panel-bg-hover: rgb(246 246 247);
@@ -143,15 +127,8 @@
   --shadow-status-danger-tight: 0 0 10px hsl(0 84.2% 60.2% / 0.4);
 
   --radius: 0.75rem;
-  --chart-1: hsl(12 76% 61%);
-  --chart-2: hsl(173 58% 39%);
-  --chart-3: hsl(197 37% 24%);
-  --chart-4: hsl(43 74% 66%);
-  --chart-5: hsl(27 87% 67%);
   --sidebar-background: rgb(238 238 240);
   --sidebar-foreground: rgb(33 33 38);
-  --sidebar-primary: rgb(33 33 38);
-  --sidebar-primary-foreground: rgb(246 246 247);
   --sidebar-accent: rgb(116 118 134 / 0.14);
   --sidebar-accent-foreground: rgb(33 33 38);
   --sidebar-border: rgb(217 217 222);
@@ -162,13 +139,11 @@
   --background: rgb(17 17 19);
   --foreground: rgb(246 246 247);
   --card: rgb(27 27 31);
-  --card-foreground: rgb(246 246 247);
   --popover: rgb(27 27 31);
   --popover-foreground: rgb(246 246 247);
   --primary: rgb(47 48 55);
   --primary-foreground: rgb(246 246 247);
   --secondary: rgb(33 33 38);
-  --secondary-foreground: rgb(246 246 247);
   --muted: rgb(33 33 38);
   --muted-foreground: rgb(147 148 161);
   --accent: rgb(118 118 134 / 0.16);
@@ -179,17 +154,12 @@
   --input: rgb(47 48 55);
   --ring: rgb(147 148 161 / 0.34);
 
-  --brand-300: rgb(238 238 240);
-  --brand-400: rgb(183 184 194);
-  --brand-500: rgb(116 118 134);
-  --brand-600: rgb(66 67 77);
   --brand-ring-soft: rgb(147 148 161 / 0.14);
 
   --shell: rgb(17 17 19);
   --panel: rgb(27 27 31);
   --panel-strong: rgb(33 33 38);
   --panel-subtle: rgb(118 118 134 / 0.08);
-  --panel-soft: rgb(118 118 134 / 0.12);
   --panel-muted: rgb(118 118 134 / 0.16);
   --panel-hover: rgb(118 118 134 / 0.24);
   --panel-selected: rgb(118 118 134 / 0.24);
@@ -202,7 +172,6 @@
   --copy: rgb(246 246 247);
   --muted-copy: rgb(147 148 161);
   --subtle-copy: rgb(116 118 134);
-  --dim-copy: rgb(94 95 110);
   --inverse: rgb(255 255 255);
 
   --line: rgb(47 48 55);
@@ -212,22 +181,18 @@
 
   --status-info: hsl(217.2 91.2% 59.8%);
   --status-info-soft: hsl(217.2 91.2% 59.8% / 0.14);
-  --status-info-strong: hsl(217.2 91.2% 59.8% / 0.22);
   --status-info-border: hsl(217.2 91.2% 59.8% / 0.28);
 
   --status-success: hsl(142 71% 45%);
   --status-success-soft: hsl(142 71% 45% / 0.14);
-  --status-success-strong: hsl(142 71% 45% / 0.22);
   --status-success-border: hsl(142 71% 45% / 0.28);
 
   --status-warning: hsl(27 96% 61%);
   --status-warning-soft: hsl(27 96% 61% / 0.14);
-  --status-warning-strong: hsl(27 96% 61% / 0.22);
   --status-warning-border: hsl(27 96% 61% / 0.28);
 
   --status-danger: hsl(0 84.2% 60.2%);
   --status-danger-soft: hsl(0 84.2% 60.2% / 0.14);
-  --status-danger-strong: hsl(0 84.2% 60.2% / 0.22);
   --status-danger-border: hsl(0 84.2% 60.2% / 0.28);
 
   --title-gradient-start: var(--ink);
@@ -271,11 +236,7 @@
   --button-ghost-focus: rgb(147 148 161 / 0.16);
 
   --button-toolbar-bg: rgb(43 45 49 / 0.96);
-  --button-toolbar-bg-hover: rgb(54 56 62);
   --button-toolbar-border: rgb(30 31 34);
-  --button-toolbar-foreground: rgb(181 186 193);
-  --button-toolbar-foreground-hover: rgb(255 255 255);
-  --button-toolbar-focus: rgb(147 148 161 / 0.16);
 
   --button-panel-bg: rgb(27 27 31);
   --button-panel-bg-hover: rgb(33 33 38);
@@ -295,15 +256,8 @@
   --shadow-status-success-tight: 0 0 4px hsl(142 71% 45% / 0.8);
   --shadow-status-danger-tight: 0 0 10px hsl(0 84.2% 60.2% / 0.4);
 
-  --chart-1: hsl(220 70% 50%);
-  --chart-2: hsl(160 60% 45%);
-  --chart-3: hsl(30 80% 55%);
-  --chart-4: hsl(280 65% 60%);
-  --chart-5: hsl(340 75% 55%);
   --sidebar-background: rgb(17 17 19);
   --sidebar-foreground: rgb(246 246 247);
-  --sidebar-primary: rgb(47 48 55);
-  --sidebar-primary-foreground: rgb(246 246 247);
   --sidebar-accent: rgb(118 118 134 / 0.16);
   --sidebar-accent-foreground: rgb(246 246 247);
   --sidebar-border: rgb(47 48 55);
@@ -317,13 +271,11 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
@@ -338,7 +290,6 @@
   --color-panel: var(--panel);
   --color-panel-strong: var(--panel-strong);
   --color-panel-subtle: var(--panel-subtle);
-  --color-panel-soft: var(--panel-soft);
   --color-panel-muted: var(--panel-muted);
   --color-panel-hover: var(--panel-hover);
   --color-panel-selected: var(--panel-selected);
@@ -351,44 +302,27 @@
   --color-copy: var(--copy);
   --color-muted-copy: var(--muted-copy);
   --color-subtle-copy: var(--subtle-copy);
-  --color-dim-copy: var(--dim-copy);
   --color-inverse: var(--inverse);
 
   --color-line: var(--line);
   --color-line-soft: var(--line-soft);
   --color-line-strong: var(--line-strong);
 
-  --color-brand-300: var(--brand-300);
-  --color-brand-400: var(--brand-400);
-  --color-brand-500: var(--brand-500);
-  --color-brand-600: var(--brand-600);
-
   --color-status-info: var(--status-info);
   --color-status-info-soft: var(--status-info-soft);
-  --color-status-info-strong: var(--status-info-strong);
   --color-status-info-border: var(--status-info-border);
   --color-status-success: var(--status-success);
   --color-status-success-soft: var(--status-success-soft);
-  --color-status-success-strong: var(--status-success-strong);
   --color-status-success-border: var(--status-success-border);
   --color-status-warning: var(--status-warning);
   --color-status-warning-soft: var(--status-warning-soft);
-  --color-status-warning-strong: var(--status-warning-strong);
   --color-status-warning-border: var(--status-warning-border);
   --color-status-danger: var(--status-danger);
   --color-status-danger-soft: var(--status-danger-soft);
-  --color-status-danger-strong: var(--status-danger-strong);
   --color-status-danger-border: var(--status-danger-border);
 
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
   --color-sidebar: var(--sidebar-background);
   --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);

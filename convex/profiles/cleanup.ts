@@ -74,7 +74,6 @@ export async function cleanupProfileReferences(
       dmEligible: undefined,
       followBackAt: undefined,
       postEngagement: undefined,
-      lastDmCheckDate: undefined,
     }
     await ctx.db.patch(lead._id, patch)
     // Keep Follow/DM history so deleting a sender cannot cause duplicate outreach.

@@ -1,30 +1,14 @@
-
 import { isLogEntry, type LogEntry } from '../shared/loggingTypes.js'
 
-export interface ParsedLog {
-  message: string
-  level: 'info' | 'error'
-  eventType?: string
-  metadata?: Record<string, unknown>
-  logEntry?: LogEntry
-}
-
 /** Logs and the worker control protocol share a pipe, but have separate consumers. */
-export function parseLogLine(raw: string): ParsedLog | null {
+export function parseLogLine(raw: string): LogEntry | null {
   const line = raw.trim()
   if (!line) return null
-  if (line.startsWith('__EVENT__') && line.endsWith('__EVENT__')) {
-    try {
-      const metadata = JSON.parse(line.slice(9, -9))
-      if (metadata && typeof metadata === 'object' && !Array.isArray(metadata) && typeof metadata.type === 'string')
-        return { message: metadata.type, level: metadata.type === 'error' ? 'error' : 'info', eventType: metadata.type, metadata }
-    } catch { /* Malformed control messages remain diagnostic output. */ }
-  }
   try {
     const entry: unknown = JSON.parse(line)
-    if (isLogEntry(entry)) return { message: entry.message, level: entry.level, logEntry: entry }
+    if (isLogEntry(entry)) return entry
   } catch { /* Libraries may write plain text. The parent wraps it as JSON. */ }
-  return { message: line.slice(0, 4000), level: 'info' }
+  return null
 }
 
 const BENIGN_BROWSER_STDERR = [

@@ -55,6 +55,40 @@ test('new automation footer names the first missing requirement', async () => {
   expect(create.disabled).toBe(true)
 })
 
+test('warm-up editor shows default schedules and saves changed browsing settings', async () => {
+  const save = vi.fn().mockResolvedValue(undefined)
+  vi.mocked(useQuery).mockReturnValue([])
+  vi.mocked(useMutation).mockReturnValue(Object.assign(save, {
+    withOptimisticUpdate: () => { throw new Error('Unused') },
+  }))
+  const automation = { _id: 'automation', name: 'Routine', modelIds: ['model'],
+    routine: { ...defaultRoutine, activity: {} } } as unknown as Doc<'automations'>
+  view = mount()
+  await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
+  await click('Warm-up')
+  for (const [label, min, max] of [
+    ['Daily browsing', '10', '20'], ['Session length', '5', '10'],
+    ['Rest between sessions', '60', '120'],
+  ]) {
+    expect(document.querySelector<HTMLInputElement>(`input[aria-label="${label} minimum"]`)?.value).toBe(min)
+    expect(document.querySelector<HTMLInputElement>(`input[aria-label="${label} maximum"]`)?.value).toBe(max)
+  }
+  const toggle = (text: string) => [...document.querySelectorAll('label')]
+    .find(element => element.textContent === text)!.querySelector<HTMLButtonElement>('[role="switch"]')!
+  expect(toggle('Home feed').getAttribute('aria-checked')).toBe('true')
+  expect(toggle('Reels scroll').getAttribute('aria-checked')).toBe('true')
+  await click('Stories')
+  expect(toggle('Watch stories before feed').getAttribute('aria-checked')).toBe('true')
+  await setNumber('Daily browsing minimum', '15')
+  await act(async () => toggle('Home feed').click())
+  await click('Save changes')
+  expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    routine: expect.objectContaining({ activity: {
+      warmup_min_minutes: 15, warmup_max_minutes: 20, browse_home_feed: false,
+    } }),
+  }))
+})
+
 test('the AI tab loads saved settings, edits a prompt, validates it, and saves with the automation', async () => {
   const save = vi.fn().mockResolvedValue(undefined)
   vi.mocked(useQuery).mockReturnValue([])

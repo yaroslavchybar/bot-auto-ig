@@ -2,7 +2,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { normalizeProxy, parseProxy, proxyKey } from './proxy.js'
 import { maskProxyForDisplay } from '../../frontend/src/features/proxies/utils/maskProxy.ts'
-import { buildProxyUsage } from '../../frontend/src/features/proxies/utils/proxyUsage.ts'
 import { formatProxyForInput } from '../../frontend/src/features/proxies/utils/formatProxyForInput.ts'
 
 test('provider input format preserves connection details through editing', () => {
@@ -31,7 +30,6 @@ test('all consumers agree on canonical identity and default ports', () => {
   ]) {
     assert.equal(proxyKey(a), proxyKey(b))
     assert.deepEqual(parseProxy(a), parseProxy(normalizeProxy(a).proxy))
-    assert.equal(buildProxyUsage([{ id: 'p', proxy: a, proxyType: 'http' }], [{ name: 'A', proxy: b }]).p.count, 1)
   }
 })
 

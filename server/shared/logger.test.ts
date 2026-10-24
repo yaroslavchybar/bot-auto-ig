@@ -213,10 +213,12 @@ test('later background work starts a fresh correlation after its registering sco
 
 test('relaying a worker completion preserves its original identity, timing and service', () => {
   const logs = events(`
-    import { ingestLogEntry } from './server/shared/logger.ts';
-    ingestLogEntry({ id: 'child-event', ts: 123, event: 'browser.session', message: 'browser session',
+    import { captureConsole } from './server/logs/console.ts';
+    const restore = captureConsole();
+    console.log(JSON.stringify({ id: 'child-event', ts: 123, event: 'browser.session', message: 'browser session',
       level: 'info', source: 'manual-worker', requestId: 'request-123', outcome: 'success',
-      environment: { service: 'manual-worker' }, context: { password: 'private-value', outputCount: 4 } });
+      environment: { service: 'manual-worker' }, context: { password: 'private-value', outputCount: 4 } }));
+    restore();
   `)
   assert.equal(logs.length, 1)
   assert.equal(logs[0].id, 'child-event')

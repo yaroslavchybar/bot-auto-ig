@@ -117,7 +117,6 @@ export function useProxiesPage(visible = true) {
       },
     },
     proxies,
-    allProxies: proxies,
     usage,
     pageSize,
     setPageSize,

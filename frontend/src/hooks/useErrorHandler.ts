@@ -19,13 +19,10 @@ function extractMessage(error: unknown): string {
  * 3. Clears toast context on navigation
  *
  * Usage:
- *   const { handleError, wrapAsync } = useErrorHandler()
+ *   const { handleError } = useErrorHandler()
  *
  *   // Manual error reporting
  *   handleError(error)
- *
- *   // Wrap an async callback so errors are caught automatically
- *   const safeSave = wrapAsync(async () => { await api.save(data) })
  */
 export function useErrorHandler() {
   const location = useLocation()
@@ -53,31 +50,5 @@ export function useErrorHandler() {
     return message
   }, [])
 
-  /**
-   * Wrap an async function so that any thrown error is automatically
-   * handled (toast + Sentry). The original error is re-thrown so
-   * callers can still react to it if needed.
-   *
-   * Supports an optional `onError` callback for side-effects (e.g.
-   * resetting loading state) and `context` string for Sentry tagging.
-   */
-  const wrapAsync = useCallback(
-    <Args extends unknown[], R>(
-      fn: (...args: Args) => Promise<R>,
-      opts?: { context?: string; onError?: (msg: string) => void },
-    ) => {
-      return async (...args: Args): Promise<R | undefined> => {
-        try {
-          return await fn(...args)
-        } catch (error) {
-          const msg = handleError(error, opts?.context)
-          opts?.onError?.(msg)
-          return undefined
-        }
-      }
-    },
-    [handleError],
-  )
-
-  return { handleError, wrapAsync }
+  return { handleError }
 }

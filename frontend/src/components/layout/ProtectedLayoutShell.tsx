@@ -52,22 +52,11 @@ export function ProtectedLayoutShell(props: ProtectedLayoutShellProps) {
 
 function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProps) {
   const breadcrumb = routeMeta.breadcrumb ?? 'Profiles Manager'
-  const appChrome = routeMeta.appChrome ?? 'default'
   const showVncCount = pathname === '/vnc'
   const showVncSession = pathname.startsWith('/vnc/session/')
   const showScraperTabs = pathname === '/scraper'
   const showProxyTabs = pathname === '/proxies'
   const pageHeaderSlotId = PAGE_HEADER_SLOT_IDS[pathname]
-
-  if (appChrome === 'immersive') {
-    return (
-      <ConvexClientProvider>
-        <div data-app-shell className="flex h-svh min-w-0 flex-col overflow-hidden bg-shell">
-          <div className="min-h-0 min-w-0 flex-1">{children}</div>
-        </div>
-      </ConvexClientProvider>
-    )
-  }
 
   return (
     <ConvexClientProvider>
