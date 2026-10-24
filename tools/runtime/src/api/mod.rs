@@ -13,7 +13,6 @@ use axum::{
     Json, Router,
 };
 use futures_util::StreamExt;
-use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
@@ -173,57 +172,16 @@ impl Api {
     }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Operation {
-    id: String,
-    method: String,
-    path: String,
-    max_body: usize,
-}
-
 pub fn router(state: Arc<Api>) -> Router {
-    let definitions: Vec<Operation> =
-        serde_json::from_str(include_str!("worker-routes.json")).expect("Static worker routes");
-    let mut routes: Router<Arc<Api>> = Router::new();
-    for operation in definitions {
-        let path = operation
-            .path
-            .split('/')
-            .map(|part| {
-                part.strip_prefix(':')
-                    .map(|name| format!("{{{name}}}"))
-                    .unwrap_or_else(|| part.into())
-            })
-            .collect::<Vec<_>>()
-            .join("/");
-        let filter = match operation.method.as_str() {
-            "GET" => MethodFilter::GET,
-            "POST" => MethodFilter::POST,
-            "PUT" => MethodFilter::PUT,
-            "DELETE" => MethodFilter::DELETE,
-            "ALL" => MethodFilter::GET
-                .or(MethodFilter::POST)
-                .or(MethodFilter::DELETE),
-            _ => panic!("Unknown worker route method"),
-        };
-        let max_body = operation.max_body;
-        let operation = Arc::new(operation);
-        let handler = on(
-            filter,
-            move |State(state): State<Arc<Api>>,
-                  Path(params): Path<HashMap<String, String>>,
-                  request: Request| {
-                invoke(state, operation.clone(), params, request)
-            },
+    crate::native::http::router()
+        .route(
+            "/api/automations/interests/rewrite",
+            axum::routing::post(rewrite).layer(RequestBodyLimitLayer::new(4096)),
         )
-        .layer(RequestBodyLimitLayer::new(max_body));
-        routes = routes.route(&path, handler.clone());
-        if !path.contains('{') {
-            routes = routes.route(&format!("{path}/"), handler);
-        }
-    }
-    routes
+        .route(
+            "/api/automations/interests/rewrite/",
+            axum::routing::post(rewrite).layer(RequestBodyLimitLayer::new(4096)),
+        )
         .with_state(state.clone())
         .merge(auth::router(state.auth.clone()))
         .route("/api/health", get(health).with_state(state.clone()))
@@ -425,32 +383,17 @@ async fn lead_list(
     }
 }
 
-async fn invoke(
-    state: Arc<Api>,
-    operation: Arc<Operation>,
-    params: HashMap<String, String>,
-    request: Request,
-) -> Response {
-    if crate::native::Native::handles(&operation.id) {
-        return match state.native.get() {
-            Some(native) => native.invoke(&operation.id, &params, request).await,
-            None => error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "NATIVE_UNAVAILABLE",
-                "Native services unavailable",
-            ),
-        };
-    }
-    // The only public Bun callback is JSON interest rewriting. Native routes never fall back.
-    if operation.id != "interests.post.rewrite" {
-        return error(StatusCode::NOT_FOUND, "NOT_FOUND", "Unknown operation");
-    }
+async fn rewrite(State(state): State<Arc<Api>>, request: Request) -> Response {
+    proxy_interest(state, request, 4096).await
+}
+
+async fn proxy_interest(state: Arc<Api>, request: Request, max_body: usize) -> Response {
     let request_id = request
         .headers()
         .get("x-request-id")
         .cloned()
         .unwrap_or_else(|| HeaderValue::from_str(&Uuid::new_v4().to_string()).unwrap());
-    let body = match to_bytes(request.into_body(), operation.max_body).await {
+    let body = match to_bytes(request.into_body(), max_body).await {
         Ok(bytes) if bytes.is_empty() || serde_json::from_slice::<Value>(&bytes).is_ok() => bytes,
         Ok(_) => {
             return error(
@@ -469,7 +412,10 @@ async fn invoke(
     };
     let upstream = match state
         .client
-        .post(format!("{}/commands/{}", state.worker_url, operation.id))
+        .post(format!(
+            "{}/commands/interests.post.rewrite",
+            state.worker_url
+        ))
         .bearer_auth(&state.key)
         .header("x-request-id", request_id)
         .header(header::CONTENT_TYPE, "application/json")

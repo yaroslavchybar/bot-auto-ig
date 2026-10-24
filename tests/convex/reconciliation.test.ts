@@ -100,7 +100,7 @@ test('restart charges reserved time once without shortening an existing cooldown
       activeRun: { id: 'reserved-run', minutes: 5, restMinutes: 60 },
     })
     const progress = await ctx.db.insert('accountProgress', {
-      profileId: profile._id, paused: false, activeDays: 1,
+      profileId: profile._id,  activeDays: 1,
       outreachUsedToday: 10, outreachAllowanceToday: 10, nextRunAt, updatedAt: 1,
     })
     return { warmup, progress }

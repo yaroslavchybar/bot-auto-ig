@@ -44,7 +44,7 @@ test('returning to the same model restores completed setup without resetting act
   })
   const savedSetup = (await t.query(internal.modelSetup.modelSetupListInternal, {}))[0]
   await t.run(async ctx => {
-    await ctx.db.insert('accountProgress', { profileId: profile._id, paused: false, activeDays: 20,
+    await ctx.db.insert('accountProgress', { profileId: profile._id,  activeDays: 20,
       outreachUsedToday: 0, outreachAllowanceToday: 0, nextRunAt: 0, updatedAt: 1 })
     await ctx.db.insert('warmupStates', { profileId: profile._id, day: 20, date: '2026-09-27',
       runsToday: 2, todayMinutes: 30, minutesUsedToday: 15, })

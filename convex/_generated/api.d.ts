@@ -32,7 +32,6 @@ import type * as leadMemberships from "../leadMemberships.js";
 import type * as leadScreening from "../leadScreening.js";
 import type * as leadStats from "../leadStats.js";
 import type * as leads from "../leads.js";
-import type * as migrations_simplifyAutomation from "../migrations/simplifyAutomation.js";
 import type * as modelSetup from "../modelSetup.js";
 import type * as modelSetupPolicy from "../modelSetupPolicy.js";
 import type * as models from "../models.js";
@@ -92,7 +91,6 @@ declare const fullApi: ApiFromModules<{
   leadScreening: typeof leadScreening;
   leadStats: typeof leadStats;
   leads: typeof leads;
-  "migrations/simplifyAutomation": typeof migrations_simplifyAutomation;
   modelSetup: typeof modelSetup;
   modelSetupPolicy: typeof modelSetupPolicy;
   models: typeof models;

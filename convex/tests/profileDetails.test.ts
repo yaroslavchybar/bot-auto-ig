@@ -32,7 +32,7 @@ test('profile details expose the same outreach state with setup and assignment i
     })
     await ctx.db.insert('accountProgress', {
       profileId: profile._id,
-      paused: false,
+
       activeDays: 22,
       outreachUsedToday: 2,
       outreachAllowanceToday: 10,
@@ -131,7 +131,7 @@ test.each([
       })
       await ctx.db.insert('accountProgress', {
         profileId: profile._id,
-        paused: false,
+
         activeDays: 8,
         outreachUsedToday: 0,
         outreachAllowanceToday: 0,
@@ -162,7 +162,7 @@ test('yesterday budgets are hidden and next runs respect the later retry delay',
     })
     await ctx.db.insert('accountProgress', {
       profileId: profile._id,
-      paused: false,
+
       activeDays: 8,
       outreachUsedToday: 0,
       outreachAllowanceToday: 0,

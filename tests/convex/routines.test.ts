@@ -298,7 +298,7 @@ async function setup(randomizeQuota = false) {
   await t.run(async ctx => {
     // Most cases exercise a previously selected two-follow day, independently of randomization.
     if (!randomizeQuota) await ctx.db.insert('accountProgress', {
-      profileId: profile._id, paused: false, activeDays: 0, outreachUsedToday: 0,
+      profileId: profile._id,  activeDays: 0, outreachUsedToday: 0,
       outreachAllowanceToday: 2, outreachQuotaDate: dayKey(), followedToday: 0,
       nextRunAt: 0, updatedAt: Date.now(),
     });
@@ -992,7 +992,7 @@ test.each([10, 20])('a randomized cap of %s stays fixed across reads and concurr
   await loggedIn();
   await t.run(async ctx => {
     await ctx.db.patch(automation._id, { routine: { ...automation.routine!, initialDms: 5, maxDms: maximum } });
-    await ctx.db.insert('accountProgress', { profileId: profile._id, paused: false, activeDays: 20,
+    await ctx.db.insert('accountProgress', { profileId: profile._id,  activeDays: 20,
       outreachIncrease: 100, outreachUsedToday: 0, outreachAllowanceToday: 0, nextRunAt: 0, updatedAt: Date.now() });
     for (let i = 0; i < maximum; i++) {
       const leadId = await ctx.db.insert('leads', { username: `extra_${i}`, isPrivate: true,

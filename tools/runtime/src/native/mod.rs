@@ -2,6 +2,7 @@ pub mod accounts;
 pub mod content;
 pub mod coordination;
 pub mod displays;
+pub mod http;
 pub mod processes;
 pub mod profiles;
 pub mod subscriptions;
@@ -10,7 +11,6 @@ use crate::api;
 use axum::{
     body::to_bytes,
     extract::{Path, Request, State},
-    http::Method,
     routing::{get, post},
     Json, Router,
 };
@@ -20,7 +20,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 pub struct Native {
     pub api: Arc<api::Api>,
@@ -72,196 +72,8 @@ impl Native {
             accounts,
         }))
     }
-    pub fn handles(operation: &str) -> bool {
-        operation.contains("models_modelId_content")
-            || operation.starts_with("automations.")
-            || operation.starts_with("profiles.")
-            || operation.starts_with("ig-accounts.")
-            || operation.starts_with("displays.")
-            || matches!(
-                operation,
-                "profiles.post.name_start"
-                    | "profiles.post.name_stop"
-                    | "displays.get.list"
-                    | "displays.get.vncPort_preview"
-            )
-    }
-    pub async fn invoke(
-        self: &Arc<Self>,
-        operation: &str,
-        params: &HashMap<String, String>,
-        request: Request,
-    ) -> Response {
-        // Mutations retain their locks and finish cleanup if an HTTP caller disconnects.
-        if !matches!(request.method(), &Method::GET | &Method::HEAD) {
-            let state = self.clone();
-            let operation = operation.to_owned();
-            let params = params.clone();
-            return tokio::spawn(async move {
-                state.invoke_request(&operation, &params, request).await
-            })
-            .await
-            .unwrap_or_else(|_| Failure::unavailable("Native operation failed").into_response());
-        }
-        self.invoke_request(operation, params, request).await
-    }
-    async fn invoke_request(
-        self: &Arc<Self>,
-        operation: &str,
-        params: &HashMap<String, String>,
-        request: Request,
-    ) -> Response {
-        match self.handle(operation, params, request).await {
-            Ok(response) => response,
-            Err(error) => error.into_response(),
-        }
-    }
-    async fn handle(
-        self: &Arc<Self>,
-        operation: &str,
-        params: &HashMap<String, String>,
-        request: Request,
-    ) -> Result<Response> {
-        let query = query(request.uri().query().unwrap_or(""));
-        if operation.ends_with("_clipboard") || operation.ends_with("_file-picker") {
-            return self
-                .displays
-                .desktop(
-                    operation,
-                    params
-                        .get("vncPort")
-                        .and_then(|s| s.parse().ok())
-                        .ok_or_else(|| Failure::invalid("Invalid display port"))?,
-                    request,
-                )
-                .await;
-        }
-        if operation.starts_with("ig-accounts.") && !operation.contains("models_modelId_content") {
-            return self.accounts.public(operation, params, request).await;
-        }
-        if operation.starts_with("profiles.") && !operation.starts_with("profiles.post.name_") {
-            return self.profiles.public(operation, params, request).await;
-        }
-        if operation == "displays.get.list" {
-            return Ok(Json(self.displays.list().await).into_response());
-        }
-        if operation == "displays.get.vncPort_preview" {
-            let port = params
-                .get("vncPort")
-                .and_then(|s| s.parse().ok())
-                .ok_or_else(|| Failure::invalid("Invalid display port"))?;
-            return self.displays.preview(port).await;
-        }
-        if operation == "automations.get.status" {
-            return Ok(Json(
-                self.processes
-                    .status_value(query.get("automationId").map(String::as_str))
-                    .await,
-            )
-            .into_response());
-        }
-        if operation.starts_with("profiles.post.name_") {
-            let name = params.get("name").map(String::as_str).unwrap_or("");
-            if operation.ends_with("_start") {
-                self.processes.start_manual(name).await?;
-            } else if !self.processes.stop(false, name, false).await? {
-                return Err(Failure::invalid("No browser running for this profile"));
-            }
-            return Ok(Json(json!({"success": true, "message": if operation.ends_with("_start") { format!("Browser started for {name}") } else { format!("Browser stopped for {name}") }})).into_response());
-        }
-        let model = params.get("modelId").map(String::as_str).unwrap_or("");
-        let kind = params.get("kind").map(String::as_str).unwrap_or("");
-        let id = params.get("contentId").map(String::as_str).unwrap_or("");
-        if operation.contains("models_modelId_content") {
-            let lists = self.api.convex(Method::GET, "/api/models", None).await?;
-            let row = lists
-                .as_array()
-                .into_iter()
-                .flatten()
-                .find(|row| row["id"].as_str() == Some(model))
-                .ok_or_else(|| Failure::invalid("Model not found"))?;
-            let model = row["contentKey"].as_str().unwrap_or(model);
-            if operation.ends_with("_image") {
-                return self
-                    .content
-                    .image(
-                        model,
-                        kind,
-                        id,
-                        params.get("variant").map(String::as_str),
-                        query.get("thumbnail").is_some_and(|s| s == "1"),
-                    )
-                    .await;
-            }
-            if operation == "ig-accounts.get.models_modelId_content" {
-                return Ok(Json(self.content.list(model).await?).into_response());
-            }
-            if operation.starts_with("ig-accounts.delete") {
-                return Ok(Json(self.content.remove(model, kind, id).await?).into_response());
-            }
-            if operation.ends_with("_copies") {
-                if operation.starts_with("ig-accounts.get") {
-                    return Ok(Json(self.content.copies(model, kind, id).await?).into_response());
-                }
-                let bank = self.content.clone();
-                let api = self.api.clone();
-                let model = model.to_owned();
-                let kind = kind.to_owned();
-                let id = id.to_owned();
-                let generated =
-                    tokio::spawn(async move { bank.generate(&api, &model, &kind, &id).await })
-                        .await
-                        .map_err(|_| Failure::unavailable("Copy generation failed"))??;
-                return Ok(Json(generated).into_response());
-            }
-            let bytes = to_bytes(request.into_body(), 15 * 1024 * 1024)
-                .await
-                .map_err(|_| Failure {
-                    status: StatusCode::PAYLOAD_TOO_LARGE,
-                    message: "Image must be 1–15 MB".into(),
-                })?;
-            return Ok(Json(
-                self.content
-                    .add(
-                        &self.api,
-                        model,
-                        kind,
-                        query.get("name").map(String::as_str).unwrap_or(""),
-                        &bytes,
-                    )
-                    .await?,
-            )
-            .into_response());
-        }
-        let bytes = to_bytes(request.into_body(), 1024 * 1024)
-            .await
-            .map_err(|_| Failure::invalid("Request body too large"))?;
-        let body: Value = if bytes.is_empty() {
-            json!({})
-        } else {
-            serde_json::from_slice(&bytes)?
-        };
-        if operation == "automations.post.run" {
-            self.processes
-                .start_automation(body["automationId"].as_str().unwrap_or(""))
-                .await?;
-            return Ok(
-                Json(json!({"success": true, "message": "Automation started"})).into_response(),
-            );
-        }
-        if operation == "automations.post.stop" {
-            let stopped = self
-                .processes
-                .stop_automations(body["automationId"].as_str().filter(|s| !s.is_empty()))
-                .await?;
-            if stopped.is_empty() {
-                return Err(Failure::invalid("No automation running"));
-            }
-            return Ok(Json(json!({"success": true, "stopped": stopped})).into_response());
-        }
-        Err(Failure::missing("Unknown native operation"))
-    }
 }
+
 pub fn router(state: Arc<Native>) -> Router {
     Router::new()
         .route("/processes/{action}", post(process_command))
@@ -427,6 +239,7 @@ pub fn project_root() -> PathBuf {
     root
 }
 
+#[cfg(test)]
 pub fn query(raw: &str) -> std::collections::HashMap<String, String> {
     reqwest::Url::parse(&format!("http://local/?{}", raw.trim_start_matches('?')))
         .expect("Local URL")

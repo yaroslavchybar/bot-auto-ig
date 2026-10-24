@@ -1,6 +1,6 @@
+pub(super) mod routes;
 use super::{processes::Processes, Failure, Result};
 use crate::api::Api;
-use axum::{extract::Request, response::IntoResponse, Json};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -8,10 +8,11 @@ use axum::{
     },
     response::Response,
 };
+#[cfg(test)]
+use axum::{response::IntoResponse, Json};
 use reqwest::Method;
 use rusqlite::Connection;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -24,67 +25,6 @@ pub struct Profiles {
     pub(super) root: PathBuf,
 }
 impl Profiles {
-    pub async fn public(
-        &self,
-        operation: &str,
-        params: &HashMap<String, String>,
-        request: Request,
-    ) -> Result<Response> {
-        let query = super::query(request.uri().query().unwrap_or(""));
-        let name = params.get("name").map(String::as_str).unwrap_or("");
-        let value = match operation {
-            "profiles.get.list" => {
-                let mut rows = self.list().await?;
-                for row in rows.as_array_mut().into_iter().flatten() {
-                    strip(row, true);
-                }
-                rows
-            }
-            "profiles.get.by-id" => {
-                let mut row = self
-                    .by_id(
-                        query
-                            .get("profileId")
-                            .or_else(|| query.get("id"))
-                            .map(String::as_str)
-                            .unwrap_or(""),
-                    )
-                    .await?;
-                if row.is_null() {
-                    return Err(Failure::missing("Profile not found"));
-                }
-                strip(&mut row, false);
-                row
-            }
-            "profiles.post.list" => self.create(super::body(request).await?).await?,
-            "profiles.put.name" => {
-                self.update(name, super::body(request).await?).await?;
-                json!({"success":true})
-            }
-            "profiles.delete.name" => {
-                self.delete(name).await?;
-                json!({"success":true})
-            }
-            "profiles.post.reconcile-runtime" => {
-                let mut value = self.reconcile().await?;
-                value["success"] = json!(true);
-                value
-            }
-            "profiles.post.sync-status" => {
-                let body = super::body(request).await?;
-                let _locks = self.locks(vec![text(&body, "name").into()]).await?;
-                self.sync(
-                    text(&body, "name"),
-                    text(&body, "status"),
-                    body["inUse"] == true,
-                )
-                .await?;
-                json!({"success":true})
-            }
-            _ => return Err(Failure::missing("Unknown profile operation")),
-        };
-        Ok(Json(value).into_response())
-    }
     pub fn new(api: Arc<Api>, processes: Arc<Processes>, root: PathBuf) -> Arc<Self> {
         Arc::new(Self {
             api,

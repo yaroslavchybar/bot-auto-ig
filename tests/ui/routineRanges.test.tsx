@@ -277,9 +277,6 @@ test('automation ranges load, reject reversed ranges, and save both min/max pair
       }),
     }),
   )
-  const savedRoutine = save.mock.calls[0][0].routine
-  expect(savedRoutine).not.toHaveProperty('outreachStartDay')
-  expect(savedRoutine).not.toHaveProperty('dailyIncrease')
 })
 
 test('Outreach settings expose gradual daily follow limits instead of DM limits', async () => {

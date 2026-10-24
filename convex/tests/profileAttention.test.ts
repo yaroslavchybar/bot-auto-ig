@@ -15,7 +15,7 @@ test('profile list attention reflects current errors and pending setup, and clea
       startedAt: 1, postSourceIds: [], postDates: [], error: 'Old failure' })
     const setupId = await ctx.db.insert('modelSetupStates', { profileId: profile._id, modelId: model._id,
       startedAt: 1, postSourceIds: [], postDates: [] })
-    const progressId = await ctx.db.insert('accountProgress', { profileId: profile._id, paused: false,
+    const progressId = await ctx.db.insert('accountProgress', { profileId: profile._id,
       activeDays: 0, outreachUsedToday: 0, outreachAllowanceToday: 0, nextRunAt: 0, updatedAt: 1 })
     return { setupId, progressId }
   })

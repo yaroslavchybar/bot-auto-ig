@@ -1,3 +1,4 @@
+pub(super) mod routes;
 use super::{Failure, Result};
 mod output;
 use crate::api::{self, Api};

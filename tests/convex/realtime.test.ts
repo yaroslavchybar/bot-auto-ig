@@ -29,7 +29,7 @@ test('models.remove clears indexed profile membership', async () => {
   await t.mutation(api.models.remove, { id: list!._id })
 
   const after = await t.run(async (ctx) =>
-    ctx.db.query('profileModelAssignments').collect(),
+    ctx.db.query('profiles').withIndex('by_model', q => q.eq('modelId', list!._id)).collect(),
   )
   expect(after).toEqual([])
 })
@@ -56,7 +56,7 @@ test('runtimeSnapshot returns timing fields and requires the bridge token', asyn
       initialDms: 3,
       maxDms: 30,
       outreachEnabled: false,
-      message: '',
+
       activity: {},
       headless: true,
     },
@@ -74,7 +74,7 @@ test('runtimeSnapshot returns timing fields and requires the bridge token', asyn
     })
     await ctx.db.insert('accountProgress', {
       profileId: profile!._id,
-      paused: false,
+
       activeDays: 1,
       outreachUsedToday: 0,
       outreachAllowanceToday: 3,
@@ -131,7 +131,7 @@ test('runtimeSnapshot stays bounded and list pages sweep every assignment', asyn
       initialDms: 3,
       maxDms: 30,
       outreachEnabled: false,
-      message: '',
+
       activity: {},
       headless: true,
     },

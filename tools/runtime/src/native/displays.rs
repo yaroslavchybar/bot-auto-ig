@@ -1,3 +1,4 @@
+pub(super) mod routes;
 use super::processes::Processes;
 use super::{Failure, Result};
 use crate::api::Api;
@@ -49,30 +50,11 @@ pub struct Displays {
     capture: Option<Capture>,
 }
 impl Displays {
-    pub async fn desktop(
-        &self,
-        operation: &str,
-        port: u16,
-        request: axum::extract::Request,
-    ) -> Result<Response> {
+    pub async fn clipboard(&self, port: u16, request: axum::extract::Request) -> Result<Response> {
         use axum::{response::IntoResponse, Json};
         let session = self
-            .sessions
-            .lock()
-            .await
-            .get(&port)
-            .cloned()
-            .ok_or_else(|| Failure::missing("Display session not found"))?;
-        if request.method() != reqwest::Method::GET
-            && self.processes.is_running(&session.info.automation_id).await
-        {
-            return Err(super::profiles::conflict(
-                "Agent still controls this session — stop the agent before pasting or uploading",
-            ));
-        }
-        if operation.ends_with("_file-picker") {
-            return self.forward_picker(session, request).await;
-        }
+            .desktop_session(port, request.method() != reqwest::Method::GET)
+            .await?;
         let input = if request.method() == reqwest::Method::POST {
             let body = super::body(request).await?;
             let text = body["text"]
@@ -105,6 +87,31 @@ impl Displays {
             json!({"text":text})
         })
         .into_response())
+    }
+    async fn desktop_session(&self, port: u16, writing: bool) -> Result<Arc<Session>> {
+        let session = self
+            .sessions
+            .lock()
+            .await
+            .get(&port)
+            .cloned()
+            .ok_or_else(|| Failure::missing("Display session not found"))?;
+        if writing && self.processes.is_running(&session.info.automation_id).await {
+            return Err(super::profiles::conflict(
+                "Agent still controls this session — stop the agent before pasting or uploading",
+            ));
+        }
+        Ok(session)
+    }
+    pub async fn file_picker(
+        &self,
+        port: u16,
+        request: axum::extract::Request,
+    ) -> Result<Response> {
+        let session = self
+            .desktop_session(port, request.method() != reqwest::Method::GET)
+            .await?;
+        self.forward_picker(session, request).await
     }
     async fn check_session(&self, session: &Arc<Session>, writing: bool) -> Result<()> {
         if !self

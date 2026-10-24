@@ -33,6 +33,9 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
   routine scheduling, profile locks and folder maintenance, account services, login/model
   setup coordination, proxy probing, clipboard ownership and file-picker forwarding.
   All server-side Convex subscriptions use one shared connection.
+  Native API routes register directly with Axum beside their handlers, using typed
+  path/query extraction. Only interest rewriting proxies to Bun. Accepted native
+  mutations finish their writes and cleanup after a caller disconnects.
   Requests are limited to 64 in flight. Normal authenticated requests use 100/min per IP;
   model images use 600/min, Telegram links 10/min, and login polling 120/min.
   `/api/automations` also accepts `INTERNAL_API_KEY`.
@@ -61,7 +64,7 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
 
 ## Database models
 
-Models use `models`, `modelIds`, and `profileModelAssignments`; scraped lead
+Models use `models`, automation `modelIds`, and indexed `profiles.modelId`; scraped lead
 lists retain their separate `leadLists` and `listId` names. Model content uses
 a stable `contentKey` to locate its images on disk.
 Screening results use `screeningStatus`, `screenedAt`, and

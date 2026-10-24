@@ -1,3 +1,4 @@
+pub(super) mod routes;
 use super::{Failure, Result};
 use crate::api::Api;
 use axum::{body::Body, response::Response};
@@ -520,23 +521,21 @@ mod tests {
             Native::new(api.clone(), crate::scraper::Scraper::start(api).unwrap()).unwrap();
         Arc::get_mut(&mut native).unwrap().content = bank.clone();
 
-        let gallery = native
-            .invoke(
-                "ig-accounts.get.models_modelId_content",
-                &HashMap::from([("modelId".into(), "model-new".into())]),
-                axum::http::Request::builder()
-                    .uri("/api/models/model-new/content")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await;
-        assert_eq!(gallery.status(), axum::http::StatusCode::OK);
-        let rows: Value = serde_json::from_slice(
-            &axum::body::to_bytes(gallery.into_body(), 10_000)
-                .await
-                .unwrap(),
+        native.api.native.set(native.clone()).ok().unwrap();
+        let public = crate::test_support::Fixture::router(
+            crate::native::http::router().with_state(native.api.clone()),
         )
-        .unwrap();
+        .await;
+        let gallery = reqwest::Client::new()
+            .get(format!(
+                "{}/api/ig-accounts/models/model-new/content",
+                public.url
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(gallery.status(), reqwest::StatusCode::OK);
+        let rows: Value = serde_json::from_slice(&gallery.bytes().await.unwrap()).unwrap();
         assert_eq!(rows[0]["id"], "source");
         let content_key = Content::storage_key(&native.api, "model-new")
             .await

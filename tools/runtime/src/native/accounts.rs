@@ -1,4 +1,5 @@
 pub mod proxy;
+pub(super) mod routes;
 pub mod setup;
 #[cfg(test)]
 mod tests;
@@ -13,11 +14,6 @@ use crate::api::{self, Api};
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
     Aes256Gcm, Nonce,
-};
-use axum::{
-    extract::Request,
-    response::{IntoResponse, Response},
-    Json,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use hmac::{Hmac, KeyInit as HmacKeyInit, Mac};
@@ -195,156 +191,6 @@ pub struct Accounts {
     credential_key: Option<Vec<u8>>,
 }
 impl Accounts {
-    pub async fn public(
-        self: &Arc<Self>,
-        operation: &str,
-        params: &HashMap<String, String>,
-        request: Request,
-    ) -> Result<Response> {
-        let query = super::query(request.uri().query().unwrap_or(""));
-        let value = match operation {
-            "ig-accounts.get.list" => self.list().await?,
-            "ig-accounts.get.page" => {
-                let page_size = match query.get("pageSize") {
-                    None => DEFAULT_PAGE_SIZE,
-                    Some(value) => value
-                        .parse::<usize>()
-                        .ok()
-                        .filter(|size| (1..=MAX_PAGE_SIZE).contains(size))
-                        .ok_or_else(|| Failure::invalid("Invalid page size"))?,
-                };
-                self.page(
-                    query.get("search").map(String::as_str).unwrap_or(""),
-                    query.get("cursor").map(String::as_str),
-                    query.get("profileId").map(String::as_str),
-                    page_size,
-                )
-                .await?
-            }
-            "ig-accounts.get.available-count" => self.store("availableCount", json!({})).await?,
-            "ig-accounts.get.blacklist" => self.proxies.blacklist().await?,
-            "ig-accounts.get.warmup" => self.store("modelSetupList", json!({})).await?,
-            "ig-accounts.get.credentials_id" => {
-                let account = self.account("byId", json!({"id":params.get("id")})).await?;
-                if account.is_null() {
-                    return Err(Failure::missing("Credential not found"));
-                }
-                account
-            }
-            "ig-accounts.post.import" => {
-                let body = super::body(request).await?;
-                let raw = body["text"]
-                    .as_str()
-                    .ok_or_else(|| Failure::invalid("Choose a TXT file"))?;
-                self.import(raw).await?
-            }
-            "ig-accounts.post.warmup_profileId_reconcile" => {
-                let body = super::body(request).await?;
-                self.reconcile_setup(
-                    params.get("profileId").map(String::as_str).unwrap_or(""),
-                    profiles::text(&body, "resolution"),
-                )
-                .await?;
-                json!({"ok":true})
-            }
-            "ig-accounts.post.create-batch" => {
-                let body = super::body(request).await?;
-                let count = body["count"]
-                    .as_u64()
-                    .filter(|n| (1..=100).contains(n))
-                    .ok_or_else(|| Failure::invalid("Choose 1–100 profiles"))?
-                    as usize;
-                let model = profiles::text(&body, "modelId");
-                let models = self.api.convex(Method::GET, "/api/models", None).await?;
-                if !models
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .any(|m| m["id"] == model)
-                {
-                    return Err(Failure::invalid("Choose a model"));
-                }
-                let accounts = self.available(count).await?;
-                if accounts.len() < count {
-                    return Err(Failure::invalid(format!(
-                        "Only {} unused credentials are available",
-                        accounts.len()
-                    )));
-                }
-                let created=self.api.convex(Method::POST,"/api/profiles/create-for-model",Some(&json!({"modelId":model,"accounts":accounts.iter().map(|a|json!({"id":a["id"],"username":a["username"]})).collect::<Vec<_>>()}))).await?;
-                for row in created.as_array().into_iter().flatten() {
-                    self.queue(profiles::text(row, "profileId").into()).await;
-                }
-                json!({"count":created.as_array().map_or(0,Vec::len),"created":created})
-            }
-            "ig-accounts.post.profileId_connect" => {
-                let body = super::body(request).await?;
-                let profile_id = params.get("profileId").map(String::as_str).unwrap_or("");
-                let profile = self.profiles.by_id(profile_id).await?;
-                if profile.is_null() || profile["status"] == "deleting" {
-                    return Err(Failure::invalid("Profile is unavailable"));
-                }
-                let mut account = if let Some(id) = body["credentialId"].as_str() {
-                    self.account("byId", json!({"id":id})).await?
-                } else {
-                    Value::Null
-                };
-                if profile["paused"] == true
-                    && !(account["status"] == "connected" && account["profileId"] == profile_id)
-                {
-                    return Err(Failure::invalid(
-                        "Resume the profile before connecting a new credential",
-                    ));
-                }
-                if account.is_null() {
-                    if let Some(raw) = body["credentials"].as_str() {
-                        if profile["igLoggedIn"] != true {
-                            return Err(Failure::invalid("Choose a logged-in profile"));
-                        }
-                        let parsed = parse_credentials(raw)?;
-                        self.import(raw).await?;
-                        account = self
-                            .account(
-                                "byUsernameHash",
-                                json!({"usernameHash":username_hash(&self.credential_key()?,&parsed.username)}),
-                            )
-                            .await?;
-                    }
-                }
-                if account.is_null()
-                    || account["profileId"]
-                        .as_str()
-                        .is_some_and(|p| p != profile_id)
-                {
-                    return Err(Failure::invalid("Choose an available credential"));
-                }
-                if profile["igLoggedIn"] != true {
-                    return Err(Failure::invalid("Choose a logged-in browser profile"));
-                }
-                if !profiles::text(&profile, "name")
-                    .eq_ignore_ascii_case(profiles::text(&account, "username"))
-                {
-                    return Err(Failure::invalid(
-                        "Credential username must match the logged-in browser profile",
-                    ));
-                }
-                let _guard = self.action_lock(profile_id).await?;
-                if account["profileId"] != profile_id {
-                    self.store("assign", json!({"id":account["id"],"profileId":profile_id}))
-                        .await?;
-                }
-                self.sync_name(
-                    profile_id,
-                    profiles::text(&account, "id"),
-                    profiles::text(&account, "username"),
-                )
-                .await?;
-                json!({"ok":true})
-            }
-            _ => return Err(Failure::missing("Unknown account operation")),
-        };
-        Ok(Json(value).into_response())
-    }
     pub fn new(
         api: Arc<Api>,
         profiles: Arc<Profiles>,

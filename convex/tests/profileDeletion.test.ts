@@ -16,7 +16,7 @@ for (const deletion of ['id', 'name'] as const) {
         const ids = [
           await ctx.db.insert('accountProgress', {
             profileId: id,
-            paused: false,
+
             activeDays: 4,
             outreachUsedToday: 0,
             outreachAllowanceToday: 0,

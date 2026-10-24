@@ -114,7 +114,6 @@ export default defineSchema({
     .index('by_list_category', ['listId', 'available', 'classification', 'leadCreatedAt']),
   accountProgress: defineTable({
     profileId: v.id('profiles'),
-    paused: v.optional(v.boolean()), // Migration only; profiles.paused is authoritative.
     issue: v.optional(v.string()),
     activeDays: v.number(),
     outreachIncrease: v.optional(v.number()),
@@ -130,7 +129,6 @@ export default defineSchema({
     lastLikerScanDate: v.optional(v.string()),
     outreachUsedToday: v.number(),
     outreachAllowanceToday: v.number(),
-    lastLeadListId: v.optional(v.id('leadLists')),
     nextRunAt: v.number(),
     updatedAt: v.number(),
   }).index('by_profile', ['profileId']),
@@ -251,7 +249,6 @@ export default defineSchema({
     instagramSessionId: v.optional(v.string()),
     scraperRateLimitCount: v.optional(v.number()),
     modelId: v.optional(v.id('models')),
-    modelIds: v.optional(v.array(v.id('models'))), // Migration only; no application writes.
     lastOpenedAt: v.optional(v.number()),
     scraperCooldownUntil: v.optional(v.number()),
   })
@@ -330,14 +327,6 @@ export default defineSchema({
     .index('by_source_scheduled', ['sourceId', 'scheduled'])
     .index('by_due', ['scheduled', 'monitoring', 'nextCheckAt']),
 
-  // Migration only. Membership now lives in profiles.modelId and its by_model index.
-  profileModelAssignments: defineTable({
-    profileId: v.id('profiles'),
-    modelId: v.id('models'),
-  })
-    .index('by_profile', ['profileId'])
-    .index('by_model', ['modelId']),
-
   // Per-profile daily budget, initialized on the first warm-up attempt each UTC day.
   warmupStates: defineTable({
     profileId: v.id('profiles'),
@@ -377,16 +366,10 @@ export default defineSchema({
   // ═══════════════════════════════════════════════════════════════════
 
   automations: defineTable({
-    routine: v.optional(v.object({ ...routineValidator.fields,
-      message: v.optional(v.string()), leadListId: v.optional(v.id('leadLists')),
-      outreachRoutes: v.optional(v.array(v.object({ leadListId: v.id('leadLists'), profileIds: v.array(v.id('profiles')), allProfiles: v.optional(v.boolean()), message: v.string() }))),
-      outreachStartDay: v.optional(v.number()), dailyIncrease: v.optional(v.number()),
-    })),
+    routine: v.optional(routineValidator),
     // Definition fields
     name: v.string(),
     description: v.optional(v.string()),
-    nodes: v.optional(v.any()), // Migration only.
-    edges: v.optional(v.any()), // Migration only.
 
     // Active toggle: disabled automations cannot be started
     isActive: v.optional(v.boolean()),
@@ -404,8 +387,6 @@ export default defineSchema({
         v.literal('cancelled'),
       ),
     ),
-    currentNodeId: v.optional(v.string()), // currently executing node
-    nodeStates: v.optional(v.any()), // map of nodeId -> execution state
     lastRunAt: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),

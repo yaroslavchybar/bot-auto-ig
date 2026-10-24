@@ -1,70 +1,23 @@
 import { expect, test } from 'vite-plus/test'
-import { api, internal } from '../../convex/_generated/api'
+import { api } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 import { emptyActivity, recordActivity } from '../../convex/analyticsActivity'
 
-test('analytics counts confirmed daily activity and excludes deleted profiles', async () => {
+test('recorded activity survives profile deletion and stays in its UTC bucket', async () => {
   const t = createConvexTest()
-  await t.run(async (ctx) => {
-    for (const [name, status, usageDate] of [
-      ['active', 'idle', '2026-10-11'],
-      ['stale', 'idle', '2026-10-10'],
-
-    ] as const) {
-      const profileId = await ctx.db.insert('profiles', {
-        name,
-        status,
-        inUse: false,
-        createdAt: 0,
-        cookiesJson: 'never needed by analytics',
-      })
-      await ctx.db.insert('scraperProfiles', {
-        profileId,
-        name,
-        status,
-        inUse: false,
-        scraperReady: true,
-      })
-      await ctx.db.insert('accountProgress', {
-        profileId,
-        paused: false,
-        activeDays: 5,
-        outreachUsedToday: 10,
-        outreachAllowanceToday: 20,
-        outreachQuotaDate: usageDate,
-        followedToday: 4,
-        dmCountDate: usageDate,
-        sentToday: 2,
-        nextRunAt: 0,
-        updatedAt: 0,
-      })
-      await ctx.db.insert('warmupStates', {
-        profileId,
-        date: usageDate,
-        day: 8,
-        todayMinutes: 30,
-        minutesUsedToday: 12.5,
-        runsToday: 1,
-      })
-    }
+  const id = await t.run(async ctx => {
+    const id = await ctx.db.insert('profiles', { name: 'Profile', inUse: false, createdAt: 0 })
+    await recordActivity(ctx, '2026-10-11', { follows: 4, dms: 2, warmupMinutes: 12.5 })
+    return id
   })
-  await t.mutation(internal.migrations.simplifyAutomation.run, {})
-  await t.mutation(internal.migrations.simplifyAutomation.run, {})
-  const result = await t.query(api.analytics.overview, { date: '2026-10-11' })
-  expect(result.totals).toMatchObject({
-    follows: 4,
-    dms: 2,
-    warmupMinutes: 12.5,
-  })
-  expect(result.leads).toBeNull()
-  const previous = await t.query(api.analytics.overview, { date: '2026-10-10' })
-  expect(previous.totals).toEqual({ follows: 4, dms: 2, warmupMinutes: 12.5 })
-  expect((await t.run((ctx) => ctx.db.query('analyticsDays').collect())).length).toBe(2)
+  await t.run(ctx => ctx.db.delete(id))
+  expect((await t.query(api.analytics.overview, { date: '2026-10-11' })).totals)
+    .toEqual({ follows: 4, dms: 2, warmupMinutes: 12.5 })
+  expect((await t.query(api.analytics.overview, { date: '2026-10-10' })).totals.follows).toBe(0)
 })
 
 test('analytics reads initialized unique lead totals from the small counter', async () => {
   const t = createConvexTest()
-  await t.mutation(internal.migrations.simplifyAutomation.run, {})
   expect((await t.query(api.analytics.overview, { date: '2026-10-11' })).leads).toBeNull()
   await t.mutation(api.leadStats.initialize, {})
   expect((await t.query(api.analytics.overview, { date: '2026-10-11' })).leads).toEqual({
@@ -76,7 +29,6 @@ test('analytics reads initialized unique lead totals from the small counter', as
 
 test('date ranges include today, respect UTC boundaries and leave current lead inventory unchanged', async () => {
   const t = createConvexTest()
-  await t.mutation(internal.migrations.simplifyAutomation.run, {})
   await t.mutation(api.leadStats.initialize, {})
   await t.run(async (ctx) => {
     for (const [date, count] of [
@@ -113,13 +65,11 @@ test('date ranges include today, respect UTC boundaries and leave current lead i
   ).toBe(1111)
 })
 
-test('zero activity does not write counters and re-initializing preserves existing history', async () => {
+test('zero activity does not write counters and the first activity creates history', async () => {
   const t = createConvexTest()
-  await t.mutation(internal.migrations.simplifyAutomation.run, {})
   await t.run((ctx) => recordActivity(ctx, '2026-10-11', emptyActivity()))
   expect(await t.run((ctx) => ctx.db.query('analyticsDays').collect())).toEqual([])
   await t.run((ctx) => recordActivity(ctx, '2026-10-11', { follows: 2, scraperRequests: 4 }))
-  await t.mutation(internal.migrations.simplifyAutomation.run, {})
   const result = await t.query(api.analytics.overview, { date: '2026-10-11', period: 'all' })
   expect(result.totals.follows).toBe(2)
   expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals.scraperRequests).toBe(4)
