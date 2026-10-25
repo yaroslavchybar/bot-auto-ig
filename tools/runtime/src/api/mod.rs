@@ -198,6 +198,10 @@ pub fn router(state: Arc<Api>) -> Router {
 pub fn error(status: StatusCode, code: &str, message: &str) -> Response {
     (
         status,
+        axum::Extension(ig_service_common::ResponseError {
+            code: code.into(),
+            message: message.into(),
+        }),
         Json(json!({ "success": false, "error": { "code": code, "message": message } })),
     )
         .into_response()

@@ -48,12 +48,14 @@ interface ProfilesListProps {
   onDelete: (profile: Profile) => void
   onToggleStatus: (profile: Profile) => void
   onDetails: (profile: Profile) => void
+  pendingProfileIds?: ReadonlySet<string>
   emptyTitle?: string
   emptyDescription?: string
 }
 
 interface ProfileActionsMenuProps {
   profile: Profile
+  pending?: boolean
   onEdit: (profile: Profile) => void
   onDelete: (profile: Profile) => void
   onToggleStatus: (profile: Profile) => void
@@ -93,6 +95,7 @@ function getStatusMeta(profile: Profile) {
 
 function ProfileActionsMenu({
   profile,
+  pending,
   onEdit,
   onDelete,
   onToggleStatus,
@@ -116,7 +119,7 @@ function ProfileActionsMenu({
         <DropdownMenuLabel className="text-muted-copy">Actions</DropdownMenuLabel>
         <DropdownMenuItem
           onClick={() => onToggleStatus(profile)}
-          disabled={profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
+          disabled={pending || profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
           className="cursor-pointer hover:bg-panel-hover focus:bg-panel-hover"
         >
           {profile.inUse ? (
@@ -175,6 +178,7 @@ function ProfileActionsMenu({
 
 function ProfileMobileCard({
   profile,
+  pendingProfileIds,
   onEdit,
   onDelete,
   onToggleStatus,
@@ -202,6 +206,7 @@ function ProfileMobileCard({
           <IgLoginStatus profile={profile} />
           <ProfileActionsMenu
             profile={profile}
+            pending={pendingProfileIds?.has(profile.id)}
             onEdit={onEdit}
 
             onDelete={onDelete}
@@ -212,7 +217,7 @@ function ProfileMobileCard({
 
       <MobileCardTags profile={profile} osLabel={osLabel} />
 
-      <MobileCardFooter profile={profile} statusMeta={statusMeta} onToggleStatus={onToggleStatus} />
+      <MobileCardFooter profile={profile} pending={pendingProfileIds?.has(profile.id)} statusMeta={statusMeta} onToggleStatus={onToggleStatus} />
     </div>
   )
 }
@@ -243,10 +248,12 @@ function MobileCardTags({ profile, osLabel }: { profile: Profile; osLabel: strin
 
 function MobileCardFooter({
   profile,
+  pending,
   statusMeta,
   onToggleStatus,
 }: {
   profile: Profile
+  pending?: boolean
   statusMeta: { label: string; className: string }
   onToggleStatus: (profile: Profile) => void
 }) {
@@ -268,7 +275,8 @@ function MobileCardFooter({
               : 'border-status-success-border bg-status-success-soft text-status-success hover:bg-status-success hover:text-inverse border',
           )}
           onClick={() => onToggleStatus(profile)}
-          disabled={profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
+          disabled={pending || profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
+          aria-busy={pending}
         >
           {profile.inUse ? (
             <Square className="h-4 w-4 fill-current" />
@@ -286,6 +294,7 @@ function MobileCardFooter({
 
 function ProfileDesktopRow({
   profile,
+  pendingProfileIds,
   onEdit,
   onDelete,
   onToggleStatus,
@@ -323,7 +332,8 @@ function ProfileDesktopRow({
                 e.stopPropagation()
                 onToggleStatus(profile)
               }}
-              disabled={profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
+              disabled={pendingProfileIds?.has(profile.id) || profile.status === 'deleting' || Boolean(profile.pendingRenameFrom)}
+              aria-busy={pendingProfileIds?.has(profile.id)}
               title={profile.inUse ? 'Stop Browser' : 'Start Browser'}
             >
               {profile.inUse ? (
@@ -335,6 +345,7 @@ function ProfileDesktopRow({
             <div onClick={(e) => e.stopPropagation()}>
               <ProfileActionsMenu
                 profile={profile}
+                pending={pendingProfileIds?.has(profile.id)}
                 onEdit={onEdit}
 
                 onDelete={onDelete}
@@ -439,6 +450,7 @@ export function ProfilesList({
   onDelete,
   onToggleStatus,
   onDetails,
+  pendingProfileIds,
   emptyTitle = 'No profiles',
   emptyDescription = 'Create a new profile to get started.',
 }: ProfilesListProps) {
@@ -462,7 +474,7 @@ export function ProfilesList({
     )
   }
 
-  const actionProps = { onEdit, onDelete, onToggleStatus, onDetails }
+  const actionProps = { onEdit, onDelete, onToggleStatus, onDetails, pendingProfileIds }
 
   if (isMobile) {
     return (

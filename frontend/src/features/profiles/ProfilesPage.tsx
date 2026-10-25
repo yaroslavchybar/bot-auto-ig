@@ -68,6 +68,7 @@ function ProfilesContent({
           onEdit={s.handleEdit}
           onDelete={s.handleDeleteClick}
           onToggleStatus={(p) => s.toggleUsing(p)}
+          pendingProfileIds={s.pendingProfileIds}
           onDetails={onDetails}
           emptyTitle={s.searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
           emptyDescription={

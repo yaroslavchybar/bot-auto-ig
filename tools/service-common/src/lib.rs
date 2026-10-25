@@ -18,6 +18,13 @@ pub fn now_ms() -> u64 {
 #[derive(Clone)]
 pub struct RequestContext(pub Arc<Mutex<Map<String, Value>>>);
 
+/// Explicit application errors passed to request logging without inspecting response bodies.
+#[derive(Clone)]
+pub struct ResponseError {
+    pub code: String,
+    pub message: String,
+}
+
 impl RequestContext {
     pub fn add(&self, key: &str, value: impl Into<Value>) {
         self.0.lock().unwrap().insert(key.into(), value.into());
@@ -70,6 +77,10 @@ pub async fn request_log(mut request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let status = response.status().as_u16();
     context.add("statusCode", status);
+    let error = response
+        .extensions()
+        .get::<ResponseError>()
+        .map(|error| json!({"code": error.code, "message": error.message}));
     response
         .headers_mut()
         .insert("x-request-id", HeaderValue::from_str(&request_id).unwrap());
@@ -86,6 +97,7 @@ pub async fn request_log(mut request: Request, next: Next) -> Response {
         "level": if failed { "error" } else { "info" },
         "outcome": if failed { "error" } else if status >= 400 { "rejected" } else { "success" },
         "durationMs": started.elapsed().as_millis() as u64, "context": &*fields,
+        "error": error,
         "environment": log_environment(&service)
     }));
     response

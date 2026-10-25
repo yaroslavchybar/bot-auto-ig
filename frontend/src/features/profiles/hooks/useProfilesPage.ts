@@ -103,6 +103,8 @@ function useProfileCrud(
   setSaving: SetSaving,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
+  const toggling = useRef(new Set<string>())
+  const [pendingProfileIds, setPendingProfileIds] = useState<ReadonlySet<string>>(new Set())
   const handleDeleteConfirm = useCallback(async () => {
     if (!dialogState.deleteProfile) return
     setSaving(true)
@@ -122,31 +124,27 @@ function useProfileCrud(
 
   const toggleUsing = useCallback(
     async (profile: Profile) => {
+      if (toggling.current.has(profile.id)) return
+      toggling.current.add(profile.id)
+      setPendingProfileIds(new Set(toggling.current))
       setSaving(true)
       try {
-        if (profile.inUse) {
-          try {
-            await apiFetch(`/api/profiles/${encodeURIComponent(profile.name)}/stop`, {
-              method: 'POST',
-            })
-          } catch {
-            /* ignore */
-          }
-        } else {
-          await apiFetch(`/api/profiles/${encodeURIComponent(profile.name)}/start`, {
-            method: 'POST',
-          })
-        }
+        const action = profile.inUse ? 'stop' : 'start'
+        await apiFetch(`/api/profiles/${encodeURIComponent(profile.name)}/${action}`, {
+          method: 'POST',
+        })
       } catch (e) {
         handleError(e, 'Toggle profile')
       } finally {
+        toggling.current.delete(profile.id)
+        setPendingProfileIds(new Set(toggling.current))
         setSaving(false)
       }
     },
     [handleError, setSaving],
   )
 
-  return { handleDeleteConfirm, toggleUsing }
+  return { handleDeleteConfirm, toggleUsing, pendingProfileIds }
 }
 
 /* ── Page action handlers ── */
@@ -285,5 +283,6 @@ export function useProfilesPage() {
     handleSaveProfile: save.handleSaveProfile,
     handleDeleteConfirm: crud.handleDeleteConfirm,
     toggleUsing: crud.toggleUsing,
+    pendingProfileIds: crud.pendingProfileIds,
   }
 }

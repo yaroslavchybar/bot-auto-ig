@@ -2,6 +2,120 @@ use super::*;
 use crate::test_support::{body, Fixture};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[tokio::test]
+async fn request_logs_keep_error_reasons_redacted_without_reading_response_bodies() {
+    const CHILD: &str = "IGBOT_HTTP_LOG_TEST_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let fixture = Fixture::router(
+            Router::new()
+                .route(
+                    "/rejected",
+                    get(|| async {
+                        error(
+                            StatusCode::BAD_REQUEST,
+                            "VALIDATION_ERROR",
+                            "Browser worker already running; fixture-password",
+                        )
+                    }),
+                )
+                .route(
+                    "/unavailable",
+                    get(|| async {
+                        error(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "WORKER_UNAVAILABLE",
+                            "Browser worker is starting",
+                        )
+                    }),
+                )
+                .route(
+                    "/success",
+                    get(|| async { Json(json!({"private":"body-only-secret"})) }),
+                )
+                .layer(middleware::from_fn(ig_service_common::request_log)),
+        )
+        .await;
+        let client = reqwest::Client::new();
+        for (path, status) in [("rejected", 400), ("unavailable", 503), ("success", 200)] {
+            let response = client
+                .get(format!("{}/{path}", fixture.url))
+                .header("x-request-id", format!("fixture-{path}"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status().as_u16(), status);
+            assert_eq!(
+                response.headers()["x-request-id"],
+                format!("fixture-{path}")
+            );
+            let body: Value = response.json().await.unwrap();
+            if status == 400 {
+                assert_eq!(
+                    body["error"]["message"],
+                    "Browser worker already running; fixture-password"
+                );
+            } else if status == 200 {
+                assert_eq!(body["private"], "body-only-secret");
+            }
+        }
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "api::tests::request_logs_keep_error_reasons_redacted_without_reading_response_bodies",
+            "--nocapture",
+        ])
+        .env(CHILD, "1")
+        .env("DB_PASSWORD", "fixture-password")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let logs = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!logs.contains("fixture-password"));
+    assert!(!logs.contains("body-only-secret"));
+    let entries: Vec<Value> = logs
+        .lines()
+        .filter_map(|line| {
+            line.find('{')
+                .and_then(|start| serde_json::from_str::<Value>(&line[start..]).ok())
+        })
+        .filter(|entry| entry["event"] == "http.request")
+        .collect();
+    assert_eq!(entries.len(), 3);
+    let rejected = entries
+        .iter()
+        .find(|entry| entry["requestId"] == "fixture-rejected")
+        .unwrap();
+    assert_eq!(rejected["outcome"], "rejected");
+    assert_eq!(rejected["error"]["code"], "VALIDATION_ERROR");
+    assert_eq!(
+        rejected["error"]["message"],
+        "Browser worker already running; [redacted]"
+    );
+    let unavailable = entries
+        .iter()
+        .find(|entry| entry["requestId"] == "fixture-unavailable")
+        .unwrap();
+    assert_eq!(unavailable["outcome"], "error");
+    assert_eq!(unavailable["error"]["code"], "WORKER_UNAVAILABLE");
+    let success = entries
+        .iter()
+        .find(|entry| entry["requestId"] == "fixture-success")
+        .unwrap();
+    assert_eq!(success["outcome"], "success");
+    assert!(success["error"].is_null());
+}
+
 #[test]
 fn timestamps_accept_integer_and_fractional_numbers_but_reject_invalid_values() {
     assert_eq!(

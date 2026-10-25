@@ -6,13 +6,14 @@ import { mount } from './mount'
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   apiFetch: vi.fn().mockResolvedValue({}),
+  handleError: vi.fn(),
 }))
 vi.mock('convex/react', () => ({
   useConvex: () => ({ query: mocks.query }),
   useQuery: () => ({ page: [], isDone: true, continueCursor: '' }),
 }))
 vi.mock('@/lib/api', () => ({ apiFetch: mocks.apiFetch }))
-vi.mock('@/hooks/useErrorHandler', () => ({ useErrorHandler: () => ({ handleError: vi.fn() }) }))
+vi.mock('@/hooks/useErrorHandler', () => ({ useErrorHandler: () => ({ handleError: mocks.handleError }) }))
 let state: ReturnType<typeof useProfilesPage>
 function Probe() {
   const value = useProfilesPage()
@@ -32,6 +33,8 @@ let view: ReturnType<typeof mount> | undefined
 afterEach(async () => {
   await view?.unmount()
   mocks.query.mockReset()
+  mocks.apiFetch.mockReset().mockResolvedValue({})
+  mocks.handleError.mockReset()
 })
 
 test('older edit responses cannot replace a newer selected profile', async () => {
@@ -161,4 +164,42 @@ test('closing or opening Create invalidates pending profile loads', async () => 
   })
   expect(state.editProfile).toBeNull()
   expect(state.isCreateOpen).toBe(true)
+})
+
+test.each([false, true])('browser actions are guarded per profile, including before rerender (inUse=%s)', async inUse => {
+  const first = deferred<object>(), second = deferred<object>()
+  mocks.apiFetch.mockImplementation(path => path.includes('/A/') ? first.promise : second.promise)
+  view = mount()
+  await view.render(<Probe />)
+  mocks.apiFetch.mockClear() // Ignore the mount's runtime reconciliation request.
+  let a!: Promise<void>, b!: Promise<void>
+  await act(async () => {
+    a = state.toggleUsing({ id: 'A', name: 'A', inUse })
+    void state.toggleUsing({ id: 'A', name: 'A', inUse })
+    b = state.toggleUsing({ id: 'B', name: 'B', inUse })
+  })
+  expect(mocks.apiFetch.mock.calls.map(([path]) => path)).toEqual([
+    `/api/profiles/A/${inUse ? 'stop' : 'start'}`,
+    `/api/profiles/B/${inUse ? 'stop' : 'start'}`,
+  ])
+  expect([...state.pendingProfileIds]).toEqual(['A', 'B'])
+  await act(async () => { first.resolve({}); await a })
+  expect([...state.pendingProfileIds]).toEqual(['B'])
+  await act(async () => { second.resolve({}); await b })
+  expect(state.pendingProfileIds.size).toBe(0)
+  expect(state.saving).toBe(false)
+})
+
+test.each([false, true])('failed browser actions show an error and permit another attempt (inUse=%s)', async inUse => {
+  view = mount()
+  await view.render(<Probe />)
+  const error = new Error('Browser operation rejected')
+  mocks.apiFetch.mockClear().mockRejectedValueOnce(error).mockResolvedValue({})
+  const profile = { id: 'A', name: 'A', inUse }
+  await act(async () => { await state.toggleUsing(profile) })
+  expect(mocks.handleError).toHaveBeenCalledWith(error, 'Toggle profile')
+  expect(state.pendingProfileIds.size).toBe(0)
+  expect(state.saving).toBe(false)
+  await act(async () => { await state.toggleUsing(profile) })
+  expect(mocks.apiFetch).toHaveBeenCalledTimes(2)
 })

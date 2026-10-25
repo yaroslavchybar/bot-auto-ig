@@ -49,6 +49,11 @@ which preserves their original identity and deployment context. Account login
 attempts and their cleanup requests share the login completion's request ID. Scraper completion
 events include a failed final save without hiding the original task result.
 
+Public API errors attach typed response metadata for the request logger. The
+completion includes `error.code` and a redacted `error.message`, alongside the
+HTTP status and request ID. The logger never reads response bodies to obtain
+these details, so successful payloads and streaming responses stay private.
+
 ## Automation UI failures
 
 Automation leases observe the public Page, Frame, Locator, mouse and keyboard

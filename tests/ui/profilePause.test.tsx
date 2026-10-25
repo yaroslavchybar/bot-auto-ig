@@ -35,6 +35,27 @@ afterEach(async () => {
   mocks.pause.mockReset()
 })
 
+test.each([false, true])('pending browser controls are disabled across mobile=%s layouts and menus', async mobile => {
+  mocks.mobile = mobile
+  const toggle = vi.fn()
+  view = mount()
+  const render = (pending: boolean) => view!.render(<ProfilesList
+    profiles={[{ id: 'A', name: 'A' }, { id: 'B', name: 'B', inUse: true }]}
+    pendingProfileIds={new Set(pending ? ['A'] : [])}
+    loading={false} onEdit={() => {}} onDelete={() => {}} onToggleStatus={toggle} onDetails={() => {}}
+  />)
+  await render(true)
+  const controls = () => [...view!.container.querySelectorAll('button')].filter(button =>
+    /^(START|STOP|Start Browser|Stop Browser)$/.test(button.textContent?.trim() ?? '') ||
+    /^(Start|Stop) Browser$/.test(button.title))
+  expect(controls()).toHaveLength(4)
+  expect(controls().filter(button => button.disabled)).toHaveLength(2)
+  await act(async () => { controls().filter(button => button.disabled).forEach(button => button.click()) })
+  expect(toggle).not.toHaveBeenCalled()
+  await render(false)
+  expect(controls().every(button => !button.disabled)).toBe(true)
+})
+
 test.each([false, true])('profile unread chat badges show known counts and unknown state on mobile=%s', async mobile => {
   mocks.mobile = mobile
   view = mount()
