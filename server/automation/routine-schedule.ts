@@ -1,5 +1,6 @@
 import type { SessionActivity } from './sessions.js';
 import type { ActionLogger, StopCheck } from './actions/shared.js';
+import { addLogContext } from '../shared/logger.js';
 
 type Target = { target: number; remaining: number; sent: number };
 type Controls = {
@@ -17,7 +18,10 @@ const MAX_BROWSING_STALLS = 3;
 const pauseBeforeBrowsing = async (deadline: number, reason: string, controls: BrowseControls, stalls: number) => {
   if (reason === 'stalled') {
     if (stalls >= MAX_BROWSING_STALLS || controls.now() >= deadline) {
-      controls.log({ event: 'automation.routine.browsing_unavailable', reason, attempts: stalls, outcome: 'error' });
+      const stall = { reason, attempts: stalls, deadlineReached: controls.now() >= deadline,
+        remainingMs: Math.max(0, deadline - controls.now()) };
+      addLogContext({ browsingStall: stall });
+      controls.log({ event: 'automation.routine.browsing_unavailable', ...stall, outcome: 'error' });
       return false;
     }
     controls.log({ event: 'automation.routine.browsing_retry', reason, attempts: stalls,

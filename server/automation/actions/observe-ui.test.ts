@@ -161,12 +161,97 @@ test('anchored input failures retain the original semantic selector instead of t
   assert.equal(logs[1].context.diagnosticCount, 1)
 })
 
+test('deadline exhaustion stays on completion while genuine UI failures remain diagnostic', () => {
+  const logs = events(`
+    import { BrowseSession } from './server/automation/actions/session.ts';
+    import { withUiDiagnosticContext } from './server/automation/actions/ui-diagnostics.ts';
+    await logOperation('automation.profile_session', {}, async scope => {
+      const s=observationFixture(); s.fail('waitFor');
+      const stop=observeAutomationUi(s.page,()=>false);
+      await withUiDiagnosticContext({session:new BrowseSession(Date.now()-1),action:'reels',stage:'verify_reel'},
+        ()=>s.page.getByRole('dialog').waitFor({state:'visible',timeout:1})).catch(()=>{});
+      assert.equal(scope.fields.lastUiAction.status,'deadline_exhausted');
+      s.fail('waitFor');
+      await withUiDiagnosticContext({session:new BrowseSession(),action:'notifications',stage:'open_notifications'},
+        ()=>s.page.getByRole('dialog').waitFor({state:'visible',timeout:5000})).catch(()=>{});
+      stop();
+    });
+  `)
+  assert.equal(logs.length, 2)
+  assert.equal(logs[0].event, 'automation.ui_failure')
+  assert.equal(logs[0].context.stage, 'open_notifications')
+  assert.equal(logs[1].context.uiDeadlineCount, 1)
+  assert.equal(logs[1].context.lastUiDeadline.stage, 'verify_reel')
+  assert.equal(logs[1].context.lastUiAction.status, 'failed')
+  assert.equal(logs[1].context.lastUiAction.action, 'notifications')
+  assert.equal(logs[1].context.lastUiAction.pagePath, '/direct/')
+  assert.equal(logs[1].context.lastUiAction.expectedSelector, undefined)
+})
+
+test('a successful action is retained as bounded context for later stalls', () => {
+  const logs = events(`
+    import { withUiDiagnosticContext } from './server/automation/actions/ui-diagnostics.ts';
+    await logOperation('automation.profile_session', {}, async () => {
+      const s=observationFixture(), stop=observeAutomationUi(s.page,()=>false);
+      await withUiDiagnosticContext({action:'notifications',stage:'open_notifications'},
+        ()=>s.page.getByRole('button').click({timeout:5000}));
+      stop();
+    });
+  `)
+  assert.equal(logs.length, 1)
+  assert.equal(logs[0].context.lastUiAction.status, 'success')
+  assert.equal(logs[0].context.lastUiAction.stage, 'open_notifications')
+  assert.equal(logs[0].context.diagnosticCount, undefined)
+})
+
+test('successful selector text cannot leak escaped names into completion or parent failure notes', () => {
+  const names = [
+    { value: "Alice O'Connor", selector: "getByText('Alice O\\'Connor', {exact: true})" },
+    { value: 'Alice "Quoted"', selector: 'getByText("Alice \\"Quoted\\"", {exact: true})' },
+    { value: 'Alice\\Connor', selector: 'getByText("Alice\\\\Connor", {exact: true})' },
+  ]
+  const logs = events(`
+    import { redactLogValues } from './server/shared/logger.ts';
+    import { withUiDiagnosticContext } from './server/automation/actions/ui-diagnostics.ts';
+    for (const {value,selector} of ${JSON.stringify(names)}) {
+      await logOperation('automation.session', {}, async parent => {
+        await logOperation('automation.profile_session', {}, async scope => {
+          redactLogValues(value);
+          const s=observationFixture(), target=s.page.getByText(value,{exact:true});
+          target.toString=()=>selector;
+          s.page.getByText=()=>target;
+          const stop=observeAutomationUi(s.page,()=>false);
+          await withUiDiagnosticContext({action:'profile_edit',stage:'verify_full_name'},
+            ()=>s.page.getByText(value,{exact:true}).waitFor({state:'visible',timeout:5000}));
+          stop();
+          scope.add({outcome:'error'});
+          parent.note('error',{event:'automation.profile_failed',...scope.safeFields({lastUiAction:scope.fields.lastUiAction})});
+        });
+      });
+    }
+  `)
+  const serialized = JSON.stringify(logs)
+  for (const { value, selector } of names) {
+    assert.ok(!serialized.includes(value))
+    assert.ok(!serialized.includes(JSON.stringify(selector).slice(1, -1)))
+  }
+  assert.equal(logs.length, names.length * 2)
+  for (const log of logs) {
+    const action = log.event === 'automation.profile_session' ? log.context.lastUiAction : log.context.notes[0].lastUiAction
+    assert.equal(action.expectedSelector, undefined)
+    assert.equal(action.stage, 'verify_full_name')
+    assert.equal(action.status, 'success')
+  }
+})
+
 test('control snapshots bound names, count and traversal, excluding static text and values', () => {
   const controls = diagnosticControls([{ role: 'text', name: 'private text' }, { role: 'textbox', name: 'message' },
     ...Array.from({ length: 30 }, () => ({ role: 'button', name: 'x'.repeat(200), value: 'private' }))])
   assert.equal(controls.length, 12)
   assert.ok(controls.every(control => control.role === 'button' && control.name.length === 100))
   assert.equal(diagnosticControls({ role: 'button', name: 'Unexpected shape' }).length, 0)
+  assert.deepEqual(diagnosticControls([{ role: 'link', name: 'Notifications Notifications', url: 'private-url' }]),
+    [{ role: 'link', name: 'Notifications Notifications' }])
 })
 
 test('expected absence probes stay quiet while required waits and transport failures remain visible', () => {

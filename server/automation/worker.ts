@@ -186,6 +186,8 @@ async function withProfile(
     if (profileScope?.failed) parent?.note('error', { event: 'automation.profile_failed', ...profileScope.safeFields({
       profileId: profile.id, profileName: profile.name,
       childOperationId: profileScope.operationId, reason: profileScope.fields.sessionReason,
+      lastUiAction: profileScope.fields.lastUiAction, lastBrowsingSlice: profileScope.fields.lastBrowsingSlice,
+      browsingStall: profileScope.fields.browsingStall, uiDeadlineCount: profileScope.fields.uiDeadlineCount,
       error: profileScope.error ?? new Error(`Profile session failed: ${String(profileScope.fields.sessionReason || 'unknown reason')}`),
     }) })
   })

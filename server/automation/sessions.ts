@@ -13,6 +13,7 @@ import { isInstagramHome } from './actions/navigation.js'
 import type { ActionLogger, StopCheck } from './actions/shared.js'
 import { setSessionAppearance } from './actions/appearance.js'
 import { addLogContext } from '../shared/logger.js'
+import { withUiDiagnosticContext } from './actions/ui-diagnostics.js'
 
 export type SessionConfig = typeof defaults & {
   watch_stories: boolean; warmup_topics: string[]; browse_home_feed: boolean; scroll_reels: boolean; warmup_day?: number
@@ -81,22 +82,24 @@ export async function runBrowsingSession(profileId: string, automationId: string
   try {
     if (!stopped()) {
       const session = new BrowseSession(deadline, stopped)
-      await deps.check(page, session)
-      await deps.appearance(page, plan.timezone, session, log)
-      if (config.watch_stories && !isInstagramHome(page)) {
-        await page.goto('https://www.instagram.com/', {
-          waitUntil: 'domcontentloaded', timeout: session.timeout(15_000),
-        })
+      reason = await withUiDiagnosticContext({ session, stage: 'browsing_session' }, async () => {
         await deps.check(page, session)
-      }
-      const unseenStories = config.watch_stories && await deps.unseenStories(page, session)
-      log({ event: 'automation.session.daily_plan', day, activityPlan: budget.plan, activityUsed: budget.used })
-      // Explore receives part of this reservation, leaving time for the common browsing flow.
-      await deps.explore(page, Math.min(deadline, deps.now() + (deadline - deps.now()) * 0.3), config, budget, log, stopped)
-      if (!stopped()) reason = await deps.browse(page, {
-        deadline, day, config, budget, unseenStories, request: { profileId, runId, date: plan.date },
-        remainingMinutes: Math.max(0, Math.min(plan.remainingMinutes ?? plan.minutes, (midnight - started) / 60_000) - (deps.now() - started) / 60_000),
-      }, log, shouldStop, activity, startupNotifications)
+        await deps.appearance(page, plan.timezone, session, log)
+        if (config.watch_stories && !isInstagramHome(page)) {
+          await page.goto('https://www.instagram.com/', {
+            waitUntil: 'domcontentloaded', timeout: session.timeout(15_000),
+          })
+          await deps.check(page, session)
+        }
+        const unseenStories = config.watch_stories && await deps.unseenStories(page, session)
+        log({ event: 'automation.session.daily_plan', day, activityPlan: budget.plan, activityUsed: budget.used })
+        // Explore receives part of this reservation, leaving time for the common browsing flow.
+        await deps.explore(page, Math.min(deadline, deps.now() + (deadline - deps.now()) * 0.3), config, budget, log, stopped)
+        return stopped() ? 'stopped' : deps.browse(page, {
+          deadline, day, config, budget, unseenStories, request: { profileId, runId, date: plan.date },
+          remainingMinutes: Math.max(0, Math.min(plan.remainingMinutes ?? plan.minutes, (midnight - started) / 60_000) - (deps.now() - started) / 60_000),
+        }, log, shouldStop, activity, startupNotifications)
+      })
     }
     if (!shouldStop() && deps.now() >= deadline && reason !== 'stalled') reason = 'finished'
   } catch (error) {

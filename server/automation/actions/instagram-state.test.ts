@@ -186,12 +186,17 @@ function notificationFixture(
     checkpoint?: boolean
     stubbornPanel?: boolean
     resetFailure?: boolean
+    remountOnHover?: boolean
+    stopOnHover?: () => void
+    onHeadingLookup?: (count: number) => void
     url?: string
   } = {},
 ) {
   const clicks: string[] = []
   let opened = false,
-    selections = 0
+    selections = 0,
+    sidebarRevision = 0
+  let headingLookups = 0
   const close = {
     filter() {
       return this
@@ -214,7 +219,7 @@ function notificationFixture(
     first() {
       return this
     },
-    isVisible: async () => opened,
+    isVisible: async () => { options.onHeadingLookup?.(++headingLookups); return opened },
     waitFor: async ({ state }: { state: string }) => {
       if (options.stubbornPanel && state === 'hidden' && opened) throw new errors.TimeoutError('Panel stayed open')
       assert.equal(opened, state === 'visible')
@@ -240,9 +245,15 @@ function notificationFixture(
       return null
     },
     locator: (selector: string) => {
-      if (selector.includes('svg[aria-label="Notifications"]'))
+      if (selector.includes('svg[aria-label="Home"]')) return { locator: () => ({}) }
+      if (selector.includes('svg[aria-label="Notifications"]')) {
+        const selectedRevision = sidebarRevision
         return {
           ...visibleActionGeometry,
+          hover: async () => {
+            if (options.remountOnHover) sidebarRevision++
+            options.stopOnHover?.()
+          },
           filter({ visible }: { visible: boolean }) {
             assert.equal(visible, true)
             return this
@@ -253,6 +264,7 @@ function notificationFixture(
           isVisible: async () => !opened,
           waitFor: async () => {},
           click: async () => {
+            assert.equal(selectedRevision, sidebarRevision, 'click must reacquire the sidebar after hover')
             const selected = ++selections
             if (options.openedBeforeError) opened = true
             if (selected <= (options.failures ?? 0))
@@ -261,6 +273,7 @@ function notificationFixture(
             opened = true
           },
         }
+      }
       return {
         filter: () => ({ evaluateAll: async () => (options.checkpoint ? 'checkpoint' : null) }),
       }
@@ -279,6 +292,33 @@ test('notification checks use stable icons and close their own panel instead of 
   const { page, session, clicks } = notificationFixture()
   assert.equal(await checkNotifications(page, () => {}, session), true)
   assert.deepEqual(clicks, ['notifications', 'notification-close'])
+})
+
+test('notification opening reacquires the semantic control after hover remounts the sidebar', async () => {
+  const f = notificationFixture({ remountOnHover: true })
+  assert.equal(await checkNotifications(f.page, () => {}, f.session), true)
+  assert.deepEqual(f.clicks, ['notifications', 'notification-close'])
+  assert.equal(f.selections(), 1)
+})
+
+test('a stop during sidebar hover prevents the notification click', async () => {
+  let stopped = false
+  const f = notificationFixture({ stopOnHover: () => { stopped = true } })
+  const session = new BrowseSession(Infinity, () => stopped)
+  await assert.rejects(checkNotifications(f.page, () => {}, session), /Browsing session ended/)
+  assert.deepEqual(f.clicks, [])
+})
+
+test('a stop during the post-hover heading lookup prevents the notification click', async () => {
+  let stopped = false, lookups = 0
+  const f = notificationFixture({ onHeadingLookup: count => {
+    lookups = count
+    if (count === 2) stopped = true
+  } })
+  const session = new BrowseSession(Infinity, () => stopped)
+  await assert.rejects(checkNotifications(f.page, () => {}, session), /Browsing session ended/)
+  assert.equal(lookups, 2)
+  assert.deepEqual(f.clicks, [])
 })
 
 test('notification navigation reacquires a hidden control once without blocking warm-up', async () => {

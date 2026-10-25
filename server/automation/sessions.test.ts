@@ -6,6 +6,7 @@ import { SessionEnded } from './actions/session.js'
 import { browsingNumbers, browsingFlags } from '../shared/browsingSettings.js'
 import { defaultRoutine, validateRoutine } from '../../convex/routinePolicy.js'
 import { logOperation } from '../shared/logger.js'
+import { currentUiDiagnosticContext } from './actions/ui-diagnostics.js'
 
 test('routine validation and session defaults share one browsing policy', () => {
   const config = sessionConfig({})
@@ -42,6 +43,7 @@ function setup(day = 8, minutes = 10) {
       budget.take('likes'); now = end
     },
     browse: async (_page, context) => {
+      assert.equal(currentUiDiagnosticContext()?.session?.end, context.deadline)
       calls.push('browse'); assert.equal(context.deadline, Date.parse('2026-10-14T12:00:00Z') + minutes * 60_000)
       assert.equal(context.request.profileId, 'profile'); assert.equal(context.request.date, '2026-10-14')
       context.budget.used.reels += 12; context.budget.used.stories += 7

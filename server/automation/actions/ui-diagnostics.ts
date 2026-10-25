@@ -1,7 +1,7 @@
 import type { Locator } from 'playwright-core'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { errors } from 'playwright-core'
-import { logDiagnostic } from '../../shared/logger.js'
+import { currentLogScope, logDiagnostic } from '../../shared/logger.js'
 import { BrowseSession, SessionEnded } from './session.js'
 
 export type UiDiagnosticContext = {
@@ -23,7 +23,7 @@ export const withUiDiagnosticContext = <T>(context: UiDiagnosticContext, run: ()
   contexts.run({ ...contexts.getStore(), ...context }, run)
 
 const reported = new WeakSet<Error>()
-const controlRoles = new Set(['button', 'switch', 'checkbox', 'radio', 'menuitem', 'tab', 'combobox'])
+const controlRoles = new Set(['button', 'link', 'switch', 'checkbox', 'radio', 'menuitem', 'tab', 'combobox'])
 
 /** Keep only control roles/names, excluding snapshot text, URLs, input values and other page content. */
 export function diagnosticControls(snapshot: unknown): { role: string; name: string }[] {
@@ -45,7 +45,17 @@ export async function reportUiFailure(target: Locator, error: unknown, context: 
   phase: 'selection' | 'input' | 'verification' | 'navigation'; startedAt: number; timeoutMs?: number
 }): Promise<void> {
   if (!(error instanceof Error) || error instanceof SessionEnded || reported.has(error)) return
-  if (context.session?.stopped() || context.stopped?.()) { reported.add(error); return }
+  const now = Date.now()
+  if (context.stopped?.() || (context.session?.cancelled() && now < context.session.end)) { reported.add(error); return }
+  if (error instanceof errors.TimeoutError && context.session && now >= context.session.end) {
+    reported.add(error)
+    // A normal time-budget boundary is completion context, not a broken UI selector.
+    const scope = currentLogScope()
+    scope?.add({ uiDeadlineCount: Number(scope.fields.uiDeadlineCount ?? 0) + 1,
+      lastUiDeadline: { action: context.action || context.phase, stage: context.stage || context.phase,
+        phase: context.phase, timeoutMs: context.timeoutMs, durationMs: Math.max(0, now - context.startedAt) } })
+    return
+  }
   if (context.expectedTimeout && error instanceof errors.TimeoutError) return
   const ambiguous = error.message.includes('strict mode violation')
   reported.add(error)

@@ -1,5 +1,6 @@
-import type { Locator, Page } from 'playwright-core'
+import { errors, type Locator, type Page } from 'playwright-core'
 import { currentUiDiagnosticContext, reportUiFailure } from './ui-diagnostics.js'
+import { addLogContext } from '../../shared/logger.js'
 
 const inputs = new Set(['click', 'dblclick', 'tap', 'fill', 'clear', 'press', 'pressSequentially', 'type', 'insertText',
   'check', 'uncheck', 'setChecked', 'selectOption', 'setInputFiles', 'hover', 'dragTo', 'scrollIntoViewIfNeeded', 'focus', 'blur',
@@ -60,9 +61,20 @@ export function observeAutomationUi(page: Page, stopped: () => boolean): () => v
           const options = args.at(-1)
           const timeout = options && typeof options === 'object' && 'timeout' in options ? options.timeout : undefined
           const context = currentUiDiagnosticContext()
+          const lastAction: Record<string, unknown> = { action: context?.action || `${kind}.${method}`,
+            stage: context?.stage || phase, phase, startedAt, timeoutMs: typeof timeout === 'number' ? timeout : undefined,
+            remainingMs: context?.session && Number.isFinite(context.session.end) ? Math.max(0, context.session.end - startedAt) : undefined,
+            status: 'started' }
+          try { lastAction.pagePath = new URL(page.url()).pathname } catch { /* Page may be gone. */ }
+          addLogContext({ lastUiAction: lastAction })
           return (async () => {
-            try { return await invoke() }
+            try { const result = await invoke(); lastAction.status = 'success'; return result }
             catch (error) {
+              const timedOut = error instanceof errors.TimeoutError
+              const deadlineReached = context?.session && Date.now() >= context.session.end
+              const cancelled = stopped() || (context?.session?.cancelled() && !deadlineReached)
+              lastAction.status = cancelled ? 'cancelled' : timedOut && deadlineReached ? 'deadline_exhausted'
+                : timedOut && context?.expectedTimeout ? 'expected_absence' : 'failed'
               const diagnosticTarget = kind === 'locator' ? target as unknown as Locator : {
                 toString: () => `${kind}.${method}`, page: () => page,
               } as Locator
@@ -70,6 +82,7 @@ export function observeAutomationUi(page: Page, stopped: () => boolean): () => v
                 phase, startedAt, timeoutMs: typeof timeout === 'number' ? timeout : undefined })
               throw error
             }
+            finally { lastAction.durationMs = Math.max(0, Date.now() - startedAt) }
           })()
         }
         methods.set(property, call)

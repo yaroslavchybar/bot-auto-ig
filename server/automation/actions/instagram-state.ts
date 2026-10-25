@@ -6,6 +6,7 @@ import { isTemporaryUiError } from './ui-errors.js'
 import { BrowseSession } from './session.js'
 import { random, type ActionLogger } from './shared.js'
 import { dismissMetaAccountPopup } from './navigation.js'
+import { withUiDiagnosticContext } from './ui-diagnostics.js'
 
 /** Check Instagram's warnings, never captions or comments with similar wording. */
 export async function assertInstagramReady(page: Page, session?: BrowseSession): Promise<void> {
@@ -85,8 +86,18 @@ export async function openNotifications(
     const link = notificationControls(page).first()
     if (!(await link.isVisible())) return false
     try {
-      await clickAction(link, timeout(5_000))
-      await heading.waitFor({ state: 'visible', timeout: timeout(10_000) })
+      const controls = page.locator('a:has(svg[aria-label="Home"])')
+        .locator('xpath=ancestor::*[.//svg[@aria-label="Search"]][1]')
+      const humanOptions = { human_config: { scroll_target_zone: [0, 1], mouse_overshoot_chance: 0 } }
+      await withUiDiagnosticContext({ action: 'notifications', stage: 'open_notifications', session, controls }, async () => {
+        // Hover expands/remounts the sidebar. Re-resolve this semantic control after movement;
+        // pinning its old DOM node would keep waiting for a control Instagram has replaced.
+        await link.hover({ ...humanOptions, timeout: timeout(5_000) })
+        session.check()
+        if (await heading.isVisible()) return
+        await notificationControls(page).first().click({ ...humanOptions, timeout: timeout(5_000) })
+        await heading.waitFor({ state: 'visible', timeout: timeout(10_000) })
+      })
       return true
     } catch (error) {
       session.check()

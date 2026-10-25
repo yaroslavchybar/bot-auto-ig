@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scheduleRoutine } from './routine-schedule.js';
+import { logOperation } from '../shared/logger.js';
 
 function setup(target = 30, batch = 5) {
   let now = 0, sent = 0;
@@ -218,6 +219,19 @@ test('a stall at the deadline is not reported as finished', async () => {
   session.browse = async minutes => { await s.controls.sleep(minutes * 60_000); return 'stalled'; };
   assert.equal(await scheduleRoutine(session, s.controls), 'stalled');
   assert.equal(s.controls.now(), session.deadline);
+});
+
+for (const deadlineReached of [false, true]) test(`stall context distinguishes the retry limit from an exhausted budget (${deadlineReached})`, async () => {
+  const s = setup(0), session = s.session(1, 1);
+  session.browse = async () => {
+    if (deadlineReached) await s.controls.sleep(60_000);
+    return 'stalled';
+  };
+  await logOperation('automation.profile_session', {}, async scope => {
+    assert.equal(await scheduleRoutine(session, s.controls), 'stalled');
+    assert.deepEqual(scope.fields.browsingStall, { reason: 'stalled', attempts: deadlineReached ? 1 : 3,
+      deadlineReached, remainingMs: Math.max(0, session.deadline - s.controls.now()) });
+  });
 });
 
 test('a retry pause expiring the deadline preserves the stall while a real stop stays stopped', async () => {

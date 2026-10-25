@@ -4,6 +4,7 @@ import { errors, type Page } from 'playwright-core'
 import { browseContent, runBrowseFeedSession, type FeedSessionContext, type FeedState } from './browse-feed.js'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { SessionEnded } from './session.js'
+import { currentUiDiagnosticContext } from './ui-diagnostics.js'
 
 function setup(day = 8) {
   let now = Date.now()
@@ -234,11 +235,15 @@ for (const [home, reels] of [[true, true], [true, false], [false, true], [false,
     const deps: NonNullable<Parameters<typeof browseContent>[7]> = {
       now: () => now, random: min => min,
       home: async (_page, session, _config, _log, shared, _matcher, seen) => {
+        assert.equal(currentUiDiagnosticContext()?.session, session)
+        assert.equal(currentUiDiagnosticContext()?.stage, 'browse_home')
         assert.ok(home); assert.equal(shared, budget); assert.equal(seen, state.homeSeen)
         calls.push('home'); now = session.end; budget.browsed++; return 'finished'
       },
       openReels: async () => { assert.ok(reels); calls.push('open-reels'); return true },
       reels: async (_page, session, _config, _log, shared, _matcher, seen) => {
+        assert.equal(currentUiDiagnosticContext()?.session, session)
+        assert.equal(currentUiDiagnosticContext()?.stage, 'browse_reels')
         assert.ok(session.end <= end)
         assert.equal(shared, budget); assert.equal(seen, state.reelsSeen)
         calls.push('reels'); now = session.end; budget.used.reels += 10; budget.browsed++

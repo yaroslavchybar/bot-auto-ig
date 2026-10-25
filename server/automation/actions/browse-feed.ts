@@ -16,6 +16,8 @@ import { topicSearchTerms } from './topic-search.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { isTemporaryUiError } from './ui-errors.js'
 import { random, sleep, type ActionLogger, type StopCheck } from './shared.js'
+import { addLogContext } from '../../shared/logger.js'
+import { withUiDiagnosticContext } from './ui-diagnostics.js'
 
 export type FeedSessionContext = {
   deadline: number; remainingMinutes: number; day: number; config: Record<string, unknown>;
@@ -37,13 +39,18 @@ export async function browseContent(page: Page, end: number, config: Record<stri
     const sliceEnd = home && reels ? Math.min(end, deps.now() + deps.random(60_000, 120_000)) : end
     const session = new BrowseSession(sliceEnd, stopped)
     const before = budget.browsed
+    const slice: Record<string, unknown> = { surface, startedAt: deps.now() }
+    addLogContext({ lastBrowsingSlice: slice })
     try {
-      if (surface === 'home') {
-        const result = await deps.home(page, session, config, log, budget, undefined, state.homeSeen)
-        if (result === 'stopped' && stopped()) return 'stopped'
-      } else if (await deps.openReels(page, log, session)) {
-        await deps.reels(page, session, config, log, budget, undefined, state.reelsSeen)
-      }
+      const result = await withUiDiagnosticContext({ session, stage: `browse_${surface}` }, async () => {
+        if (surface === 'home') {
+          const result = await deps.home(page, session, config, log, budget, undefined, state.homeSeen)
+          if (result === 'stopped' && stopped()) return 'stopped'
+        } else if (await deps.openReels(page, log, session)) {
+          await deps.reels(page, session, config, log, budget, undefined, state.reelsSeen)
+        }
+      })
+      if (result === 'stopped') return 'stopped'
     } catch (error) {
       if (!(error instanceof SessionEnded)) {
         if (!isTemporaryUiError(error)) throw error
@@ -51,6 +58,9 @@ export async function browseContent(page: Page, end: number, config: Record<stri
         log({ event: 'automation.browse.surface_unavailable', surface, error, outcome: 'skipped' })
       }
       if (stopped()) return 'stopped'
+    } finally {
+      Object.assign(slice, { durationMs: Math.max(0, deps.now() - Number(slice.startedAt)),
+        browsed: budget.browsed - before, deadlineReached: deps.now() >= sliceEnd })
     }
     empty = budget.browsed === before ? empty + 1 : 0
     if (empty >= (home && reels ? 2 : 1)) break
