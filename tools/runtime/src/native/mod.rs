@@ -34,9 +34,15 @@ pub struct Native {
 }
 impl Native {
     pub async fn shutdown(&self) -> Result<()> {
-        self.accounts.shutdown().await;
-        self.coordination.shutdown().await;
-        self.processes.shutdown().await
+        // Stop producers and supervised workers while inline login cleanup drains.
+        // Its acknowledgement and job drain share one budget below the parent's 60s limit.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+        let (_, _, result) = tokio::join!(
+            self.accounts.shutdown(deadline),
+            self.coordination.shutdown(),
+            self.processes.shutdown(),
+        );
+        result
     }
     pub fn new(api: Arc<api::Api>, scraper: Arc<crate::scraper::Scraper>) -> Result<Arc<Self>> {
         let root = project_root();

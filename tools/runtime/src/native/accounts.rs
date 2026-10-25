@@ -553,7 +553,7 @@ impl Accounts {
             }));
         }
     }
-    pub async fn shutdown(&self) {
+    pub async fn shutdown(&self, deadline: tokio::time::Instant) {
         self.stop.send_replace(true);
         for task in self.tasks.lock().await.drain(..) {
             let _ = task.await;
@@ -561,7 +561,12 @@ impl Accounts {
         // Logins run inside the main Bun process, outside the supervised worker tree.
         // Drain them before aborting jobs or allowing the controller to stop Bun.
         let has_jobs = !self.jobs.lock().await.is_empty();
-        if has_jobs && self.stop_browser_logins().await.is_err() {
+        if has_jobs
+            && !matches!(
+                tokio::time::timeout_at(deadline, self.stop_browser_logins()).await,
+                Ok(Ok(()))
+            )
+        {
             ig_service_common::service_error(
                 "accounts.browser_shutdown_failed",
                 "Browser login shutdown was not acknowledged",
@@ -569,7 +574,7 @@ impl Accounts {
         }
         // Stop issuing work and give in-flight actions time to persist their result.
         let mut jobs = self.jobs.lock().await;
-        if tokio::time::timeout(Duration::from_secs(30), async {
+        if tokio::time::timeout_at(deadline, async {
             while jobs.join_next().await.is_some() {}
         })
         .await
@@ -585,7 +590,7 @@ impl Accounts {
             .post(format!("{}/commands/browser.shutdown", self.api.worker_url))
             .bearer_auth(&self.api.key)
             .json(&json!({}))
-            .timeout(Duration::from_secs(300))
+            .timeout(Duration::from_secs(20))
             .send()
             .await
             .map_err(|_| Failure::unavailable("Browser login shutdown unavailable"))?;

@@ -16,6 +16,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { dailyOutreachQuota, dayKey, profileOutreach } from "./routinePolicy";
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
 import { leadAvailable, setLeadAvailability } from './leadMemberships';
+import { LeadStatsChanges } from './leadStats';
 import { isRetryableRoutineIssue, isRoutineLoginIssue, ROUTINE_RETRY_MS, routineRetryState,
 } from './routineErrors';
 
@@ -375,6 +376,7 @@ export const reserve = internalMutation({
 
 export const beginFollow = internalMutation({
   args: { automationId: v.id('automations'), profileId: v.id('profiles'), leadId: v.id('leads'), date: v.string(), now: v.optional(v.number()),
+    attemptId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId);
@@ -400,9 +402,27 @@ export const beginFollow = internalMutation({
         followedToday: followed, updatedAt: now });
     }
     // Persist cleanup intent before the browser click, including a lost confirmation/restart.
-    await ctx.db.patch(lead._id, { followStartedAt: now, unfollowAt: now + (lead.unfollowDays ?? 7) * 86_400_000,
+    await ctx.db.patch(lead._id, { followStartedAt: now, followAttemptId: args.attemptId, unfollowAt: now + (lead.unfollowDays ?? 7) * 86_400_000,
     });
     return true;
+  },
+});
+
+/** Only the caller that never started input may release its own follow intent. */
+export const cancelFollow = internalMutation({
+  args: { profileId: v.id('profiles'), leadId: v.id('leads'), attemptId: v.string() },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead || lead.senderId !== args.profileId || lead.followed || lead.followDate !== undefined ||
+      lead.dmSent || lead.dmBlocked || lead.dmStartedAt !== undefined || lead.followAttemptId !== args.attemptId) return;
+    const patch = { followStartedAt: undefined, followAttemptId: undefined, unfollowAt: undefined,
+      senderId: undefined, outreachListId: undefined, outreachAutomationId: undefined, unfollowDays: undefined };
+    await ctx.db.patch(lead._id, patch);
+    const next = { ...lead, ...patch };
+    const stats = new LeadStatsChanges();
+    stats.add(lead, next);
+    await stats.flush(ctx);
+    await setLeadAvailability(ctx, lead._id, leadAvailable(next));
   },
 });
 
@@ -479,7 +499,10 @@ export const recordNotifications = internalMutation({
       }
     }
     const state = await ensureProgress(ctx, args.profileId);
-    await ctx.db.patch(state._id, { lastNotificationsDate: args.date, lastNotificationsAt: now });
+    await ctx.db.patch(state._id, { lastNotificationsDate: args.date, lastNotificationsAt: now,
+      ...(requestLikerScan && state.lastLikerScanDate !== args.date && state.likerScanPendingAt === undefined
+        ? { likerScanPendingAt: now } : {}),
+    });
     return requestLikerScan;
   },
 });
@@ -619,7 +642,7 @@ export const recordFollow = internalMutation({
     await ctx.db.patch(lead._id, { followed: args.followed, ...(args.followed ? {
       followDate: followedAt, outreachDayId, unfollowAt: lead.unfollowAt ?? now + (lead.unfollowDays ?? 7) * 86_400_000,
       dmEligible: false,
-    } : { dmEligible: false, followStartedAt: undefined }),
+    } : { dmEligible: false, followStartedAt: undefined, followAttemptId: undefined }),
     });
     if (args.followed) {
       await setLeadAvailability(ctx, lead._id, false);

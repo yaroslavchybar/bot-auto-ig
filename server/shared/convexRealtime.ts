@@ -56,6 +56,12 @@ export function subscribeToConvexQuery<T>(
       runtimeUrl().replace(/^http/, 'ws') + '/subscriptions',
       { headers: runtimeHeaders(), maxPayload: 1024 * 1024, handshakeTimeout: 5_000 },
     ))
+    let transportFailed = false
+    const failTransport = (error: Error) => {
+      if (transportFailed) return
+      transportFailed = true
+      fail(error)
+    }
     current.on('open', () => { if (!stopped) current.send(JSON.stringify({ name, args })) })
     current.on('message', (data) => {
       if (stopped) return
@@ -75,10 +81,10 @@ export function subscribeToConvexQuery<T>(
         fail(new Error('Invalid subscription update'))
       }
     })
-    current.on('error', () => fail(new Error('Rust subscription connection failed')))
+    current.on('error', () => failTransport(new Error('Rust subscription connection failed')))
     current.on('close', () => {
       if (stopped) return
-      fail(new Error('Rust subscription connection closed'))
+      failTransport(new Error('Rust subscription connection closed'))
       retry = setTimeout(connect, 1000)
       retry.unref()
     })

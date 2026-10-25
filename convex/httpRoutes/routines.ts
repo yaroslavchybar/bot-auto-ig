@@ -64,7 +64,15 @@ export function registerRoutineRoutes(http: HttpRouter) {
     return jsonResponse(await ctx.runMutation(internal.routines.beginFollow, {
       automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
       leadId: b.leadId as Id<'leads'>, date: String(b.date),
+      attemptId: b.attemptId,
     }));
+  }) });
+  http.route({ path: '/api/routines/cancel-follow', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    await ctx.runMutation(internal.routines.cancelFollow, {
+      profileId: b.profileId as Id<'profiles'>, leadId: b.leadId as Id<'leads'>, attemptId: String(b.attemptId),
+    });
+    return jsonResponse({ ok: true });
   }) });
   http.route({ path: '/api/routines/target', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);

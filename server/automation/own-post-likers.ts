@@ -13,9 +13,10 @@ export async function scanOwnPostLikers(
   page: Page,
   session: BrowseSession,
   log: ActionLogger,
+  pendingPlan?: NonNullable<Awaited<ReturnType<typeof routineOwnLikerPlan>>>,
 ) {
   session.check()
-  const plan = await routineOwnLikerPlan(automationId, profileId)
+  const plan = pendingPlan ?? await routineOwnLikerPlan(automationId, profileId)
   if (!plan) return
   const ownerIgId = (await page.context().cookies('https://www.instagram.com/')).find(
     (cookie) => cookie.name === 'ds_user_id',

@@ -12,6 +12,7 @@ for (const scenario of [
   'active subscription',
   'reconnect',
   'stalled handshake',
+  'transport failure',
 ])
   test(`runtime sockets preserve resource ownership and cancellation: ${scenario}`, () => {
     const result = spawnSync(
@@ -22,8 +23,14 @@ for (const scenario of [
       import assert from 'node:assert/strict'
       import { getEventListeners, once } from 'node:events'
       import { createServer } from 'node:http'
-      import { WebSocketServer } from 'ws'
+      import WebSocket, { WebSocketServer } from 'ws'
       const scenario = ${JSON.stringify(scenario)}
+      const clients=[]
+      const originalOn=WebSocket.prototype.on
+      WebSocket.prototype.on=function(event,...args){
+        if(scenario==='transport failure'&&this.url?.endsWith('/subscriptions')&&!clients.includes(this))clients.push(this)
+        return originalOn.call(this,event,...args)
+      }
       const http = createServer()
       const connections = new Set()
       http.on('connection', socket => { connections.add(socket); socket.on('close', () => connections.delete(socket)) })
@@ -41,7 +48,7 @@ for (const scenario of [
         sockets.push(socket)
         socket.on('message', data => {
           messages.push(JSON.parse(data.toString()))
-          if (scenario === 'active subscription') socket.send(JSON.stringify({value:true}))
+          if (scenario === 'active subscription' || scenario === 'transport failure') socket.send(JSON.stringify({value:true}))
         })
       })
       async function until(check) {
@@ -94,6 +101,22 @@ for (const scenario of [
             await releasing
           }
           assert.equal(lost, 0)
+        } else if (scenario === 'transport failure') {
+          const sub=watchRoutineAccess('a','p',()=>updates++,()=>errors++,controller.signal)
+          assert.equal(await sub.initial,true)
+          assert.equal(clients.length,1)
+          const closed=new Promise(resolve=>clients[0].once('close',resolve))
+          clients[0].emit('error',new Error('Connection reset'))
+          clients[0].terminate()
+          await closed
+          assert.equal(errors,1,'error followed by close must report a single transport failure')
+          await until(()=>sockets.length===2)
+          await until(()=>updates===2)
+          const reconnected=new Promise(resolve=>clients[1].once('close',resolve))
+          clients[1].terminate()
+          await reconnected
+          assert.equal(errors,2,'a new connection must report its own failures')
+          sub.unsubscribe()
         } else if (scenario === 'stalled handshake') {
           const safety = AbortSignal.timeout(8000)
           const lease = nativeLease('/browser/lease', undefined, safety, () => lost++)
@@ -134,6 +157,7 @@ for (const scenario of [
           for (const sub of subscriptions) sub.unsubscribe()
         }
       } finally {
+        WebSocket.prototype.on=originalOn
         await closeConvexRealtime()
         for (const socket of server?.clients ?? []) socket.terminate()
         for (const socket of connections) socket.destroy()

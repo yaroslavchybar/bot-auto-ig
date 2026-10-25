@@ -54,6 +54,33 @@ test('a same-day public or private follow uses its screening slot exactly once',
   expect(await t.query(internal.routines.target, args)).toEqual(before)
 })
 
+test('pre-click cancellation releases only its own unused follow reservation and restores availability', async () => {
+  const { t, args, claim } = await setup()
+  const lead = await claim()
+  const input = { ...args, leadId: lead.leadId, date: dayKey(), attemptId: 'first' }
+  expect(await t.mutation(internal.routines.beginFollow, input)).toBe(true)
+  await t.mutation(internal.routines.cancelFollow, { profileId: args.profileId, leadId: lead.leadId, attemptId: 'stale' })
+  expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.followAttemptId).toBe('first')
+  await t.mutation(internal.routines.cancelFollow, { profileId: args.profileId, leadId: lead.leadId, attemptId: 'first' })
+  const saved = (await t.run(ctx => ctx.db.get(lead.leadId)))!
+  expect(saved.senderId).toBeUndefined()
+  expect(saved.followStartedAt).toBeUndefined()
+  expect(saved.unfollowAt).toBeUndefined()
+  const membership = await t.run(ctx => ctx.db.query('leadMemberships').withIndex('by_lead_list', q => q.eq('leadId', lead.leadId)).first())
+  expect(membership?.available).toBe(true)
+  const next = await t.mutation(internal.routines.reserve, args)
+  expect(next).not.toBeNull()
+})
+
+test('cancelling a confirmed follow cannot release it to the new-lead pool', async () => {
+  const { t, args, claim } = await setup()
+  const lead = await claim()
+  await t.mutation(internal.routines.beginFollow, { ...args, leadId: lead.leadId, date: dayKey(), attemptId: 'first' })
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
+  await t.mutation(internal.routines.cancelFollow, { profileId: args.profileId, leadId: lead.leadId, attemptId: 'first' })
+  expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.followed).toBe(true)
+})
+
 test('later-day public or private follows atomically reserve the remaining quota before follow intent', async () => {
   const { t, args, claim } = await setup()
   const leads = [await claim(), await claim()]

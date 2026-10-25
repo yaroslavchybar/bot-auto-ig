@@ -6,11 +6,88 @@ import { createDecipheriv, createHmac } from 'node:crypto'
 import WebSocket from 'ws'
 import { Database } from 'bun:sqlite'
 import { nativeFixture } from './native-fixture.testing.js'
+import { setupModelInSession } from '../ig-accounts/profile-setup.js'
+import { postModelUpdateInSession } from '../ig-accounts/warmup.js'
+import type { Page } from 'playwright-core'
 
 const credentialKey = 'aa'.repeat(32)
 
-for (const outcome of ['applied', 'uncertain', 'disconnect']) {
+for (const kind of ['setup', 'post', 'setup retry'] as const) {
+  test(`cancellation during ${kind} preparation clears unused pending work before acknowledgement`, async () => {
+    const usernames = ['new', 'other']
+    const native = await fixture(usernames)
+    const previousUrl = process.env.RUNTIME_URL, previousKey = process.env.INTERNAL_API_KEY
+    process.env.RUNTIME_URL = native.url
+    process.env.INTERNAL_API_KEY = 'fixture-key'
+    let release = () => {}
+    let owner: Awaited<ReturnType<typeof lease>> | undefined
+    try {
+      await native.post('/api/ig-accounts/import', { text: 'old:password:JBSWY3DPEHPK3PXP' })
+      Object.assign(native.accounts[0], { profileId: 'p', status: 'assigned', browserLoggedInAt: Date.now() - 5 * 86_400_000 })
+      native.states = [{ profileId: 'p', modelId: 'model', startedAt: Date.now() - 5 * 86_400_000,
+        avatarDone: true, postSourceIds: [], postDates: [], postTarget: 9 }]
+      if (kind === 'post') {
+        const root = path.join(native.root, 'data/model-content/model')
+        await fs.mkdir(path.join(root, 'posts/photo/variants'), { recursive: true })
+        await fs.writeFile(path.join(root, 'posts/photo/variants/one.jpg'), 'fixture')
+        await fs.writeFile(path.join(root, 'manifest.json'), JSON.stringify([{ id: 'photo', name: 'source.jpg',
+          kind: 'posts', variants: ['one.jpg'], assigned: {}, createdAt: 1 }]))
+      }
+      if (kind === 'setup retry') owner = await lease(native, '/accounts/setup-lease', { profileId: 'p', automationId: 'automation' })
+      const blocked = native.blockPendingSave()
+      release = blocked.release
+      const controller = new AbortController()
+      let pageReads = 0, resolved = false
+      const page = new Proxy({}, { get() { pageReads++; throw new Error('No browser action may start') } }) as Page
+      let result: Promise<unknown>
+      if (owner) {
+        // Retry uses the same profile index; replace its rejected fixture candidate.
+        usernames.shift()
+        result = owner.next().then(value => { resolved = true; return value })
+        owner.socket.send(JSON.stringify({ result: 'unavailable' }))
+      } else {
+        const run = kind === 'post' ? postModelUpdateInSession : setupModelInSession
+        result = run('p', kind === 'post' ? 'model' : 'automation', page, () => {}, () => false, controller.signal)
+          .then(value => { resolved = true; return value })
+      }
+      await blocked.started
+      expect(native.states[0].pending).toBeDefined()
+      if (owner) expect(native.states[0].targetUsername).toBe('other')
+      if (owner) owner.socket.send(JSON.stringify({ cancel: true }))
+      else controller.abort(new Error('Stopped before ready'))
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(resolved).toBe(false)
+      release()
+      if (owner) expect(await result).toMatchObject({ saved: true })
+      else expect(await result).toBe(false)
+      expect(pageReads).toBe(0)
+      expect(native.states[0].pending).toBeUndefined()
+      expect(native.states[0].error).not.toContain('needs review')
+      const retry = await lease(native, kind === 'post' ? '/accounts/post-lease' : '/accounts/setup-lease',
+        kind === 'post' ? { profileId: 'p', modelId: 'model' } : { profileId: 'p', automationId: 'automation' })
+      try {
+        expect(retry.ready.error).toBeUndefined()
+        expect(retry.ready[kind === 'post' ? 'content' : 'task']).toBeTruthy()
+        const acknowledged = retry.next()
+        retry.socket.send(JSON.stringify({ cancel: true }))
+        expect(await acknowledged).toMatchObject({ saved: true })
+      } finally { retry.socket.terminate() }
+    } finally {
+      release()
+      owner?.socket.terminate()
+      if (previousUrl === undefined) delete process.env.RUNTIME_URL
+      else process.env.RUNTIME_URL = previousUrl
+      if (previousKey === undefined) delete process.env.INTERNAL_API_KEY
+      else process.env.INTERNAL_API_KEY = previousKey
+      await native.stop()
+    }
+  }, 15_000)
+}
+
+for (const outcome of ['applied', 'uncertain', 'disconnect', 'cancelled failed', 'cancelled unavailable', 'cancelled applied']) {
   test(`Rust browser setup lease preserves account ownership and pending state: ${outcome}`, async () => {
+    const cancelled = outcome.startsWith('cancelled ')
+    const terminal = cancelled ? outcome.slice('cancelled '.length) : outcome
     const native = await fixture()
     try {
       await native.post('/api/ig-accounts/import', { text: 'old:password:JBSWY3DPEHPK3PXP' })
@@ -47,12 +124,12 @@ for (const outcome of ['applied', 'uncertain', 'disconnect']) {
       if (outcome === 'disconnect') owner.socket.terminate()
       else {
         const acknowledgement = owner.next()
-        owner.socket.send(JSON.stringify({ result: outcome }))
+        owner.socket.send(JSON.stringify({ result: terminal, ...(cancelled ? { cancelled: true } : {}) }))
         expect((await acknowledgement).saved).toBe(true)
         owner.socket.terminate()
       }
       await new Promise((resolve) => setTimeout(resolve, 30))
-      if (outcome === 'applied') {
+      if (terminal === 'applied') {
         expect(native.states[0].usernameDone).toBe(true)
         expect(native.states[0].pending).toBeUndefined()
         const credentials = await (
@@ -61,6 +138,10 @@ for (const outcome of ['applied', 'uncertain', 'disconnect']) {
         expect(credentials.username).toBe('new')
         expect(native.profile!.name).toBe('Old')
         expect(native.profile!.inUse).toBe(true)
+      } else if (terminal === 'failed' || terminal === 'unavailable') {
+        expect(native.states[0].pending).toBeUndefined()
+        expect(native.states[0].usernameDone).not.toBe(true)
+        expect(native.states[0].error).not.toContain('needs review')
       } else {
         expect(native.states[0].pending.kind).toBe('username')
         const retry = await lease(native, '/accounts/setup-lease', {
@@ -78,7 +159,7 @@ for (const outcome of ['applied', 'uncertain', 'disconnect']) {
   }, 15_000)
 }
 
-async function fixture() {
+async function fixture(usernames = ['new', 'other']) {
   let profile: Record<string, unknown> | null = {
     id: 'p',
     name: 'Old',
@@ -93,6 +174,7 @@ async function fixture() {
   let states: Array<Record<string, any>> = []
   let failFinalize = false
   let failPostSave = false
+  let pendingSave: { entered: () => void; wait: Promise<void> } | undefined
   let calls: string[] = []
   const convex = createServer(async (req, res) => {
     expect(req.headers.authorization).toBe('Bearer fixture-key')
@@ -103,7 +185,7 @@ async function fixture() {
     res.setHeader('Content-Type', 'application/json')
     const reply = (value: unknown) => res.end(JSON.stringify(value))
     calls.push(route + ':' + (body.operation || req.method))
-    if (route === '/api/models') return reply([{ id: 'model', usernames: ['new', 'other'] }])
+    if (route === '/api/models') return reply([{ id: 'model', usernames }])
     if (route === '/api/automations/by-id')
       return reply({ isActive: true, routine: {}, modelIds: ['model'] })
     if (route === '/api/routines/ready') return reply(true)
@@ -176,6 +258,12 @@ async function fixture() {
           }
           Object.assign(state, body.patch)
           for (const key of body.clear) delete state[key]
+          if (body.patch.pending && pendingSave) {
+            const blocked = pendingSave
+            pendingSave = undefined
+            blocked.entered()
+            await blocked.wait
+          }
           return reply({ ok: true })
         }
         case 'modelSetupReconcile': {
@@ -197,6 +285,7 @@ async function fixture() {
   const native = await nativeFixture({
     CONVEX_URL: 'http://127.0.0.1:' + (convex.address() as { port: number }).port,
     IG_CREDENTIALS_KEY: credentialKey,
+    OPENROUTER_API_KEY: '',
   })
   const post = (route: string, body: unknown = {}) =>
     fetch(native.publicUrl + route, {
@@ -212,6 +301,13 @@ async function fixture() {
     internal,
     accounts,
     calls,
+    blockPendingSave() {
+      let entered!: () => void, release!: () => void
+      const started = new Promise<void>(resolve => { entered = resolve })
+      const wait = new Promise<void>(resolve => { release = resolve })
+      pendingSave = { entered, wait }
+      return { started, release }
+    },
     get profile() {
       return profile
     },

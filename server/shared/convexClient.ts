@@ -375,10 +375,12 @@ export const routineDmTasks = (automationId: string, profileId: string) =>
   convexFetch<Array<{ leadId: string; username: string; fullName?: string; message: string; date: string; engagement?: 'like' | 'comment' }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })
 export const routineDismissDm = (profileId: string, leadId: string) =>
   convexFetch('/api/routines/dismiss-dm', { method: 'POST', body: { profileId, leadId } })
-export const routineBeginFollow = (automationId: string, profileId: string, leadId: string, date: string,
+export const routineBeginFollow = (automationId: string, profileId: string, leadId: string, date: string, attemptId: string,
 ) =>
-  convexFetch<boolean>('/api/routines/begin-follow', { method: 'POST', body: { automationId, profileId, leadId, date }, maxRetries: 0,
+  convexFetch<boolean>('/api/routines/begin-follow', { method: 'POST', body: { automationId, profileId, leadId, date, attemptId }, maxRetries: 0,
   })
+export const routineCancelFollow = (profileId: string, leadId: string, attemptId: string) =>
+  convexFetch('/api/routines/cancel-follow', { method: 'POST', body: { profileId, leadId, attemptId } })
 export const routineRecordSession = (
   automationId: string,
   profileId: string,

@@ -67,6 +67,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     followTasks: async () => [],
     recordFollow: async (_, __, followed) => { calls.push(followed ? 'record-follow' : 'record-unfollow'); },
     beginFollow: async () => { calls.push('authorize-follow'); return true; },
+    cancelFollow: async () => { calls.push('cancel-follow'); },
     checkNotifications: async () => false,
     dmTasks: async () => (mode === 'dm' ? [attempt] : []),
     dismissDm: async () => { calls.push('dismiss-dm'); },
@@ -80,6 +81,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     recordNotifications: async () => ({ ok: true, scanLikers: false }),
     readNotifications: async () => [],
     scanPostLikers: async () => {},
+    likerPlan: async () => null,
     reserve: async () => { calls.push('reserve'); return attempt; },
     begin: async () => { calls.push('authorize'); return true; },
     finish: async (_, __, ___, value, blocked) => { calls.push(value ? 'sent' : blocked ? 'blocked' : 'uncertain'); sent = value; },
@@ -648,6 +650,7 @@ test('a matching like notification triggers snapshots before DM activity without
   s.deps.notifications = async () => ({ date: s.attempt.date, since: 0 });
   s.deps.readNotifications = async () => [{ username: 'alice', kind: 'like' }];
   s.deps.recordNotifications = async () => { s.calls.push('record-notifications'); return { ok: true, scanLikers: true }; };
+  s.deps.likerPlan = async () => ({ date: s.attempt.date, ownerIgId: '123', runId: 'run', checkedMediaIds: [] });
   s.deps.scanPostLikers = async (automation, profile, page) => {
     assert.equal(automation, 'automation'); assert.equal(profile, 'profile'); assert.equal(page, s.page);
     assert.ok(s.calls.includes('record-notifications'));
@@ -663,10 +666,60 @@ test('unavailable snapshots preserve the notification path and ordinary outreach
   s.deps.notifications = async () => ({ date: s.attempt.date, since: 0 });
   s.deps.readNotifications = async () => [{ username: 'alice', kind: 'like' }];
   s.deps.recordNotifications = async () => ({ ok: true, scanLikers: true });
+  s.deps.likerPlan = async () => ({ date: s.attempt.date, ownerIgId: '123', runId: 'run', checkedMediaIds: [] });
   s.deps.scanPostLikers = async () => { throw new Error('Owner request quota exhausted'); };
   await s.run();
   assert.ok(s.calls.includes('sent'));
   assert.equal(s.result().issue, undefined);
+});
+
+test('a pending liker trigger retries on a later session without another notification scan', async () => {
+  const s = setup('follow');
+  let scans = 0;
+  s.deps.likerPlan = async () => ({ date: s.attempt.date, ownerIgId: '123', runId: 'run', checkedMediaIds: ['already-scanned'] });
+  s.deps.scanPostLikers = async (_a, _p, _page, _session, _log, plan) => {
+    assert.deepEqual(plan?.checkedMediaIds, ['already-scanned']);
+    if (++scans === 1) throw new Error('Transient liker failure');
+  };
+  s.deps.readNotifications = async () => { throw new Error('Notifications already scanned'); };
+  await s.run();
+  await s.run();
+  assert.equal(scans, 2);
+  assert.equal(s.result().issue, undefined);
+});
+
+for (const fails of [false, true]) test(`follow cancellation errors are logged without replacing the lead result (original error=${fails})`, async () => {
+  const s = setup('follow');
+  const original = new Error('Original follow failure'), cleanup = new Error('Cancellation save failed');
+  s.deps.follow = async () => { if (fails) throw original; return false; };
+  s.deps.cancelFollow = async () => { throw cleanup; };
+  await s.run();
+  assert.equal(s.result().issue, fails ? original.message : undefined);
+  const entry = s.events.find(event => event.event === 'automation.routine.follow_cancellation_failed');
+  assert.equal(entry?.error, cleanup);
+  assert.equal(entry?.leadId, 'lead');
+});
+
+for (const boundary of ['after claim', 'before input', 'after input'] as const) test(`follow intent cancellation at ${boundary}`, async () => {
+  const s = setup('follow');
+  let stopped = false, token = '';
+  s.deps.beginFollow = async (_a, _p, _lead, _date, attemptId) => {
+    token = attemptId;
+    if (boundary === 'after claim') stopped = true;
+    return true;
+  };
+  s.deps.cancelFollow = async (_p, _lead, attemptId) => {
+    assert.equal(attemptId, token);
+    s.calls.push('cancel-follow');
+  };
+  s.deps.follow = async (_page, _allowed, click) => {
+    if (boundary === 'before input') { stopped = true; return false; }
+    await click();
+    stopped = true;
+    throw new Error('Input result unknown');
+  };
+  await s.run(() => stopped);
+  assert.equal(s.calls.includes('cancel-follow'), boundary !== 'after input');
 });
 
 test('a due follow-back scan queues discovered DMs before activity starts', async () => {

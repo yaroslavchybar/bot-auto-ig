@@ -9,6 +9,7 @@ import {
   routineFollowTasks,
   routineRecordFollow,
   routineBeginFollow, routineNotifications, routineRecordNotifications, routineDmTasks, routineDismissDm,
+  routineCancelFollow, routineOwnLikerPlan,
   type DbAutomationRow,
   warmupPauseFollows,
   routineFinishScreening,
@@ -50,10 +51,12 @@ const dependencies = {
   followTasks: routineFollowTasks,
   recordFollow: routineRecordFollow,
   beginFollow: routineBeginFollow,
+  cancelFollow: routineCancelFollow,
   notifications: routineNotifications,
   recordNotifications: routineRecordNotifications,
   readNotifications: readOutreachNotifications,
   scanPostLikers: scanOwnPostLikers,
+  likerPlan: routineOwnLikerPlan,
   dmTasks: routineDmTasks,
   dismissDm: routineDismissDm,
   checkNotifications,
@@ -118,16 +121,27 @@ export async function runRoutineSession(
     const follow = followButton(page);
     await check();
     if (shouldStop()) throw new Error('Session stopped before following');
-    if (!(await deps.beginFollow(automation._id, profileId, leadId, date)))
+    const attemptId = crypto.randomUUID();
+    if (!(await deps.beginFollow(automation._id, profileId, leadId, date, attemptId)))
       return false;
-    if (shouldStop()) throw new Error('Session stopped before following');
-    return deps.follow(page, async () => { await check(); return !shouldStop(); },
-      () => { markAttempted(); return clickAction(follow, timeout(10_000)); },
-      () => deps.recordFollow(profileId, leadId, true).then(() => {}), async (reason) => {
-        log({ event: 'automation.follow_paused', reason });
-        await deps.pauseFollows(profileId, date, reason);
-      }, timeout(15_000),
-    );
+    let inputStarted = false;
+    try {
+      if (shouldStop()) throw new Error('Session stopped before following');
+      return await deps.follow(page, async () => { await check(); return !shouldStop(); },
+        () => { inputStarted = true; markAttempted(); return clickAction(follow, timeout(10_000)); },
+        () => deps.recordFollow(profileId, leadId, true).then(() => {}), async (reason) => {
+          log({ event: 'automation.follow_paused', reason });
+          await deps.pauseFollows(profileId, date, reason);
+        }, timeout(15_000),
+      );
+    } finally {
+      if (!inputStarted) {
+        try { await deps.cancelFollow(profileId, leadId, attemptId); }
+        catch (error) {
+          log({ event: 'automation.routine.follow_cancellation_failed', leadId, attemptId, error, outcome: 'error' });
+        }
+      }
+    }
   };
   let issue: string | undefined;
   try {
@@ -469,10 +483,20 @@ export async function runRoutineSession(
       async (session, day, unread = true) => {
         deadline = session.end;
         if (shouldStop()) return;
+        const scanPendingLikers = async () => {
+          if (day < 8 || shouldStop()) return;
+          try {
+            const plan = await deps.likerPlan(automation._id, profileId);
+            if (plan && !shouldStop()) await deps.scanPostLikers(automation._id, profileId, page, session, log, plan);
+          } catch (error) {
+            if (!shouldStop()) log({ event: 'automation.routine.own_post_likers_skipped', error });
+          }
+        };
         const scan = day >= 8 ? await deps.notifications(automation._id, profileId) : null;
         if (shouldStop()) return;
         if (!scan) {
           if (unread) await deps.checkNotifications(page, log, session);
+          await scanPendingLikers();
           return;
         }
         let events: OutreachNotification[] | null = null;
@@ -485,17 +509,10 @@ export async function runRoutineSession(
           log({ event: 'automation.routine.notifications_skipped', error });
         }
         if (events && !shouldStop()) {
-          const { scanLikers } = await deps.recordNotifications(automation._id, profileId, scan.date, events);
+          await deps.recordNotifications(automation._id, profileId, scan.date, events);
           log({ event: 'automation.routine.notifications', notificationCount: events.length });
-          if (scanLikers && !shouldStop()) {
-            try {
-              await deps.scanPostLikers(automation._id, profileId, page, session, log);
-            } catch (error) {
-              if (shouldStop()) return;
-              log({ event: 'automation.routine.own_post_likers_skipped', error });
-            }
-          }
         }
+        await scanPendingLikers();
       },
     );
     hadActivity = result.minutes > 0;

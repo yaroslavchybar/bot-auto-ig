@@ -5,7 +5,7 @@ import { createConvexTest, seedModel, seedProfile } from '../../tests/convex/hel
 import { patchProfile } from '../workerMetadata'
 
 afterEach(() => vi.useRealTimers())
-async function setup() {
+async function setup(pending = true) {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-10-12T12:00:00Z'))
   const t = createConvexTest(),
@@ -24,6 +24,10 @@ async function setup() {
   await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: true })
   const args = { automationId: automation._id, profileId: profile._id }
   const { warmupId, ids } = await t.run(async (ctx) => {
+    await ctx.db.insert('accountProgress', { profileId: profile._id, activeDays: 0,
+      outreachUsedToday: 0, outreachAllowanceToday: 0, nextRunAt: 0, updatedAt: Date.now(),
+      ...(pending ? { likerScanPendingAt: Date.now() } : {}),
+    })
     await ctx.db.insert('proxies', {
       name: 'Owner proxy',
       proxy: 'owner.test:8000',
@@ -79,6 +83,24 @@ async function setup() {
   const nextDay = () => vi.setSystemTime(Date.now() + 86_400_000)
   return { t, args, profile, automation, warmupId, ids, save, nextDay }
 }
+
+test('a qualifying like durably schedules scans until completion, including across sessions and days', async () => {
+  const s = await setup(false)
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toBeNull()
+  await s.t.mutation(internal.routines.recordNotifications, { ...s.args, date: dayKey(), events: [{ username: 'stranger', kind: 'like' }] })
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toBeNull()
+  await s.t.mutation(internal.routines.recordNotifications, { ...s.args, date: dayKey(), events: [{ username: 'new', kind: 'like' }] })
+  expect(await s.t.query(internal.routines.notifications, s.args)).toBeNull()
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toMatchObject({ runId: 'run' })
+  await s.save([{ igId: '1', username: 'old' }])
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toMatchObject({ checkedMediaIds: ['456'] })
+  s.nextDay()
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toMatchObject({ checkedMediaIds: [] })
+  expect(await s.t.mutation(internal.ownPostLikers.finish, { ...s.args, runId: 'run', date: dayKey() })).toBe(true)
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toBeNull()
+  s.nextDay()
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toBeNull()
+})
 
 test('first snapshot is a baseline; only newly observed followed leads enter the existing one-DM queue', async () => {
   const s = await setup(),

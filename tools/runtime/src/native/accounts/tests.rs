@@ -220,6 +220,20 @@ async fn content_recovery_queues_only_orphans_and_cleanup_retries_failed_acknowl
 
 #[tokio::test]
 async fn native_shutdown_drains_inline_browser_logins_before_returning() {
+    inline_login_shutdown(true, false).await;
+}
+
+#[tokio::test]
+async fn native_shutdown_bounds_stalled_login_acknowledgement_and_job_drain() {
+    inline_login_shutdown(false, false).await;
+}
+
+#[tokio::test]
+async fn native_shutdown_bounds_login_acknowledgement_body_reads() {
+    inline_login_shutdown(false, true).await;
+}
+
+async fn inline_login_shutdown(acknowledged: bool, headers_only: bool) {
     use crate::test_support::Fixture;
     use axum::{response::IntoResponse, Json};
     let entered = Arc::new(tokio::sync::Notify::new());
@@ -233,6 +247,12 @@ async fn native_shutdown_drains_inline_browser_logins_before_returning() {
             assert_eq!(request.uri().path(), "/commands/browser.shutdown");
             assert_eq!(request.headers()["authorization"], "Bearer fixture");
             seen.notify_one();
+            if headers_only {
+                return axum::body::Body::from_stream(futures_util::stream::pending::<
+                    std::result::Result<String, std::io::Error>,
+                >())
+                .into_response();
+            }
             acknowledgement.notified().await;
             Json(json!({"stopped":true})).into_response()
         }
@@ -258,23 +278,40 @@ async fn native_shutdown_drains_inline_browser_logins_before_returning() {
     let work = job_finished.clone();
     accounts.launch(async move { work.notified().await }).await;
     let state = accounts.clone();
-    let shutdown = tokio::spawn(async move { state.shutdown().await });
+    let started = tokio::time::Instant::now();
+    let deadline = started
+        + if acknowledged {
+            Duration::from_secs(20)
+        } else {
+            Duration::from_millis(200)
+        };
+    let shutdown = tokio::spawn(async move { state.shutdown(deadline).await });
     tokio::time::timeout(Duration::from_secs(5), entered.notified())
         .await
         .unwrap();
     assert!(*accounts.stop.borrow());
-    job_finished.notify_one();
+    if acknowledged {
+        job_finished.notify_one();
+    }
     tokio::task::yield_now().await;
     assert!(
         !shutdown.is_finished(),
         "Bun cleanup must acknowledge before shutdown finishes"
     );
-    release.notify_one();
+    if acknowledged {
+        release.notify_one();
+    }
     tokio::time::timeout(Duration::from_secs(5), shutdown)
         .await
         .unwrap()
         .unwrap();
     assert!(accounts.jobs.lock().await.is_empty());
+    if !acknowledged {
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "Acknowledgement and job drain must share the deadline"
+        );
+    }
 }
 #[test]
 fn credentials_handle_colons_and_validate_authenticator() {

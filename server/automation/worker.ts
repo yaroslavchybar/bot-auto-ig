@@ -210,11 +210,14 @@ async function runRoutineProfile(options: {
 }): Promise<void> {
   const { profile, automation, routine, automationId, deps } = options
   let access = true
+  const accessController = new AbortController()
+  const setupSignal = AbortSignal.any([shutdownSignal, accessController.signal])
   const accessSubscription = deps.watchRoutineAccess(
     automationId, profile.id,
-    value => { access = value },
+    value => { access = value; if (!value) accessController.abort(new Error('Routine access revoked')) },
     error => {
       access = false
+      accessController.abort(error)
       log({ event: 'automation.worker.routine_access_subscription_failed', automationId, profileId: profile.id, error, outcome: 'error' })
     },
     shutdownSignal,
@@ -230,11 +233,11 @@ async function runRoutineProfile(options: {
       const modelId = automation.modelIds?.length === 1 ? automation.modelIds[0] : undefined
       if (modelId && !shouldStop() && access) {
         hadActivity = await deps.setupModel(profile.id, automationId, session.page, log,
-          () => shouldStop() || !access).catch(() => false) || hadActivity
+          () => shouldStop() || !access, setupSignal).catch(() => false) || hadActivity
       }
       if (modelId && !shouldStop() && access) {
         hadActivity = await deps.postModelUpdate(profile.id, modelId, session.page, log,
-          () => shouldStop() || !access).catch(() => false) || hadActivity
+          () => shouldStop() || !access, setupSignal).catch(() => false) || hadActivity
       }
     })
     if (hadActivity && !shouldStop() && access) {

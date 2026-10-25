@@ -73,6 +73,18 @@ async function setup(
 }
 type Setup = Awaited<ReturnType<typeof setup>>
 
+test('deleting a list cleans every source beyond the first batch without needing the scraper', async () => {
+  const s = await setup()
+  const template = (await s.t.run(ctx => ctx.db.get(s.sourceId)))!
+  await s.t.run(async ctx => {
+    const { _id, _creationTime, ...source } = template
+    for (let i = 0; i < 104; i++) await ctx.db.insert('scrapeSources', { ...source, username: `source${i}` })
+  })
+  await s.t.mutation(internal.leads.deleteList, { listId: s.listId })
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers)
+  expect(await s.t.run(ctx => ctx.db.query('scrapeSources').withIndex('by_list_username', q => q.eq('listId', s.listId)).collect())).toEqual([])
+})
+
 test('saving leads never consumes request slots', async () => {
   const s = await setup()
   await discover(s)

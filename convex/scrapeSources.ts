@@ -362,13 +362,13 @@ export const trimPosts = internalMutation({
 })
 
 export const cleanupList = internalMutation({
-  args: { listId: v.id('leadLists') },
-  handler: async (ctx, { listId }) => {
-    const rows = await ctx.db
+  args: { listId: v.id('leadLists'), cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, { listId, cursor }) => {
+    const batch = await ctx.db
       .query('scrapeSources')
       .withIndex('by_list_username', (q) => q.eq('listId', listId))
-      .take(100)
-    for (const source of rows) {
+      .paginate({ cursor: cursor ?? null, numItems: 100 })
+    for (const source of batch.page) {
       await ctx.db.patch(source._id, {
         enabled: false,
         ...releasedSourceRun,
@@ -379,6 +379,9 @@ export const cleanupList = internalMutation({
         remove: true,
       })
     }
+    if (!batch.isDone) await ctx.scheduler.runAfter(0, internal.scrapeSources.cleanupList, {
+      listId, cursor: batch.continueCursor,
+    })
   },
 })
 

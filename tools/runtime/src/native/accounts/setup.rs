@@ -2,7 +2,7 @@ use super::{profiles, Accounts, Failure, Result};
 use crate::api;
 use axum::{
     extract::{
-        ws::{Message, WebSocketUpgrade},
+        ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
     response::Response,
@@ -729,6 +729,27 @@ fn base_name(model: &Value) -> &str {
 }
 // The socket holds the action lock through browser posting and its durable acknowledgement.
 // A crashed browser leaves pending intact; an operator must review it before another post.
+// Preparation may already be committing a pending marker. Never drop that write on
+// cancellation: finish it, then clear unused work while still holding the lease.
+async fn prepare_lease<T>(
+    socket: &mut WebSocket,
+    prepare: impl std::future::Future<Output = Result<T>>,
+) -> (Result<T>, bool) {
+    tokio::pin!(prepare);
+    tokio::select! {
+        biased;
+        message = socket.recv() => {
+            let cancelled = match message {
+                Some(Ok(Message::Text(raw))) => serde_json::from_str::<Value>(&raw)
+                    .is_ok_and(|value| value["cancel"] == true),
+                _ => false,
+            };
+            (prepare.await, cancelled)
+        }
+        result = &mut prepare => (result, false),
+    }
+}
+
 pub async fn post_lease(State(state): State<Arc<Accounts>>, ws: WebSocketUpgrade) -> Response {
     ws.max_message_size(4096)
         .on_upgrade(move |mut socket| async move {
@@ -742,11 +763,11 @@ pub async fn post_lease(State(state): State<Arc<Accounts>>, ws: WebSocketUpgrade
             };
             let id = profiles::text(&input, "profileId");
             let model = profiles::text(&input, "modelId");
-            let result = async {
+            let (result, cancelled) = prepare_lease(&mut socket, async {
                 let guard = state.action_lock(id).await?;
                 let content = state.prepare_post(id, model).await?;
                 Ok::<_, Failure>((guard, content))
-            }
+            })
             .await;
             let (_guard, content) = match result {
                 Ok(value) => value,
@@ -757,22 +778,40 @@ pub async fn post_lease(State(state): State<Arc<Accounts>>, ws: WebSocketUpgrade
                     return;
                 }
             };
-            if socket
-                .send(Message::Text(
-                    json!({"ready":true,"content":content}).to_string().into(),
-                ))
-                .await
-                .is_err()
-                || content.is_null()
+            if !cancelled
+                && socket
+                    .send(Message::Text(
+                        json!({"ready":true,"content":content}).to_string().into(),
+                    ))
+                    .await
+                    .is_err()
             {
                 return;
             }
-            let result = match tokio::time::timeout(Duration::from_secs(600), socket.recv()).await {
-                Ok(Some(Ok(Message::Text(value)))) => serde_json::from_str::<Value>(&value)
-                    .ok()
-                    .and_then(|v| v["result"].as_str().map(str::to_owned))
-                    .unwrap_or_default(),
-                _ => String::new(),
+            if content.is_null() {
+                if cancelled {
+                    let _ = socket
+                        .send(Message::Text(json!({"saved":true}).to_string().into()))
+                        .await;
+                }
+                return;
+            }
+            let result = if cancelled {
+                "failed".into()
+            } else {
+                match tokio::time::timeout(Duration::from_secs(600), socket.recv()).await {
+                    Ok(Some(Ok(Message::Text(value)))) => serde_json::from_str::<Value>(&value)
+                        .ok()
+                        .and_then(|v| {
+                            if v["cancel"] == true {
+                                Some("failed".into())
+                            } else {
+                                v["result"].as_str().map(str::to_owned)
+                            }
+                        })
+                        .unwrap_or_default(),
+                    _ => String::new(),
+                }
             };
             match state.finish_post(id, model, &result).await {
                 Ok(()) => {
@@ -796,36 +835,54 @@ pub async fn setup_lease(State(state): State<Arc<Accounts>>, ws: WebSocketUpgrad
         let Ok(input) = serde_json::from_str::<Value>(&input) else { return; };
         let id = profiles::text(&input,"profileId");
         let automation = profiles::text(&input,"automationId");
-        let Ok(_guard) = state.action_lock(id).await else { let _=socket.send(Message::Text(json!({"error":"Account action is busy"}).to_string().into())).await; return; };
-        let mut model = None;
-        let mut task = match state.prepare_browser_setup(id,automation,&mut model).await {
-            Ok(task)=>task,
+        let (prepared, mut cancelled) = prepare_lease(&mut socket, async {
+            let guard = state.action_lock(id).await.map_err(|_| Failure::invalid("Account action is busy"))?;
+            let mut model = None;
+            let task = state.prepare_browser_setup(id,automation,&mut model).await?;
+            Ok((guard, model.unwrap_or_default(), task))
+        }).await;
+        let (_guard, model, mut task) = match prepared {
+            Ok(value)=>value,
             Err(error)=>{ let _=socket.send(Message::Text(json!({"error":error.message}).to_string().into())).await; return; },
         };
-        let model = model.unwrap_or_default();
         let mut candidates = task["candidates"].as_array().cloned().unwrap_or_default();
         let mut expanded = candidates.len() != 1;
         let mut next = 1;
         loop {
-            if socket.send(Message::Text(json!({"ready":true,"task":task}).to_string().into())).await.is_err() || task.is_null() { break; }
-            let result = match tokio::time::timeout(Duration::from_secs(600),socket.recv()).await {
-                Ok(Some(Ok(Message::Text(raw))))=>serde_json::from_str::<Value>(&raw).ok().and_then(|v|v["result"].as_str().map(str::to_owned)).unwrap_or_default(),
-                _=>String::new(),
-            };
-            if let Err(error) = state.finish_browser_setup(id,&model,&task,&result).await {
+            if !cancelled && socket.send(Message::Text(json!({"ready":true,"task":task}).to_string().into())).await.is_err() { break; }
+            if task.is_null() {
+                if cancelled { let _=socket.send(Message::Text(json!({"saved":true}).to_string().into())).await; }
+                break;
+            }
+            let reply = if cancelled { json!({"cancel":true}) } else { match tokio::time::timeout(Duration::from_secs(600),socket.recv()).await {
+                Ok(Some(Ok(Message::Text(raw))))=>serde_json::from_str::<Value>(&raw).unwrap_or(Value::Null),
+                _=>Value::Null,
+            }};
+            let result = if reply["cancel"] == true { "failed" } else { profiles::text(&reply,"result") };
+            if let Err(error) = state.finish_browser_setup(id,&model,&task,result).await {
                 let _=socket.send(Message::Text(json!({"error":error.message}).to_string().into())).await; break;
             }
-            if result == "unavailable" && task["kind"] == "username" && !expanded {
-                expanded = true;
-                match state.retry_browser_username(&model,&task,&candidates).await {
-                    Ok(more)=>candidates.extend(more),
+            if reply["cancelled"] == true || reply["cancel"] == true {
+                let _=socket.send(Message::Text(json!({"saved":true}).to_string().into())).await;
+                break;
+            }
+            if result == "unavailable" && task["kind"] == "username" {
+                let (prepared, stopped) = prepare_lease(&mut socket, async {
+                    if !expanded {
+                        expanded = true;
+                        candidates.extend(state.retry_browser_username(&model,&task,&candidates).await?);
+                    }
+                    if next >= candidates.len().min(8) { return Ok(false); }
+                    task["value"] = candidates[next].clone(); next += 1;
+                    state.patch_setup(id,&model,json!({"pending":{"kind":"username","date":date(api::now_ms())},"targetUsername":task["value"]}),&[]).await?;
+                    Ok(true)
+                }).await;
+                cancelled = stopped;
+                match prepared {
+                    Ok(true) => continue,
+                    Ok(false) => {},
                     Err(error)=>{ let _=socket.send(Message::Text(json!({"error":error.message}).to_string().into())).await; break; },
                 }
-            }
-            if result == "unavailable" && task["kind"] == "username" && next < candidates.len().min(8) {
-                task["value"] = candidates[next].clone(); next += 1;
-                if state.patch_setup(id,&model,json!({"pending":{"kind":"username","date":date(api::now_ms())},"targetUsername":task["value"]}),&[]).await.is_err() { break; }
-                continue;
             }
             let _=socket.send(Message::Text(json!({"saved":true}).to_string().into())).await;
             break;

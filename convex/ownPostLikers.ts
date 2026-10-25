@@ -32,7 +32,7 @@ export const plan = internalQuery({
   handler: async (ctx, { automationId, profileId }) => {
     const e = await owner(ctx, automationId, profileId),
       date = dayKey()
-    if (!e || e.state?.lastLikerScanDate === date) return null
+    if (!e || e.state?.likerScanPendingAt === undefined || e.state.lastLikerScanDate === date) return null
     const snapshots = await ctx.db
       .query('ownPostLikerSnapshots')
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
@@ -142,7 +142,7 @@ export const finish = internalMutation({
     const e = await owner(ctx, automationId, profileId)
     if (!e || e.warmup!.activeRun!.id !== runId || date !== dayKey()) return false
     const state = await ensureProgress(ctx, profileId)
-    await ctx.db.patch(state._id, { lastLikerScanDate: date })
+    await ctx.db.patch(state._id, { lastLikerScanDate: date, likerScanPendingAt: undefined })
     return true
   },
 })

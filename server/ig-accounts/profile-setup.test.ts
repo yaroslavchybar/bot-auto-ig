@@ -35,7 +35,7 @@ for (const scenario of [
           if(value.result){
             results.push(value.result)
             if(scenario==='ack missing')client.terminate()
-            else if(value.result==='unavailable')client.send(JSON.stringify({ready:true,task:{...task,value:'other'}}))
+            else if(value.result==='unavailable'&&!value.cancelled)client.send(JSON.stringify({ready:true,task:{...task,value:'other'}}))
             else client.send(JSON.stringify({saved:true}))
           }else client.send(JSON.stringify({ready:true,task:first?task:null}))
         })
