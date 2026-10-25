@@ -21,7 +21,8 @@ export function TelegramLoginPageContainer() {
   // Deep-link login: token + links for the Telegram app jump.
   const [appLink, setAppLink] = useState<AppLink | null>(null)
   const [isWaitingApp, setIsWaitingApp] = useState(false)
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const appAttemptRef = useRef<AbortController | null>(null)
 
   const redirectTarget = getSafeRedirectTarget(
     searchParams.get(REDIRECT_URL_PARAM),
@@ -29,8 +30,10 @@ export function TelegramLoginPageContainer() {
   )
 
   const stopAppPoll = () => {
+    appAttemptRef.current?.abort()
+    appAttemptRef.current = null
     if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current)
+      clearTimeout(pollTimerRef.current)
       pollTimerRef.current = null
     }
   }
@@ -60,16 +63,21 @@ export function TelegramLoginPageContainer() {
   // App-open login: jump straight into the Telegram app (no browser tab).
   // The user taps START in the bot; the poll below picks up the confirmation.
   const handleAppLogin = async () => {
+    stopAppPoll()
+    const attempt = new AbortController()
+    appAttemptRef.current = attempt
+    const current = () => appAttemptRef.current === attempt && !attempt.signal.aborted
     setSubmitting(true)
     setError(null)
     try {
-      const res = await authFetch('/api/auth/tg-link', { method: 'POST' })
+      const res = await authFetch('/api/auth/tg-link', { method: 'POST', signal: attempt.signal })
       const data = (await res.json().catch(() => null)) as {
         token?: unknown
         bot?: unknown
         url?: unknown
         error?: unknown
       } | null
+      if (!current()) return
       if (!res.ok || typeof data?.token !== 'string' || typeof data?.bot !== 'string') {
         throw new Error(
           typeof data?.error === 'string' && data.error
@@ -89,17 +97,19 @@ export function TelegramLoginPageContainer() {
       setIsWaitingApp(true)
       // tg:// opens the native app directly; the t.me link below is the fallback.
       window.location.href = `tg://resolve?domain=${encodeURIComponent(link.bot)}&start=${encodeURIComponent(link.token)}`
-      stopAppPoll()
       let attempts = 0
-      pollTimerRef.current = setInterval(async () => {
+      // Schedule the next poll only after this one finishes; responses cannot overlap.
+      const pollLogin = async () => {
+        if (!current()) return
         attempts++
         try {
-          const poll = await authFetch(`/api/auth/tg-poll?token=${encodeURIComponent(link.token)}`)
+          const poll = await authFetch(`/api/auth/tg-poll?token=${encodeURIComponent(link.token)}`, { signal: attempt.signal })
           const state = (await poll.json().catch(() => null)) as {
             user?: AppUser
             token?: unknown
             error?: unknown
           } | null
+          if (!current()) return
           if (poll.ok && state?.user && typeof state.token === 'string') {
             stopAppPoll()
             setIsWaitingApp(false)
@@ -107,37 +117,50 @@ export function TelegramLoginPageContainer() {
             navigate(redirectTarget, { replace: true })
             return
           }
-          if (poll.status === 404 || poll.status === 403 || attempts > MAX_POLL_ATTEMPTS) {
+          if (poll.status === 404 || poll.status === 403) {
             stopAppPoll()
             setIsWaitingApp(false)
             if (poll.status === 403) {
               setError(
                 typeof state?.error === 'string' && state.error ? state.error : 'Login failed',
               )
-            } else if (attempts > MAX_POLL_ATTEMPTS) {
-              setError('Login timed out. Try again.')
             }
             setAppLink(null)
+            return
           }
         } catch {
           // Transient network blip: keep polling until the token expires.
         }
-      }, POLL_INTERVAL_MS)
+        if (!current()) return
+        if (attempts >= MAX_POLL_ATTEMPTS) {
+          stopAppPoll()
+          setIsWaitingApp(false)
+          setAppLink(null)
+          setError('Login timed out. Try again.')
+          return
+        }
+        pollTimerRef.current = setTimeout(pollLogin, POLL_INTERVAL_MS)
+      }
+      pollTimerRef.current = setTimeout(pollLogin, POLL_INTERVAL_MS)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Telegram login failed')
-      setAppLink(null)
+      if (current()) {
+        setError(cause instanceof Error ? cause.message : 'Telegram login failed')
+        setAppLink(null)
+      }
     } finally {
-      setSubmitting(false)
+      if (current()) setSubmitting(false)
     }
   }
 
   const cancelAppLogin = () => {
     stopAppPoll()
+    setSubmitting(false)
     setIsWaitingApp(false)
     setAppLink(null)
   }
 
   const handleDevLogin = async () => {
+    cancelAppLogin()
     setSubmitting(true)
     setError(null)
     try {

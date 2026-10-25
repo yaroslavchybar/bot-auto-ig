@@ -43,7 +43,7 @@ describe('retry behaviour via convexFetch integration', () => {
    * Helper: replace global fetch with a stub that returns pre-configured
    * responses for successive calls.
    */
-  function stubFetch(responses: Array<{ status: number; body: string } | 'network-error'>) {
+  function stubFetch(responses: Array<{ status: number; body: string } | 'network-error' | 'body-error'>) {
     let callIdx = 0
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       fetchCalls.push({ url: String(input), init: init ?? {} as RequestInit })
@@ -51,6 +51,10 @@ describe('retry behaviour via convexFetch integration', () => {
       if (!entry || entry === 'network-error') {
         throw new TypeError('fetch failed')
       }
+      if (entry === 'body-error') return {
+        ok: true, status: 200,
+        json: async () => { throw new TypeError('Connection reset while reading response') },
+      } as Response
       return {
         ok: entry.status >= 200 && entry.status < 300,
         status: entry.status,
@@ -73,6 +77,43 @@ describe('retry behaviour via convexFetch integration', () => {
     stubFetch([{ status: 200, body: '[]' }])
     const result = await callConvexFetch()
     assert.deepEqual(result, [])
+    assert.equal(fetchCalls.length, 1)
+  })
+
+  it('retries transport failures after successful headers', async () => {
+    stubFetch(['body-error', { status: 200, body: '[]' }])
+    assert.deepEqual(await callConvexFetch(), [])
+    assert.equal(fetchCalls.length, 2)
+  })
+
+  it('does not retry action authorization when its response body fails', async () => {
+    const { routineBeginSend } = await import('./convexClient.js')
+    stubFetch(['body-error', { status: 200, body: 'true' }])
+    await assert.rejects(routineBeginSend('automation', 'profile', 'lead', '2026-10-24'), /Connection reset/)
+    assert.equal(fetchCalls.length, 1)
+  })
+
+  it('does not repeat an applied profile update when its response body fails', async () => {
+    const { profilesUpdateByName } = await import('./convexClient.js')
+    let updates = 0
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCalls.push({ url: String(input), init: init ?? {} })
+      assert.ok(String(input).endsWith('/api/profiles/update-by-name'))
+      assert.deepEqual(JSON.parse(String(init?.body)), { oldName: 'Before', name: 'After' })
+      updates++
+      return {
+        ok: true, status: 200,
+        json: async () => { throw new TypeError('Connection reset after profile update committed') },
+      } as Response
+    }) as typeof globalThis.fetch
+    await assert.rejects(profilesUpdateByName('Before', { name: 'After' }), /Connection reset/)
+    assert.equal(updates, 1)
+    assert.equal(fetchCalls.length, 1)
+  })
+
+  it('does not retry invalid JSON from a successful response', async () => {
+    stubFetch([{ status: 200, body: 'invalid json' }, { status: 200, body: '[]' }])
+    await assert.rejects(callConvexFetch(), SyntaxError)
     assert.equal(fetchCalls.length, 1)
   })
 

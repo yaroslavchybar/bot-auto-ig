@@ -22,6 +22,8 @@ pub struct Item {
     pub variants: Vec<String>,
     pub assigned: HashMap<String, usize>,
     pub created_at: u64,
+    #[serde(default)]
+    pub pending_deletion: bool,
 }
 
 /// All manifest access, including browser-worker allocations, has one native owner.
@@ -87,7 +89,7 @@ impl Content {
     }
     pub async fn list(&self, model: &str) -> Result<Value> {
         let _lock = self.model_lock(model).await?;
-        Ok(Value::Array(self.read(model).await?.into_iter().map(|row| json!({"id": row.id, "kind": row.kind, "name": row.name,
+        Ok(Value::Array(self.read(model).await?.into_iter().filter(|row| !row.pending_deletion).map(|row| json!({"id": row.id, "kind": row.kind, "name": row.name,
             "variantCount": row.variants.len(), "usedCount": row.assigned.len(), "createdAt": row.created_at})).collect()))
     }
     pub async fn add(
@@ -147,6 +149,7 @@ impl Content {
                 variants: vec![],
                 assigned: HashMap::new(),
                 created_at: crate::api::now_ms(),
+                pending_deletion: false,
             });
             self.write(model, &rows).await
         }
@@ -162,7 +165,7 @@ impl Content {
         self.read(model)
             .await?
             .into_iter()
-            .find(|r| r.id == id && r.kind == kind)
+            .find(|r| r.id == id && r.kind == kind && !r.pending_deletion)
             .ok_or_else(|| Failure::missing("Image not found"))
     }
     pub async fn copies(&self, model: &str, kind: &str, id: &str) -> Result<Value> {
@@ -171,6 +174,7 @@ impl Content {
     }
     pub async fn remove(&self, model: &str, kind: &str, id: &str) -> Result<Value> {
         let _lock = self.model_lock(model).await?;
+        Self::kind(kind)?;
         if self
             .generating
             .lock()
@@ -179,12 +183,39 @@ impl Content {
         {
             return Err(Failure::invalid("Copy generation is running"));
         }
-        let item = self.item(model, kind, id).await?;
         let mut rows = self.read(model).await?;
-        rows.retain(|r| r.id != id);
+        let Some(index) = rows.iter().position(|r| r.id == id && r.kind == kind) else {
+            return Ok(json!({"removed": true}));
+        };
+        // Persist intent before files can be partially removed. Keep it hidden
+        // and retryable across cleanup failures, interrupted writes, and restarts.
+        if !rows[index].pending_deletion {
+            rows[index].pending_deletion = true;
+            self.write(model, &rows).await?;
+        }
+        match tokio::fs::remove_dir_all(self.directory(model)?.join(kind).join(&rows[index].id))
+            .await
+        {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        rows.remove(index);
         self.write(model, &rows).await?;
-        tokio::fs::remove_dir_all(self.directory(model)?.join(kind).join(item.id)).await?;
         Ok(json!({"removed": true}))
+    }
+    pub async fn recover_pending_deletions(&self, model: &str) -> Result<()> {
+        let rows = {
+            let _lock = self.model_lock(model).await?;
+            self.read(model).await?
+        };
+        // Reuse removal's locking and durable marker handling after a restart.
+        for row in rows.into_iter().filter(|row| row.pending_deletion) {
+            if let Err(error) = self.remove(model, &row.kind, &row.id).await {
+                ig_service_common::service_error("model.content_cleanup_pending", &error.message);
+            }
+        }
+        Ok(())
     }
     pub async fn remove_model(&self, model: &str) -> Result<()> {
         let _lock = self.model_lock(model).await?;
@@ -286,7 +317,7 @@ impl Content {
             let mut rows = self.read(model).await?;
             let row = rows
                 .iter_mut()
-                .find(|r| r.id == id && r.kind == kind)
+                .find(|r| r.id == id && r.kind == kind && !r.pending_deletion)
                 .ok_or_else(|| Failure::missing("Image not found"))?;
             row.variants = names.into_iter().collect();
             self.write(model, &rows).await?;
@@ -314,6 +345,7 @@ impl Content {
         let mut rows = self.read(model).await?;
         let available = |r: &&mut Item| {
             r.kind == kind
+                && !r.pending_deletion
                 && !exclude.contains(&r.id)
                 && (r.assigned.contains_key(profile) || r.assigned.len() < r.variants.len())
         };
@@ -489,6 +521,161 @@ fn thumbnail(file: &Path) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
     #[tokio::test]
+    async fn failed_item_cleanup_keeps_its_manifest_entry_and_can_be_retried() {
+        use crate::test_support::Fixture;
+        use axum::{response::IntoResponse, Json};
+
+        let root = tempfile::tempdir().unwrap();
+        let bank = Content::new(root.path().into());
+        let added = bank
+            .add_locked("model-1", "posts", "photo.png", b"fixture")
+            .await
+            .unwrap();
+        let id = added["id"].as_str().unwrap();
+        let mut rows = bank.read("model-1").await.unwrap();
+        rows[0].variants = vec!["copy.jpg".into()];
+        rows[0].assigned.insert("existing-profile".into(), 0);
+        bank.write("model-1", &rows).await.unwrap();
+        let dir = root.path().join("model-1/posts").join(id);
+        // A non-directory at the expected path produces a deterministic IO error.
+        tokio::fs::remove_dir_all(&dir).await.unwrap();
+        tokio::fs::write(&dir, b"blocked cleanup").await.unwrap();
+        assert!(bank.remove("model-1", "posts", id).await.is_err());
+        // A restart must retain the deletion intent and exclude it from every reader.
+        drop(bank);
+        let bank = Content::new(root.path().into());
+        let rows = bank.read("model-1").await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].pending_deletion);
+        assert!(bank
+            .list("model-1")
+            .await
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty());
+        for profile in ["existing-profile", "new-profile"] {
+            assert_eq!(
+                bank.allocate("model-1", "posts", profile, &[], true)
+                    .await
+                    .unwrap(),
+                0
+            );
+            assert!(bank
+                .allocate("model-1", "posts", profile, &[], false)
+                .await
+                .unwrap()
+                .is_null());
+        }
+        assert_eq!(
+            bank.copies("model-1", "posts", id)
+                .await
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::NOT_FOUND
+        );
+        for variant in [None, Some("copy.jpg")] {
+            assert_eq!(
+                bank.image("model-1", "posts", id, variant, false)
+                    .await
+                    .err()
+                    .unwrap()
+                    .status,
+                axum::http::StatusCode::NOT_FOUND
+            );
+        }
+        let fixture = Fixture::start(|request| async move {
+            assert_eq!(request.uri().path(), "/api/models");
+            Json(json!([{"id":"model-1"}])).into_response()
+        })
+        .await;
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.key = "fixture".into();
+        assert_eq!(
+            bank.generate(&api, "model-1", "posts", id)
+                .await
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::NOT_FOUND
+        );
+        tokio::fs::remove_file(&dir).await.unwrap();
+        tokio::fs::create_dir(&dir).await.unwrap();
+        bank.remove("model-1", "posts", id).await.unwrap();
+        assert!(bank.read("model-1").await.unwrap().is_empty());
+        assert!(!dir.exists());
+        bank.remove("model-1", "posts", id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn item_cleanup_finishes_when_a_previous_attempt_already_removed_the_files() {
+        let root = tempfile::tempdir().unwrap();
+        let bank = Content::new(root.path().into());
+        let added = bank
+            .add_locked("model-1", "avatars", "photo.png", b"fixture")
+            .await
+            .unwrap();
+        let id = added["id"].as_str().unwrap();
+        let dir = root.path().join("model-1/avatars").join(id);
+        let mut rows = bank.read("model-1").await.unwrap();
+        rows[0].pending_deletion = true;
+        bank.write("model-1", &rows).await.unwrap();
+        // Simulate interruption after deleting files but before retiring the marker.
+        tokio::fs::remove_dir_all(&dir).await.unwrap();
+        drop(bank);
+        let bank = Content::new(root.path().into());
+        assert!(bank
+            .list("model-1")
+            .await
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty());
+        bank.recover_pending_deletions("model-1").await.unwrap();
+        assert!(bank.read("model-1").await.unwrap().is_empty());
+        bank.recover_pending_deletions("model-1").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn pending_recovery_continues_after_failure_and_preserves_active_items() {
+        let root = tempfile::tempdir().unwrap();
+        let bank = Content::new(root.path().into());
+        for name in ["blocked.jpg", "pending.jpg", "active.jpg"] {
+            bank.add_locked("model-1", "posts", name, b"fixture")
+                .await
+                .unwrap();
+        }
+        let mut rows = bank.read("model-1").await.unwrap();
+        rows[0].pending_deletion = true;
+        rows[1].pending_deletion = true;
+        bank.write("model-1", &rows).await.unwrap();
+        let directory = root.path().join("model-1/posts");
+        let blocked = directory.join(&rows[0].id);
+        tokio::fs::remove_dir_all(&blocked).await.unwrap();
+        tokio::fs::write(&blocked, b"blocked cleanup")
+            .await
+            .unwrap();
+        drop(bank);
+
+        let bank = Content::new(root.path().into());
+        bank.recover_pending_deletions("model-1").await.unwrap();
+        let remaining = bank.read("model-1").await.unwrap();
+        assert_eq!(remaining.len(), 2);
+        assert_eq!(remaining[0].id, rows[0].id);
+        assert!(remaining[0].pending_deletion);
+        assert_eq!(remaining[1].id, rows[2].id);
+        assert!(!remaining[1].pending_deletion);
+        assert!(!directory.join(&rows[1].id).exists());
+        assert!(directory.join(&rows[2].id).join("source.jpg").exists());
+
+        tokio::fs::remove_file(&blocked).await.unwrap();
+        bank.recover_pending_deletions("model-1").await.unwrap();
+        let remaining = bank.read("model-1").await.unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, rows[2].id);
+    }
+
+    #[tokio::test]
     async fn stable_content_keys_keep_existing_content_for_gallery_and_worker_allocations() {
         use crate::{native::Native, test_support::Fixture};
         use axum::{response::IntoResponse, Json};
@@ -509,6 +696,7 @@ mod tests {
                 variants: vec!["copy.jpg".into()],
                 assigned: HashMap::new(),
                 created_at: 1,
+                pending_deletion: false,
             }],
         )
         .await
@@ -640,6 +828,7 @@ mod tests {
                     variants: vec!["copy.jpg".into()],
                     assigned: HashMap::new(),
                     created_at: 0,
+                    pending_deletion: false,
                 }],
             )
             .await
@@ -704,6 +893,7 @@ mod tests {
                 variants: (0..50).map(|n| format!("{n}.jpg")).collect(),
                 assigned: HashMap::new(),
                 created_at: 0,
+                pending_deletion: false,
             }],
         )
         .await

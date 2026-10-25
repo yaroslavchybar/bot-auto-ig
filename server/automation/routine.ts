@@ -377,14 +377,32 @@ export async function runRoutineSession(
                 await timed('dmType', () => deps.typeMessage(composer, message, messaging));
                 await check(true);
                 if (shouldStop()) return 'unavailable';
-                if (!(await deps.begin(automation._id, profileId, attempt.leadId, attempt.date))) {
-                  scope.add({ outcome: 'rejected', result: 'send_not_authorized' });
-                  return 'unavailable';
-                }
-                if (shouldStop()) return 'unavailable';
+                let authorized: boolean | undefined;
                 let sent = false;
                 let blocked = false;
+                const finalizeDelivery = async () => {
+                  // A lost authorization response may still have committed the claim.
+                  if (authorized === false) return;
+                  if (authorized === undefined || !sendAttempted)
+                    issue ??= 'Delivery authorization needs review. Check Instagram before resuming; the lead will not be retried.';
+                  try {
+                    await deps.finish(profileId, attempt.leadId, attempt.date, sent, blocked);
+                  } catch (error) {
+                    issue ??= 'Delivery result could not be saved. Check Instagram before resuming.';
+                    if (authorized === true) throw error;
+                    // Keep the original authorization error when reconciliation also fails.
+                    log({ event: 'automation.routine.dm_authorization_recovery_failed', leadId: attempt.leadId, error, outcome: 'error' });
+                  }
+                };
                 try {
+                  authorized = await deps.begin(automation._id, profileId, attempt.leadId, attempt.date).catch(error => {
+                    throw new Error(`Delivery authorization needs review: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+                  });
+                  if (!authorized) {
+                    scope.add({ outcome: 'rejected', result: 'send_not_authorized' });
+                    return 'unavailable';
+                  }
+                  if (shouldStop()) return 'unavailable';
                   sendAttempted = true;
                   await timed('dmSend', () => deps.sendMessage(page, attempt.username, messaging));
                   // A cleared composer alone is insufficient: require the outgoing message in the thread.
@@ -398,7 +416,7 @@ export async function runRoutineSession(
                     sent = true;
                   }
                 } finally {
-                  await deps.finish(profileId, attempt.leadId, attempt.date, sent, blocked);
+                  await finalizeDelivery();
                 }
                 log({ event: 'automation.dm_result', targetUsername: attempt.username, sent, blocked, message: blocked
                   ? `Message blocked for @${attempt.username}`

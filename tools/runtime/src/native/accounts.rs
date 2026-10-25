@@ -689,13 +689,13 @@ impl Accounts {
         }
     }
     async fn periodic_setup(&self) -> Result<()> {
-        if let Err(error) = self.recover_content_cleanup().await {
-            ig_service_common::service_error("model.content_recovery_failed", &error.message);
-        }
         let mut timer = tokio::time::interval(Duration::from_secs(900));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             timer.tick().await;
+            if let Err(error) = self.recover_content_cleanup().await {
+                ig_service_common::service_error("model.content_recovery_failed", &error.message);
+            }
             self.sync_names().await?;
             self.sweep_setup().await?;
         }
@@ -704,6 +704,11 @@ impl Accounts {
         let directories = self.content.model_directories().await?;
         if directories.is_empty() {
             return Ok(());
+        }
+        for model in &directories {
+            if let Err(error) = self.content.recover_pending_deletions(model).await {
+                ig_service_common::service_error("model.content_recovery_failed", &error.message);
+            }
         }
         let models = self.api.convex(Method::GET, "/api/models", None).await?;
         let models = models

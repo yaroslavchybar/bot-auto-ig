@@ -302,6 +302,13 @@ for both, then the VPS pulls immutable image tags for that commit. Push checks
 build debug Rust for tests; release binaries are built once in the production
 Bookworm builders. PR checks still validate release builds.
 
+The VPS stages each release in `app.new`, pulls images and validates Vector
+before replacing `app`. It keeps `app.prev` through the health check and restores
+the prior release, environment, collector token, and Caddy configuration on an
+activation failure. Compose always uses project `app`. A hard interruption that
+leaves `app.prev` blocks the next activation until recovery. This rollback covers
+the VPS release; it does not undo the earlier Convex deployment or database writes.
+
 Images with unchanged build inputs are reused from GHCR and tagged for the new
 commit. The cache key includes tracked source and build configuration, frontend
 URLs, and current base-image digests. Registry misses or reuse failures fall

@@ -165,6 +165,8 @@ async function convexFetch<T>(
         const text = await resp.text()
         throw new ConvexHttpError(resp.status, text)
       }
+      // Body consumption can fail after headers arrive. SyntaxError is not retryable.
+      return await resp.json() as T
     } catch (err) {
       lastError = err
 
@@ -178,9 +180,6 @@ async function convexFetch<T>(
       continue
     }
 
-    // Parse JSON outside the retry try/catch — a parse error on a
-    // 2xx response is a data issue, not a transient network failure.
-    return resp.json() as Promise<T>
   }
 
   // Unreachable in practice, but satisfies the compiler
@@ -215,6 +214,7 @@ export async function profilesUpdateByName(
   if (!name) throw new Error('name is required')
   return convexFetch<DbProfileRow | null>('/api/profiles/update-by-name', {
     method: 'POST',
+    maxRetries: 0,
     body: {
       oldName: oldClean,
       browserSessionId: profile.browserSessionId,

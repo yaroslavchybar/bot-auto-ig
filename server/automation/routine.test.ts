@@ -436,6 +436,36 @@ test('an existing followed recipient is checked and authorized before sending', 
   assert.equal(s.result().sent, true);
 });
 
+for (const finishFails of [false, true]) test(`stopping after DM authorization finalizes the claim (finish fails: ${finishFails})`, async () => {
+  const s = setup();
+  let stopped = false;
+  s.deps.begin = async () => { s.calls.push('authorize'); stopped = true; return true; };
+  const finish = s.deps.finish;
+  s.deps.finish = async (...args) => {
+    await finish(...args);
+    if (finishFails) throw new Error('Save failed');
+  };
+  await s.run(() => stopped);
+  assert.equal(s.calls.filter(call => call === 'uncertain').length, 1);
+  assert.ok(!s.calls.includes('send'));
+  assert.match(s.result().issue!, /Delivery authorization needs review/);
+});
+
+for (const finishFails of [false, true]) test(`a lost DM authorization response is reconciled without sending (finish fails: ${finishFails})`, async () => {
+  const s = setup();
+  s.deps.begin = async () => { s.calls.push('authorize'); throw new TypeError('Authorization response lost'); };
+  const finish = s.deps.finish;
+  s.deps.finish = async (...args) => {
+    await finish(...args);
+    if (finishFails) throw new Error('No authorization found');
+  };
+  await s.run();
+  assert.equal(s.calls.filter(call => call === 'authorize').length, 1);
+  assert.equal(s.calls.filter(call => call === 'uncertain').length, 1);
+  assert.ok(!s.calls.includes('send'));
+  assert.match(s.result().issue!, /Delivery authorization needs review/);
+});
+
 test('message variations are resolved once and confirmation uses the exact composed text', async () => {
   const s = setup();
   s.deps.dmTasks = async () => [{ leadId: 'lead', date: '2026-09-21', username: 'alice', fullName: 'Alice Smith', message: '{Hi|Hey} [name], [username]!',
@@ -738,13 +768,16 @@ for (const mode of ['dm', 'follow'] as const) test(`refused authorization stops 
   assert.ok(!s.calls.includes('send')); assert.ok(!s.calls.includes('follow'));
 });
 
-for (const stage of ['navigation', 'composer', 'authorization', 'cleanup'] as const) test(`deadline during ${stage} skips further actions without a delivery issue`, async () => {
+for (const stage of ['navigation', 'composer', 'authorization', 'cleanup'] as const) test(`deadline during ${stage} prevents further input and reconciles any DM claim`, async () => {
   const s = setup();
   if (stage === 'navigation' || stage === 'cleanup') s.page.goto = async () => { await s.deps.sleep(600_000); throw new Error('Timeout'); };
   if (stage === 'cleanup') s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice' }];
   if (stage === 'composer') s.locator.fill = async () => { await s.deps.sleep(600_000); };
   if (stage === 'authorization') s.deps.begin = async () => { await s.deps.sleep(600_000); return true; };
-  await s.run(); assert.ok(!s.calls.includes('send')); assert.ok(!s.calls.includes('uncertain')); assert.equal(s.result().issue, undefined);
+  await s.run(); assert.ok(!s.calls.includes('send'));
+  assert.equal(s.calls.includes('uncertain'), stage === 'authorization');
+  if (stage === 'authorization') assert.match(s.result().issue!, /Delivery authorization needs review/);
+  else assert.equal(s.result().issue, undefined);
 });
 
 test('an unconfirmed delivery is recorded once and surfaces an issue', async () => {

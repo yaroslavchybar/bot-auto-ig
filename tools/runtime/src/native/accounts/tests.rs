@@ -1,21 +1,33 @@
 use super::*;
 
 #[tokio::test]
-async fn content_recovery_failure_does_not_block_periodic_account_setup() {
+async fn periodic_content_recovery_retries_failed_deletions_without_blocking_account_setup() {
     use crate::test_support::Fixture;
     use axum::{response::IntoResponse, Json};
     let operations = Arc::new(Mutex::new(Vec::<String>::new()));
     let swept = Arc::new(tokio::sync::Notify::new());
+    let retried = Arc::new(tokio::sync::Notify::new());
     let observed = operations.clone();
     let finished = swept.clone();
+    let recovered = retried.clone();
     let fixture = Fixture::start(move |request| {
         let observed = observed.clone();
         let finished = finished.clone();
+        let recovered = recovered.clone();
         async move {
             assert_eq!(request.headers()["authorization"], "Bearer fixture");
             match request.uri().path() {
                 "/api/models" => {
-                    observed.lock().await.push("recovery".into());
+                    let mut operations = observed.lock().await;
+                    operations.push("recovery".into());
+                    if operations
+                        .iter()
+                        .filter(|operation| *operation == "recovery")
+                        .count()
+                        == 2
+                    {
+                        recovered.notify_one();
+                    }
                     axum::http::StatusCode::BAD_REQUEST.into_response()
                 }
                 "/api/ig-accounts-store" => {
@@ -36,7 +48,24 @@ async fn content_recovery_failure_does_not_block_periodic_account_setup() {
     .await;
     let root = tempfile::tempdir().unwrap();
     let orphan = root.path().join("content/model-orphan");
-    tokio::fs::create_dir_all(&orphan).await.unwrap();
+    let pending = orphan.join("posts/image");
+    tokio::fs::create_dir_all(pending.parent().unwrap())
+        .await
+        .unwrap();
+    // A file where the item directory belongs makes the first cleanup fail.
+    tokio::fs::write(&pending, b"blocked cleanup")
+        .await
+        .unwrap();
+    tokio::fs::write(
+        orphan.join("manifest.json"),
+        serde_json::to_vec(&json!([{
+            "id":"image", "kind":"posts", "name":"photo.jpg", "variants":[],
+            "assigned":{}, "createdAt":0, "pendingDeletion":true
+        }]))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
     let mut api = Api::from_env().unwrap();
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
@@ -53,9 +82,11 @@ async fn content_recovery_failure_does_not_block_periodic_account_setup() {
         Subscriptions::new(api),
     );
     Arc::get_mut(&mut accounts).unwrap().credential_key = Some(vec![0xaa; 32]);
+    let periodic = accounts.periodic_setup();
+    tokio::pin!(periodic);
     tokio::time::timeout(Duration::from_secs(5), async {
         tokio::select! {
-            result = accounts.periodic_setup() => panic!("Periodic setup stopped: {result:?}"),
+            result = &mut periodic => panic!("Periodic setup stopped: {result:?}"),
             _ = swept.notified() => {}
         }
     })
@@ -67,8 +98,31 @@ async fn content_recovery_failure_does_not_block_periodic_account_setup() {
     );
     assert!(
         orphan.exists(),
-        "Failed recovery must leave orphan data untouched"
+        "Failed model lookup must not remove the orphan directory"
     );
+    assert!(pending.exists());
+    let manifest: Value =
+        serde_json::from_slice(&tokio::fs::read(orphan.join("manifest.json")).await.unwrap())
+            .unwrap();
+    assert_eq!(manifest[0]["pendingDeletion"], true);
+
+    tokio::fs::remove_file(&pending).await.unwrap();
+    // Advance to the next scheduled tick without waiting fifteen real minutes.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(900)).await;
+    tokio::time::resume();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::select! {
+            result = &mut periodic => panic!("Periodic setup stopped: {result:?}"),
+            _ = retried.notified() => {}
+        }
+    })
+    .await
+    .unwrap();
+    let manifest: Value =
+        serde_json::from_slice(&tokio::fs::read(orphan.join("manifest.json")).await.unwrap())
+            .unwrap();
+    assert_eq!(manifest, json!([]));
 }
 
 #[tokio::test]
@@ -117,6 +171,21 @@ async fn content_recovery_queues_only_orphans_and_cleanup_retries_failed_acknowl
             .await
             .unwrap();
     }
+    let pending = root.path().join("content/model-live/avatars/pending");
+    tokio::fs::create_dir_all(&pending).await.unwrap();
+    tokio::fs::write(pending.join("source.jpg"), b"fixture")
+        .await
+        .unwrap();
+    tokio::fs::write(
+        root.path().join("content/model-live/manifest.json"),
+        serde_json::to_vec(&json!([{
+            "id":"pending", "kind":"avatars", "name":"photo.jpg", "variants":[],
+            "assigned":{}, "createdAt":0, "pendingDeletion":true
+        }]))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
     let mut api = Api::from_env().unwrap();
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
@@ -129,6 +198,14 @@ async fn content_recovery_queues_only_orphans_and_cleanup_retries_failed_acknowl
     let accounts = Accounts::new(api.clone(), profiles, content, Subscriptions::new(api));
     accounts.recover_content_cleanup().await.unwrap();
     assert_eq!(*queued.lock().await, vec!["model-orphan"]);
+    assert!(!pending.exists());
+    let manifest: Value = serde_json::from_slice(
+        &tokio::fs::read(root.path().join("content/model-live/manifest.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest, json!([]));
     let work = json!(["model-orphan"]);
     accounts.cleanup_content(&work).await;
     assert!(!root.path().join("content/model-orphan").exists());
