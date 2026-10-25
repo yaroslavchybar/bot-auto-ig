@@ -39,7 +39,9 @@ test('the real Cloak engine sends explicit and humanized moves through the deskt
     })
     const context = new EventEmitter(), restored = new Page()
     context.pages = () => [restored]
-    context.newCDPSession = async () => ({ send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }) })
+    context.newCDPSession = async () => Object.assign(new EventEmitter(), {
+      send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }), detach: async () => {},
+    })
     // A persistent context may already have humanized its restored page.
     patchPage(restored, resolveConfig('careful'))
     const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
@@ -68,6 +70,76 @@ test('the real Cloak engine sends explicit and humanized moves through the deskt
       await new Promise(resolve => server.close(resolve))
     }
   `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 10000 })
+})
+
+test('pointer bursts cache geometry briefly and refresh for resize, navigation and discrete input', () => {
+  execFileSync('bun', ['--eval', `
+    import { mock } from 'bun:test'
+    import assert from 'node:assert/strict'
+    import { EventEmitter } from 'node:events'
+    import { WebSocketServer } from 'ws'
+    let now = 1000, reads = 0, width = 800, detached = false, duringRead
+    Date.now = () => now
+    const events = [], session = new EventEmitter(), context = new EventEmitter()
+    session.send = async command => {
+      if (command === 'Page.enable') return {}
+      assert.equal(command, 'Page.getLayoutMetrics')
+      reads++
+      const result = { cssLayoutViewport: { clientWidth: width, clientHeight: 600 } }
+      if (duringRead) { const action = duringRead; duringRead = undefined; action() }
+      return result
+    }
+    session.detach = async () => { detached = true }
+    const page = { viewportSize: () => ({ width, height: 600 }) }
+    const human = { raw: { move: async () => {} } }
+    mock.module('cloakbrowser/human', () => ({ patchPage: () => human, resolveConfig: () => ({}) }))
+    context.pages = () => [page]
+    context.newCDPSession = async () => session
+    const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+    await new Promise(resolve => server.once('listening', resolve))
+    process.env.RUNTIME_URL = 'http://127.0.0.1:' + server.address().port
+    server.on('connection', socket => {
+      socket.send(JSON.stringify({ ready: true }))
+      socket.on('message', data => {
+        events.push(JSON.parse(data.toString()))
+        socket.send(JSON.stringify({ ready: true }))
+      })
+    })
+    const { installDesktopPointer, nativeWheelFor, nativeBackFor } = await import('./server/browser/desktopPointer.ts')
+    const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease' })
+    try {
+      for (let x = 0; x < 100; x++) await human.raw.move(x, 200)
+      assert.equal(reads, 1, 'rapid moves share one metrics read')
+      now += 100
+      await human.raw.move(100, 200)
+      assert.equal(reads, 2, 'geometry expires after 100ms')
+      width = 900; session.emit('Page.frameResized')
+      await human.raw.move(101, 200)
+      assert.equal(reads, 3)
+      assert.equal(events.at(-1).width, 900)
+      width = 1000; session.emit('Page.frameNavigated', {})
+      await human.raw.move(102, 200)
+      assert.equal(reads, 4)
+      await nativeWheelFor(page)(103, 200, 'down', 1000)
+      await nativeBackFor(page)(1000)
+      assert.equal(reads, 6, 'wheel and Back always read fresh geometry')
+      now += 100
+      duringRead = () => { width = 1100; session.emit('Page.frameResized') }
+      await human.raw.move(104, 200)
+      assert.equal(reads, 8, 'an invalidated in-flight read is retried')
+      assert.equal(events.at(-1).width, 1100)
+      close()
+      await Promise.resolve()
+      assert.equal(detached, true)
+      assert.equal(session.listenerCount('Page.frameResized'), 0)
+      assert.equal(session.listenerCount('Page.frameNavigated'), 0)
+      await assert.rejects(human.raw.move(105, 200), /disconnected/)
+    } finally {
+      close()
+      for (const socket of server.clients) socket.terminate()
+      await new Promise(resolve => server.close(resolve))
+    }
+  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 5000 })
 })
 
 for (const failPress of [false, true]) test(`CDP Back mouse input always releases and detaches (${failPress})`, async () => {
@@ -123,7 +195,9 @@ for (const action of ['wheel', 'back']) for (const reply of ['ack', 'timeout']) 
       })
       const context = new EventEmitter(), page = { mouse: { move: async () => {} }, viewportSize: () => ({ width: 200, height: 400 }) }
       context.pages = () => [page]
-      context.newCDPSession = async () => ({ send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }) })
+      context.newCDPSession = async () => Object.assign(new EventEmitter(), {
+        send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }), detach: async () => {},
+      })
       mock.module('cloakbrowser/human', () => ({ resolveConfig: () => ({}), patchPage: page => ({ raw: { move: page.mouse.move } }) }))
       const { installDesktopPointer, nativeWheelFor, nativeBackFor } = await import('./server/browser/desktopPointer.ts')
       const close = await installDesktopPointer(context, { vncPort: 6081, id: 'lease-1' })
@@ -182,7 +256,8 @@ for (const stalledStage of ['attach', 'metrics']) {
       const context = new EventEmitter()
       const blocked = { mouse: { move: async () => {} } }, healthy = { mouse: { move: async () => {} } }
       context.pages = () => [blocked, healthy]
-      const sessionFor = page => ({ send: async command => {
+      const sessionFor = page => Object.assign(new EventEmitter(), { detach: async () => {}, send: async command => {
+        if (command === 'Page.enable') return {}
         assert.equal(command, 'Page.getLayoutMetrics')
         metricsRequests.push(page)
         return page === blocked && stalledStage === 'metrics' ? stalled : viewport
@@ -260,7 +335,9 @@ for (const ending of ['close', 'timeout']) {
       wheel: async () => { throw new Error('Native notches must not use pixel wheel input') } } })
     const restored = page()
     context.pages = () => [restored]
-    context.newCDPSession = async () => ({ send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }) })
+    context.newCDPSession = async () => Object.assign(new EventEmitter(), {
+      send: async () => ({ cssLayoutViewport: { clientWidth: 800, clientHeight: 600 } }), detach: async () => {},
+    })
     const captured = new Map()
     mock.module('cloakbrowser/human', () => ({
       resolveConfig: preset => { assert.equal(preset, 'careful'); return {} },

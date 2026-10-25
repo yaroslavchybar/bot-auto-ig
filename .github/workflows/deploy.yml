@@ -43,6 +43,12 @@ jobs:
         with:
           # Parallel jobs otherwise race to save the same Bun executable cache.
           no-cache: true
+      - name: Cache Bun packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-packages-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-packages-v1-${{ runner.os }}-${{ runner.arch }}-
       - run: bun install --frozen-lockfile
       - run: bun run lint
       - run: bun test ./.github/scripts
@@ -94,6 +100,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - name: Restore Bun packages
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-packages-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-packages-v1-${{ runner.os }}-${{ runner.arch }}-
       - run: bun install --frozen-lockfile
       # The deploy key scopes this push to production.
       - run: bunx convex deploy --check-build-environment disable

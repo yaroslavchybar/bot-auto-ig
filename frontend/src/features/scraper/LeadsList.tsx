@@ -47,14 +47,14 @@ const details = (lead: Lead) => [
   ['Saved', new Date(lead.createdAt).toLocaleDateString()],
 ]
 
-export function LeadsList({ leads, loading, hasActiveFilter,
-}: { leads: Lead[]; loading: boolean; hasActiveFilter: boolean }) {
+export function LeadsList({ leads, loading, hasActiveFilter, emptyMessage,
+}: { leads: Lead[]; loading: boolean; hasActiveFilter: boolean; emptyMessage?: string }) {
   const mobile = useIsMobile()
   if (loading) return <p className="p-12 text-center text-muted-copy">Loading accounts...</p>
   if (!leads.length) return (
       <div className="rounded-2xl border border-line bg-panel-subtle p-12 text-center">
         <Users className="mx-auto mb-3 h-8 w-8 text-subtle-copy" />
-        <p>{hasActiveFilter ? 'No matching accounts' : 'Add source profiles to start scraping.'}</p>
+        <p>{emptyMessage ?? (hasActiveFilter ? 'No matching accounts' : 'Add source profiles to start scraping.')}</p>
       </div>
     )
   if (mobile) return (

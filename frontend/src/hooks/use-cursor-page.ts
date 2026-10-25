@@ -37,19 +37,31 @@ export function useDebouncedSearch(value: string) {
 }
 
 export function useCursorPage(key: string) {
-  const initial = { key, cursors: [null] as (string | null)[], index: 0 }
+  const initial = { key, positions: [{ cursor: null as string | null, offset: 0, endCursor: undefined as string | undefined }], index: 0 }
   const [position, setPosition] = useState(initial)
   if (position.key !== key) setPosition(initial)
   const current = position.key === key ? position : initial
+  const selected = current.positions[current.index]!
   return {
-    cursor: current.cursors[current.index] ?? null,
+    ...selected,
     pageNumber: current.index + 1,
     hasPrevious: current.index > 0,
+    reset: () => setPosition(initial),
     previous: () => setPosition({ ...current, index: Math.max(0, current.index - 1) }),
-    next: (cursor: string) =>
+    // Skip an empty batch or reposition within a live page without adding history.
+    replace: (cursor: string | null, offset = 0) => setPosition({ ...current,
+      positions: current.positions.map((value, index) => index === current.index
+        ? { cursor, offset, endCursor: cursor === value.cursor ? value.endCursor : undefined } : value),
+    }),
+    // Preserve the range being left so its overflow offsets survive a fresh subscription.
+    next: (cursor: string | null, offset = 0, rangeEnd?: string) =>
       setPosition({
         key,
-        cursors: [...current.cursors.slice(0, current.index + 1), cursor],
+        positions: [
+          ...current.positions.slice(0, current.index + 1).map(value =>
+            rangeEnd !== undefined && value.cursor === selected.cursor ? { ...value, endCursor: rangeEnd } : value),
+          { cursor, offset, endCursor: cursor === selected.cursor ? selected.endCursor : undefined },
+        ],
         index: current.index + 1,
       }),
   }

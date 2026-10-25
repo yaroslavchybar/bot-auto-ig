@@ -102,6 +102,20 @@ test('a qualifying like durably schedules scans until completion, including acro
   expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toBeNull()
 })
 
+test('scan plans include only snapshots for this profile, owner and day', async () => {
+  const s = await setup()
+  const otherProfile = (await seedProfile(s.t, { name: 'other-owner' }))!
+  await s.t.run(async ctx => {
+    for (const row of [
+      { profileId: s.profile._id, ownerIgId: '123', date: dayKey(), mediaId: 'current' },
+      { profileId: s.profile._id, ownerIgId: '123', date: '2026-10-11', mediaId: 'old' },
+      { profileId: s.profile._id, ownerIgId: '456', date: dayKey(), mediaId: 'other-owner' },
+      { profileId: otherProfile._id, ownerIgId: '123', date: dayKey(), mediaId: 'other-profile' },
+    ]) await ctx.db.insert('ownPostLikerSnapshots', { ...row, ids: [], updatedAt: Date.now() })
+  })
+  expect(await s.t.query(internal.ownPostLikers.plan, s.args)).toMatchObject({ checkedMediaIds: ['current'] })
+})
+
 test('first snapshot is a baseline; only newly observed followed leads enter the existing one-DM queue', async () => {
   const s = await setup(),
     old = { igId: '1', username: 'old' },

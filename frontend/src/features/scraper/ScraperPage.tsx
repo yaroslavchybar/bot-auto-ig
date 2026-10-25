@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { createPortal } from 'react-dom'
 import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 import { useNow } from '@/hooks/use-now'
-import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
+import { useMutation, useQueries, useQuery } from 'convex/react'
+import { ConvexError } from 'convex/values'
 import { toast } from 'sonner'
 import { Pencil, Plus, RotateCcw, Search, Trash2, UserCheck } from 'lucide-react'
 import { api } from '../../../../convex/_generated/api'
@@ -41,6 +42,8 @@ import { useLocation, useNavigate } from '@/lib/router'
 import { apiFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { LeadsList } from './LeadsList'
+import { useCursorPage } from '@/hooks/use-cursor-page'
+import { TablePagination } from '@/components/shared/TablePagination'
 import { SCRAPER_TABS, parseScraperTab, type ScraperTabId } from './scraperTabs'
 
 import { ScrapeSourcesView } from './ScrapeSourcesView'
@@ -612,51 +615,61 @@ function SavedView() {
   const search = useDebouncedSearch(searchInput)
   const searchPending = search !== searchInput
   const filterKey = JSON.stringify([f.savedList, f.savedType, search])
-  const [pagination, setPagination] = useState({ key: filterKey, count: 100 })
-  if (pagination.key !== filterKey) {
-    setPagination({ key: filterKey, count: 100 })
-  }
-  const visibleCount = pagination.key === filterKey ? pagination.count : 100
-  const {
-    results: leads,
-    status: pageStatus,
-    loadMore,
-  } = usePaginatedQuery(
-    api.leads.listPage,
-    {
-      listId: f.savedList === 'all' ? undefined : (f.savedList as Id<'leadLists'>),
-      classification:
-        f.savedType === 'all' ? undefined : (f.savedType as 'male' | 'female' | 'business'),
-      search: search || undefined,
+  const pagination = useCursorPage(filterKey)
+  const { leads: result } = useQueries({ leads: {
+    query: api.leads.listPage,
+    args: {
+      paginationOpts: { cursor: pagination.cursor, numItems: 100,
+        ...(pagination.endCursor !== undefined ? { endCursor: pagination.endCursor } : {}),
+      },
+      ...(f.savedList !== 'all' ? { listId: f.savedList as Id<'leadLists'> } : {}),
+      ...(f.savedType !== 'all' ? { classification: f.savedType as 'male' | 'female' | 'business' } : {}),
+      ...(search ? { search } : {}),
     },
-    { initialNumItems: 100 },
-  )
-
+  } }) as { leads: FunctionReturnType<typeof api.leads.listPage> | Error | undefined }
+  if (result instanceof Error) {
+    // Match Convex's pagination recovery without retaining every previously loaded page.
+    const invalidCursor = result.message.includes('InvalidCursor') ||
+      (result instanceof ConvexError && typeof result.data === 'object' &&
+        result.data?.isConvexSystemError === true && result.data?.paginationError === 'InvalidCursor')
+    if (!invalidCursor || (pagination.cursor === null && pagination.endCursor === undefined)) throw result
+    pagination.reset()
+  }
+  const data = result instanceof Error ? undefined : result
+  // A restored range may report itself exhausted while later server ranges still exist.
+  const continuation = pagination.endCursor ?? data?.continueCursor
+  const hasServerNext = data !== undefined && (pagination.endCursor !== undefined || !data.isDone)
+  const skipping = !searchPending && data !== undefined && data.page.length === 0 && hasServerNext
   useEffect(() => {
-    if (!searchPending && pageStatus === 'CanLoadMore' && leads.length < visibleCount) loadMore(100)
-  }, [searchPending, pageStatus, leads.length, visibleCount, loadMore])
-
-  const fillingPage = leads.length < visibleCount && pageStatus !== 'Exhausted'
-  const hasMore = leads.length > visibleCount || pageStatus !== 'Exhausted'
+    if (skipping && continuation !== undefined && continuation !== pagination.cursor) pagination.replace(continuation)
+    else if (data && pagination.offset > 0 && pagination.offset >= data.page.length) {
+      pagination.replace(pagination.cursor, Math.max(0, Math.floor((data.page.length - 1) / 100) * 100))
+    }
+  }, [skipping, continuation, data, pagination])
+  const loading = searchPending || data === undefined || skipping
+  // Live Convex ranges can grow. Visit their remaining rows before advancing the server cursor.
+  const nextOffset = pagination.offset + 100
+  const hasOverflow = data !== undefined && nextOffset < data.page.length
 
   return (
     <div className="space-y-3">
-      <LeadsList
-        leads={leads.slice(0, visibleCount)}
-        loading={
-          pageStatus === 'LoadingFirstPage' || (pageStatus !== 'Exhausted' && leads.length === 0)
-        }
-        hasActiveFilter={!!f.savedQuery || f.savedList !== 'all' || f.savedType !== 'all'}
-      />
-      {hasMore && (
-        <Button
-          variant="outline"
-          disabled={searchPending || fillingPage}
-          onClick={() => setPagination({ key: filterKey, count: visibleCount + 100 })}
-        >
-          {fillingPage ? 'Loading accounts...' : 'Load more accounts'}
+      <div className="flex justify-end">
+        <Button variant="outline" disabled={searchPending} onClick={pagination.reset}>
+          <RotateCcw className="h-4 w-4" aria-hidden="true" />
+          Refresh leads
         </Button>
-      )}
+      </div>
+      <LeadsList
+        leads={data?.page.slice(pagination.offset, nextOffset) ?? []}
+        loading={loading}
+        hasActiveFilter={!!f.savedQuery || f.savedList !== 'all' || f.savedType !== 'all'}
+        emptyMessage={pagination.hasPrevious ? 'No more matching accounts' : undefined}
+      />
+      <TablePagination {...pagination} loading={loading} hasNext={hasOverflow || hasServerNext}
+        next={() => {
+          if (hasOverflow) pagination.next(pagination.cursor, nextOffset)
+          else if (hasServerNext && continuation !== undefined) pagination.next(continuation, 0, continuation)
+        }} />
     </div>
   )
 }

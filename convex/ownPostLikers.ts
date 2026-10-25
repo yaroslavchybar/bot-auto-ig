@@ -35,15 +35,13 @@ export const plan = internalQuery({
     if (!e || e.state?.likerScanPendingAt === undefined || e.state.lastLikerScanDate === date) return null
     const snapshots = await ctx.db
       .query('ownPostLikerSnapshots')
-      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
+      .withIndex('by_profile_owner_date', (q) => q.eq('profileId', profileId).eq('ownerIgId', e.ownerIgId).eq('date', date))
       .collect()
     return {
       date,
       ownerIgId: e.ownerIgId,
       runId: e.warmup!.activeRun!.id,
-      checkedMediaIds: snapshots
-        .filter((row) => row.ownerIgId === e.ownerIgId && row.date === date)
-        .map((row) => row.mediaId),
+      checkedMediaIds: snapshots.map((row) => row.mediaId),
     }
   },
 })

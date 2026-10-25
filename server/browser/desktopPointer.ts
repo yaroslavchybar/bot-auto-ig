@@ -120,7 +120,9 @@ export async function installDesktopPointer(
     throw error
   }
   let queue = Promise.resolve()
+  let closed = false
   const pages = new Set<Page>()
+  const detachMetrics: (() => void)[] = []
   const enqueue = (action: () => Promise<void>) => {
     const work = queue.then(action)
     queue = work.catch(() => {})
@@ -131,13 +133,41 @@ export async function installDesktopPointer(
     pages.add(page)
     const human = patchPage(page, resolveConfig('careful'))
     const move = human.raw.move.bind(human.raw)
-    const metrics = context.newCDPSession(page)
+    let geometry: { width: number; height: number; expiresAt: number } | undefined
+    let revision = 0
+    const invalidate = () => { geometry = undefined; revision++ }
+    const attached = context.newCDPSession(page)
+    const metrics = attached.then(async session => {
+      if (closed) throw new Error('Desktop pointer disconnected')
+      session.on('Page.frameResized', invalidate)
+      session.on('Page.frameNavigated', invalidate)
+      await session.send('Page.enable')
+      return session
+    })
+    detachMetrics.push(() => {
+      invalidate()
+      void attached.then(async session => {
+        session.off('Page.frameResized', invalidate)
+        session.off('Page.frameNavigated', invalidate)
+        await session.detach()
+      }).catch(() => {})
+    })
     const input = async (x: number, y: number, action?: PointerAction, deadline = Infinity) => {
+      if (closed) throw new Error('Desktop pointer disconnected')
       const session = await beforeInputDeadline(() => metrics, deadline)
-      const { cssLayoutViewport } = await beforeInputDeadline(() => session.send('Page.getLayoutMetrics'), deadline)
+      // Reuse geometry only during a short burst of raw moves. Discrete input reads it fresh.
+      while (action || !geometry || geometry.expiresAt <= Date.now()) {
+        const readingRevision = revision
+        const { cssLayoutViewport } = await beforeInputDeadline(() => session.send('Page.getLayoutMetrics'), deadline)
+        if (closed) throw new Error('Desktop pointer disconnected')
+        if (readingRevision !== revision) continue
+        geometry = { width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight,
+          expiresAt: Date.now() + 100 }
+        break
+      }
       if (Date.now() >= deadline) throw new Error('Native input deadline ended')
       // Once sent, keep the queue until the transport result; expiry cannot undo input.
-      await request({ x, y, width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight,
+      await request({ x, y, width: geometry.width, height: geometry.height,
         ...action })
       desktopCursors.set(page, { x, y })
     }
@@ -163,7 +193,10 @@ export async function installDesktopPointer(
     void metrics.catch(() => {})
   }
   const close = () => {
+    if (closed) return
+    closed = true
     context.off('page', attach)
+    for (const detach of detachMetrics) detach()
     for (const page of pages) {
       nativeWheels.delete(page)
       nativeBacks.delete(page)

@@ -140,7 +140,8 @@ export default defineSchema({
     ids: v.array(v.string()),
     date: v.string(),
     updatedAt: v.number(),
-  }).index('by_profile', ['profileId']).index('by_profile_media', ['profileId', 'mediaId']),
+  }).index('by_profile', ['profileId']).index('by_profile_media', ['profileId', 'mediaId'])
+    .index('by_profile_owner_date', ['profileId', 'ownerIgId', 'date']),
   models: defineTable({
     name: v.string(),
     baseFullName: v.optional(v.string()),

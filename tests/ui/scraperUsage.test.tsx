@@ -1,6 +1,9 @@
-import { act, type ReactNode } from 'react'
+import { act, useReducer, type ReactNode } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import { getFunctionName } from 'convex/server'
+import { ConvexError } from 'convex/values'
+import type { ComponentProps } from 'react'
+import { LeadsList } from '@/features/scraper/LeadsList'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { ScraperPage } from '@/features/scraper/ScraperPage'
 import { ScrapeSourcesView } from '@/features/scraper/ScrapeSourcesView'
@@ -46,6 +49,10 @@ const mocks = vi.hoisted(() => ({
     lastLikerCheckAt?: number
   }>,
   leads: [],
+  notifyLeads: () => {},
+  leadPages: {} as Record<string, {
+    page: ComponentProps<typeof LeadsList>['leads']; isDone: boolean; continueCursor: string
+  } | Error>,
   pageStatus: 'Exhausted',
   loadMore: vi.fn(),
   save: vi.fn(),
@@ -53,6 +60,11 @@ const mocks = vi.hoisted(() => ({
 }))
 vi.mock('convex/react', () => ({
   useQuery: vi.fn(),
+  useQueries: function useMockQueries(queries: Record<string, { query: Parameters<typeof useQuery>[0]; args: Record<string, unknown> }>) {
+    const [, refresh] = useReducer(n => n + 1, 0)
+    mocks.notifyLeads = refresh
+    return Object.fromEntries(Object.entries(queries).map(([key, { query, args }]) => [key, vi.mocked(useQuery)(query, args)]))
+  },
   usePaginatedQuery: vi.fn(),
   useMutation: () => mocks.save,
 }))
@@ -93,6 +105,7 @@ beforeEach(() => {
   mocks.search = '?tab=accounts'
   mocks.pageStatus = 'Exhausted'
   mocks.sources = []
+  mocks.leadPages = {}
   mocks.lists = [{ _id: 'list', name: 'Purpose', createdAt: 0 }]
   mocks.nearViewport = true
   mocks.save.mockResolvedValue(undefined)
@@ -114,6 +127,10 @@ beforeEach(() => {
         ) ?? null
       )
     if (name === 'leads:lists') return mocks.lists
+    if (name === 'leads:listPage') {
+      const cursor = (args as { paginationOpts: { cursor: string | null } }).paginationOpts.cursor
+      return mocks.leadPages[cursor ?? 'start'] ?? { page: [], isDone: true, continueCursor: '' }
+    }
     throw new Error(`Unexpected query ${name}`)
   })
   vi.mocked(usePaginatedQuery).mockImplementation(() => ({
@@ -423,14 +440,14 @@ test('lead search waits for typing to settle and pauses obsolete pagination', as
   await view.render(<ScraperPage />)
   const input = view.container.querySelector<HTMLInputElement>('input[aria-label="Search leads"]')!
   for (const value of ['A', 'Al', ' Alice ']) await typeInto(input, value)
-  mocks.pageStatus = 'CanLoadMore'
+  mocks.leadPages.start = { page: [], isDone: false, continueCursor: 'next' }
   await view.render(<ScraperPage />)
   expect(mocks.loadMore).not.toHaveBeenCalled()
   expect(
     vi
-      .mocked(usePaginatedQuery)
-      .mock.calls.every(
-        ([, args]) => args !== 'skip' && (!('search' in args) || args.search === undefined),
+      .mocked(useQuery)
+      .mock.calls.filter(([query]) => getFunctionName(query) === 'leads:listPage').every(
+        ([, args]) => args !== 'skip' && (!args || !('search' in args) || args.search === undefined),
       ),
   ).toBe(true)
   await act(async () => {
@@ -440,8 +457,233 @@ test('lead search waits for typing to settle and pauses obsolete pagination', as
   await act(async () => {
     vi.advanceTimersByTime(1)
   })
-  expect(vi.mocked(usePaginatedQuery).mock.calls.at(-1)?.[1]).toMatchObject({ search: 'alice' })
-  expect(mocks.loadMore).toHaveBeenCalledTimes(1)
+  expect(vi.mocked(useQuery).mock.calls.filter(([q]) => getFunctionName(q) === 'leads:listPage').at(-1)?.[1])
+    .toMatchObject({ search: 'alice', paginationOpts: { cursor: 'next', numItems: 100 } })
+  expect(mocks.loadMore).not.toHaveBeenCalled()
+})
+
+test('leads keep one bounded page, navigate back, and reset cursors for search', async () => {
+  vi.useFakeTimers()
+  mocks.search = '?tab=saved'
+  const leads = (prefix: string) => Array.from({ length: 100 }, (_, i) => ({
+    _id: `${prefix}${i}` as ComponentProps<typeof LeadsList>['leads'][number]['_id'],
+    username: `${prefix}${i}`, createdAt: 1, dmSent: false, followed: false,
+  }))
+  mocks.leadPages = {
+    start: { page: leads('first'), isDone: false, continueCursor: 'sparse' },
+    sparse: { page: [], isDone: false, continueCursor: 'second' },
+    second: { page: leads('second'), isDone: false, continueCursor: 'end' },
+    end: { page: [], isDone: true, continueCursor: 'end' },
+  }
+  view = mount()
+  await view.render(<ScraperPage />)
+  const rows = () => view!.container.querySelectorAll('tbody tr')
+  const button = (label: string) => view!.container.querySelector<HTMLButtonElement>(`button[aria-label="${label} page"]`)!
+  expect(rows()).toHaveLength(100)
+  expect(button('Previous').disabled).toBe(true)
+  await act(async () => button('Next').click())
+  expect(rows()).toHaveLength(100)
+  expect(view.container.textContent).toContain('@second0')
+  expect(view.container.textContent).not.toContain('@first0')
+  expect(view.container.textContent).toContain('Page 2')
+  await act(async () => button('Next').click())
+  expect(view.container.textContent).toContain('No more matching accounts')
+  expect(button('Next').disabled).toBe(true)
+  await act(async () => button('Previous').click())
+  expect(view.container.textContent).toContain('@second0')
+  await act(async () => button('Previous').click())
+  expect(view.container.textContent).toContain('@first0')
+  await act(async () => button('Next').click())
+  await typeInto(view.container.querySelector<HTMLInputElement>('input[aria-label="Search leads"]')!, 'Alice')
+  expect(button('Next').disabled).toBe(true)
+  await act(async () => vi.advanceTimersByTime(300))
+  expect(view.container.textContent).toContain('Page 1')
+  expect(button('Previous').disabled).toBe(true)
+  expect(vi.mocked(useQuery).mock.calls.filter(([q]) => getFunctionName(q) === 'leads:listPage').at(-1)?.[1])
+    .toMatchObject({ search: 'alice', paginationOpts: { cursor: null, numItems: 100 } })
+})
+
+for (const hasTailMatch of [false, true]) test(`refresh revisits skipped head batches with unchanged search (tail match=${hasTailMatch})`, async () => {
+  vi.useFakeTimers()
+  mocks.search = '?tab=saved'
+  const lead = (username: string) => ({
+    _id: username as ComponentProps<typeof LeadsList>['leads'][number]['_id'],
+    username, createdAt: 1, dmSent: false, followed: false,
+  })
+  mocks.leadPages = {
+    start: { page: [], isDone: false, continueCursor: 'middle' },
+    middle: { page: [], isDone: false, continueCursor: 'tail' },
+    tail: { page: hasTailMatch ? [lead('alice_old')] : [], isDone: true, continueCursor: 'end' },
+  }
+  view = mount()
+  await view.render(<ScraperPage />)
+  const input = view.container.querySelector<HTMLInputElement>('input[aria-label="Search leads"]')!
+  await typeInto(input, 'Alice')
+  await act(async () => vi.advanceTimersByTime(300))
+  const previous = () => view!.container.querySelector<HTMLButtonElement>('button[aria-label="Previous page"]')!
+  const lastQuery = () => vi.mocked(useQuery).mock.calls.filter(([q]) => getFunctionName(q) === 'leads:listPage').at(-1)?.[1]
+  expect(lastQuery()).toMatchObject({ search: 'alice', paginationOpts: { cursor: 'tail' } })
+  expect(view.container.textContent).toContain('Page 1')
+  expect(previous().disabled).toBe(true)
+  // A new or enriched match belongs to a range the current query no longer watches.
+  mocks.leadPages.start = { page: [lead('alice_new')], isDone: false, continueCursor: 'middle' }
+  await act(async () => mocks.notifyLeads())
+  expect(view.container.textContent).not.toContain('@alice_new')
+  await act(async () => [...view!.container.querySelectorAll('button')].find(button => button.textContent === 'Refresh leads')!.click())
+  expect(lastQuery()).toMatchObject({ search: 'alice', paginationOpts: { cursor: null, numItems: 100 } })
+  expect(view.container.textContent).toContain('@alice_new')
+  expect(view.container.textContent).not.toContain('@alice_old')
+  expect(input.value).toBe('Alice')
+  expect(previous().disabled).toBe(true)
+  await act(async () => view!.container.querySelector<HTMLButtonElement>('button[aria-label="Next page"]')!.click())
+  expect(lastQuery()).toMatchObject({ paginationOpts: { cursor: 'tail' } })
+  expect(previous().disabled).toBe(false)
+  await act(async () => previous().click())
+  expect(view.container.textContent).toContain('@alice_new')
+})
+
+for (const isDone of [false, true]) test(`live lead growth stays bounded without skipping overflow (isDone=${isDone})`, async () => {
+  vi.useFakeTimers()
+  mocks.search = '?tab=saved'
+  const leads = Array.from({ length: 237 }, (_, i) => ({
+    _id: `lead${i}` as ComponentProps<typeof LeadsList>['leads'][number]['_id'],
+    username: `lead${i}`, createdAt: 1, dmSent: false, followed: false,
+  }))
+  mocks.leadPages = {
+    start: { page: leads.slice(0, 100), isDone, continueCursor: 'after-live-range' },
+    'after-live-range': { page: [{ ...leads[0], username: 'later' }], isDone: true, continueCursor: 'end' },
+  }
+  view = mount()
+  await view.render(<ScraperPage />)
+  const rows = () => [...view!.container.querySelectorAll('tbody tr a')].map(row => row.textContent)
+  const button = (label: string) => view!.container.querySelector<HTMLButtonElement>(`button[aria-label="${label} page"]`)!
+  mocks.leadPages.start = { page: leads, isDone, continueCursor: 'after-live-range' }
+  await act(async () => mocks.notifyLeads())
+  expect(rows()).toHaveLength(100)
+  const visited = [...rows()]
+  for (const size of [100, 37]) {
+    expect(button('Next').disabled).toBe(false)
+    await act(async () => button('Next').click())
+    expect(rows()).toHaveLength(size)
+    visited.push(...rows())
+    expect(vi.mocked(useQuery).mock.calls.filter(([q]) => getFunctionName(q) === 'leads:listPage').at(-1)?.[1])
+      .toMatchObject({ paginationOpts: { cursor: null } })
+  }
+  expect(visited).toEqual(leads.map(lead => `@${lead.username}`))
+  expect(button('Next').disabled).toBe(isDone)
+  if (!isDone) {
+    await act(async () => button('Next').click())
+    expect(rows()).toEqual(['@later'])
+    expect(vi.mocked(useQuery).mock.calls.filter(([q]) => getFunctionName(q) === 'leads:listPage').at(-1)?.[1])
+      .toMatchObject({ paginationOpts: { cursor: 'after-live-range' } })
+    await act(async () => button('Previous').click())
+    expect(rows()).toHaveLength(37)
+  }
+  await act(async () => button('Previous').click())
+  expect(rows()).toEqual(leads.slice(100, 200).map(lead => `@${lead.username}`))
+  // A shrinking range must not strand the user on an empty local chunk.
+  mocks.leadPages.start = { page: leads.slice(0, 90), isDone, continueCursor: 'after-live-range' }
+  await act(async () => mocks.notifyLeads())
+  expect(rows()).toHaveLength(90)
+  await typeInto(view.container.querySelector<HTMLInputElement>('input[aria-label="Search leads"]')!, 'Alice')
+  await act(async () => vi.advanceTimersByTime(300))
+  expect(view.container.textContent).toContain('Page 1')
+  expect(button('Previous').disabled).toBe(true)
+  expect(rows()).toHaveLength(90)
+})
+
+for (const startCursor of [null, 'range-start']) test(`Previous restores overflow after its server range is unsubscribed (${startCursor})`, async () => {
+  mocks.search = '?tab=saved'
+  const leads = Array.from({ length: 237 }, (_, i) => ({
+    _id: `range${i}` as ComponentProps<typeof LeadsList>['leads'][number]['_id'],
+    username: `range${i}`, createdAt: 1, dmSent: false, followed: false,
+  }))
+  const baseQuery = vi.mocked(useQuery).getMockImplementation()!
+  let grown = false, journalLost = false, invalidBound = false
+  vi.mocked(useQuery).mockImplementation((query, args?) => {
+    if (getFunctionName(query) !== 'leads:listPage') return baseQuery(query, args)
+    const { cursor, endCursor } = (args as { paginationOpts: { cursor: string | null; endCursor?: string } }).paginationOpts
+    if (endCursor && invalidBound) return new ConvexError({ isConvexSystemError: true, paginationError: 'InvalidCursor' })
+    if (startCursor !== null && cursor === null) return { page: [], isDone: false, continueCursor: startCursor }
+    if (cursor === 'after-range') {
+      journalLost = true
+      return { page: [{ ...leads[0], username: 'later' }], isDone: true, continueCursor: 'end' }
+    }
+    // A resubscription starts at 100 rows unless the original boundary is supplied.
+    return {
+      page: grown && (!journalLost || endCursor === 'after-range') ? leads : leads.slice(0, 100),
+      isDone: endCursor !== undefined,
+      continueCursor: endCursor ? '_end_cursor' : 'after-range',
+    }
+  })
+  view = mount()
+  await view.render(<ScraperPage />)
+  grown = true
+  await act(async () => mocks.notifyLeads())
+  const rows = () => [...view!.container.querySelectorAll('tbody tr a')].map(row => row.textContent)
+  const button = (label: string) => view!.container.querySelector<HTMLButtonElement>(`button[aria-label="${label} page"]`)!
+  for (let i = 0; i < 3; i++) await act(async () => button('Next').click())
+  expect(rows()).toEqual(['@later'])
+  await act(async () => button('Previous').click())
+  expect(rows()).toEqual(leads.slice(200).map(lead => `@${lead.username}`))
+  expect(vi.mocked(useQuery).mock.calls.filter(([q]) => getFunctionName(q) === 'leads:listPage').at(-1)?.[1])
+    .toMatchObject({ paginationOpts: { cursor: startCursor, endCursor: 'after-range' } })
+  expect(button('Next').disabled).toBe(false)
+  await act(async () => button('Previous').click())
+  expect(rows()).toEqual(leads.slice(100, 200).map(lead => `@${lead.username}`))
+  await act(async () => button('Next').click())
+  expect(rows()).toHaveLength(37)
+  await act(async () => button('Next').click())
+  expect(rows()).toEqual(['@later'])
+  invalidBound = true
+  await act(async () => button('Previous').click())
+  expect(view.container.textContent).toContain('Page 1')
+  expect(button('Previous').disabled).toBe(true)
+  expect(rows()).toEqual(leads.slice(0, 100).map(lead => `@${lead.username}`))
+})
+
+for (const error of [
+  new Error('InvalidCursor: query changed'),
+  new ConvexError({ isConvexSystemError: true, paginationError: 'InvalidCursor' }),
+]) test(`saved leads reset invalid cursors while preserving the search (${error.message})`, async () => {
+  vi.useFakeTimers()
+  mocks.search = '?tab=saved'
+  const lead = {
+    _id: 'lead' as ComponentProps<typeof LeadsList>['leads'][number]['_id'],
+    username: 'alice', createdAt: 1, dmSent: false, followed: false,
+  }
+  mocks.leadPages = {
+    start: { page: [lead], isDone: false, continueCursor: 'invalid' },
+    invalid: error,
+  }
+  view = mount()
+  await view.render(<ScraperPage />)
+  const input = view.container.querySelector<HTMLInputElement>('input[aria-label="Search leads"]')!
+  await typeInto(input, 'Alice')
+  await act(async () => vi.advanceTimersByTime(300))
+  vi.mocked(useQuery).mockClear()
+  await act(async () => view!.container.querySelector<HTMLButtonElement>('button[aria-label="Next page"]')!.click())
+  const calls = vi.mocked(useQuery).mock.calls.filter(([q]) => getFunctionName(q) === 'leads:listPage')
+  expect(calls.some(([, args]) => (args as { paginationOpts: { cursor: string } }).paginationOpts.cursor === 'invalid')).toBe(true)
+  expect(calls.at(-1)?.[1]).toMatchObject({ search: 'alice', paginationOpts: { cursor: null, numItems: 100 } })
+  expect(view.container.textContent).toContain('Page 1')
+  expect(view.container.textContent).toContain('@alice')
+  expect(input.value).toBe('Alice')
+  expect(view.container.querySelector<HTMLButtonElement>('button[aria-label="Previous page"]')!.disabled).toBe(true)
+})
+
+test('saved leads still surface unrelated query errors and invalid first-page errors', async () => {
+  const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    for (const error of [new Error('Access denied'), new Error('InvalidCursor: invalid first page')]) {
+      mocks.search = '?tab=saved'
+      mocks.leadPages.start = error
+      view = mount()
+      await expect(view.render(<ScraperPage />)).rejects.toThrow(error.message)
+      await view.unmount()
+      view = undefined
+    }
+  } finally { report.mockRestore() }
 })
 
 test('request quota is fixed at ten per hour and shows the proxy-country schedule', async () => {
