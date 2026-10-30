@@ -11,6 +11,7 @@ import { captureViewportScreenshot } from './screenshot.js'
 export const TOPIC_MODEL = DEFAULT_DECISION_MODEL
 export const TOPIC_CONFIDENCE = 0.7
 export const TOPIC_DECISION_TIMEOUT = 5000
+const MIN_TOPIC_DECISION_MS = 1000
 export type TopicContext = Pick<FeedPostContext, 'text' | 'relationship'>
 export type TopicInput = { topics: readonly string[]; screenshot: Buffer }
 export type TopicDecision = { related: boolean; confidence: number }
@@ -99,6 +100,11 @@ export function createTopicMatcher(request = decideTopic, capture = captureTopic
     }
     const previous = decisions.get(key)
     if (previous) return previous
+    const skip = () => {
+      log({ event: 'automation.warmup.topic_decision_skipped', reason: 'insufficient_time', model: settings.model })
+      return false
+    }
+    if (session.end - Date.now() < MIN_TOPIC_DECISION_MS) return Promise.resolve(skip())
     const pending = (async () => {
       const page = target.page()
       const report = beginSessionDecision(page, { kind: 'interest', status: 'checking' })
@@ -107,6 +113,11 @@ export function createTopicMatcher(request = decideTopic, capture = captureTopic
         const captureSession = new BrowseSession(deadline, () => session.stopped())
         const screenshot = await capture(target, captureSession)
         captureSession.check()
+        if (captureSession.end - Date.now() < MIN_TOPIC_DECISION_MS) {
+          decisions.delete(key)
+          report({ kind: 'interest', status: 'unavailable' })
+          return skip()
+        }
         const decision = await request({ topics, screenshot }, captureSession.timeout(TOPIC_DECISION_TIMEOUT))
         captureSession.check()
         session.check()

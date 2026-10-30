@@ -178,8 +178,8 @@ test('provider timeout is capped by the remaining browsing session', async () =>
     timeout = remaining
     return { related: true, confidence: 1 }
   })
-  await match(context(), ['fitness'], new BrowseSession(Date.now() + 1000), log, target)
-  assert.ok(timeout > 0 && timeout <= 1000)
+  await match(context(), ['fitness'], new BrowseSession(Date.now() + 2000), log, target)
+  assert.ok(timeout >= 1000 && timeout <= 2000)
   await match(context(), ['fitness'], new BrowseSession(Date.now() + 60_000), log, target)
   assert.ok(timeout > 0 && timeout <= 5000, 'slow classification cannot hold a Reel for twelve seconds')
 })
@@ -193,13 +193,34 @@ test('capture and classification share one deadline, and local expiry does not s
       assert.equal(input.screenshot, image); providerTimeout = remaining
       return { related: true, confidence: 1 }
     }, async () => { now += 250; return image })
-    await match(context(), ['fitness'], new BrowseSession(now + 1000), log, target)
-    assert.equal(providerTimeout, 750)
+    await match(context(), ['fitness'], new BrowseSession(now + 2000), log, target)
+    assert.equal(providerTimeout, 1750)
     const session = new BrowseSession(now + 60_000)
     const expired = createTopicMatcher(async () => { assert.fail('Capture expired before the request') },
       async () => { now += 12_001; return image })
     assert.equal(await expired(context(), ['fitness'], session, log, target), false)
     assert.equal(session.stopped(), false)
+  } finally { Date.now = originalNow }
+})
+
+test('short topic budgets skip capture or requests and do not cache a skipped decision', async () => {
+  const originalNow = Date.now
+  let now = originalNow(), captures = 0, requests = 0
+  const notes: Record<string, unknown>[] = []
+  Date.now = () => now
+  try {
+    const post = context()
+    const match = createTopicMatcher(async () => { requests++; return { related: true, confidence: 1 } },
+      async () => { captures++; now += 1200; return image })
+    assert.equal(await match(post, ['fitness'], new BrowseSession(now + 724), n => notes.push(n), target), false)
+    assert.equal(captures, 0)
+    assert.equal(await match(post, ['fitness'], new BrowseSession(now + 2000), n => notes.push(n), target), false)
+    assert.equal(captures, 1)
+    assert.equal(requests, 0)
+    assert.equal(await match(post, ['fitness'], new BrowseSession(now + 60_000), n => notes.push(n), target), true)
+    assert.equal(requests, 1)
+    assert.equal(notes.filter(n => n.event === 'automation.warmup.topic_decision_skipped').length, 2)
+    assert.equal(notes.some(n => n.event === 'automation.warmup.topic_decision_failed'), false)
   } finally { Date.now = originalNow }
 })
 

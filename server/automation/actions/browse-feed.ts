@@ -65,7 +65,7 @@ export async function browseContent(page: Page, end: number, config: Record<stri
     empty = budget.browsed === before ? empty + 1 : 0
     if (empty >= (home && reels ? 2 : 1)) break
   }
-  return stopped() ? 'stopped' : budget.browsed > initial ? 'finished' : 'stalled'
+  return stopped() ? 'stopped' : deps.now() >= end || budget.browsed > initial ? 'finished' : 'stalled'
 }
 
 const dependencies = { content: browseContent, stories: watchStories, check: assertInstagramReady,
@@ -87,7 +87,8 @@ export async function runBrowseFeedSession(page: Page, context: FeedSessionConte
     if (deps.now() >= end || stopped()) return stopped() ? 'stopped' : 'stalled'
     const before = budget.browsed
     const result = await deps.content(page, end, config, budget, state, log, shouldStop)
-    if (result === 'finished' && budget.browsed === before) return 'stalled'
+    // A final short slice can expire before a complete view is counted.
+    if (result === 'finished' && budget.browsed === before && deps.now() < end) return 'stalled'
     return result
   }
   await deps.check(page, session)

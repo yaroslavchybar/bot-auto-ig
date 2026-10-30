@@ -2,6 +2,8 @@ use super::{Failure, Result};
 pub struct Clipboard {
     #[cfg(target_os = "linux")]
     sender: std::sync::mpsc::SyncSender<Command>,
+    #[cfg(target_os = "linux")]
+    stopping: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 #[cfg(target_os = "linux")]
 struct Command {
@@ -9,19 +11,32 @@ struct Command {
     reply: tokio::sync::oneshot::Sender<Result<String>>,
 }
 impl Clipboard {
+    /// Only intentional display shutdown suppresses connection errors.
+    #[cfg(target_os = "linux")]
+    pub fn stop(self) {
+        self.stopping
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
     pub fn open(number: u16) -> Result<Self> {
         #[cfg(target_os = "linux")]
         {
             let (sender, receiver) = std::sync::mpsc::sync_channel(16);
+            let stopping = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let worker_stopping = stopping.clone();
             std::thread::Builder::new()
                 .name(format!("clipboard-{number}"))
                 .spawn(move || {
-                    if let Err(e) = run(number, receiver) {
-                        ig_service_common::service_error("display.clipboard_failed", &e.message);
+                    if let Err(e) = run(number, receiver, &worker_stopping) {
+                        if !worker_stopping.load(std::sync::atomic::Ordering::Acquire) {
+                            ig_service_common::service_error(
+                                "display.clipboard_failed",
+                                &e.message,
+                            );
+                        }
                     }
                 })
                 .map_err(|_| Failure::unavailable("Clipboard thread unavailable"))?;
-            Ok(Self { sender })
+            Ok(Self { sender, stopping })
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -49,7 +64,11 @@ impl Clipboard {
     }
 }
 #[cfg(target_os = "linux")]
-fn run(number: u16, receiver: std::sync::mpsc::Receiver<Command>) -> Result<()> {
+fn run(
+    number: u16,
+    receiver: std::sync::mpsc::Receiver<Command>,
+    stopping: &std::sync::atomic::AtomicBool,
+) -> Result<()> {
     use std::{
         collections::HashMap,
         time::{Duration, Instant},
@@ -119,6 +138,9 @@ fn run(number: u16, receiver: std::sync::mpsc::Receiver<Command>) -> Result<()> 
     let mut reading: Option<Reading> = None;
     let mut outgoing: HashMap<(u32, u32), Outgoing> = HashMap::new();
     loop {
+        if stopping.load(std::sync::atomic::Ordering::Acquire) {
+            return Ok(());
+        }
         if reading.is_none() {
             match receiver.try_recv() {
                 Ok(command) => {

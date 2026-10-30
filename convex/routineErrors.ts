@@ -17,6 +17,8 @@ export function isRetryableRoutineIssue(issue: string | undefined): boolean {
   const reason = failureReason(issue);
   if (!reason || isRoutineLoginIssue(reason) || /needs review|could not be confirmed/i.test(reason)) return false;
   if (reason === 'Browser worker stopped') return true;
+  if (reason === 'Rust disconnected before granting the resource' || reason === 'Rust resource connection failed' ||
+    reason.startsWith('Display startup failed: ')) return true;
   if (isTransientDomIssue(reason)) return true;
   const networkCode = reason.match(/net::(ERR_[A-Z_]+)/i)?.[1];
   if (networkCode) return /^(?:ERR_CONNECTION_(?:CLOSED|RESET|REFUSED|ABORTED|TIMED_OUT)|ERR_TIMED_OUT|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|ERR_PROXY_CONNECTION_FAILED|ERR_TUNNEL_CONNECTION_FAILED)$/i.test(networkCode);

@@ -213,6 +213,28 @@ test('temporary empty views retry without another startup or Story phase', async
   assert.equal(tries, 2); assert.equal(s.calls.filter(call => call === 'stories').length, 1)
 })
 
+test('using the whole final browsing budget without a completed view finishes normally', async () => {
+  const s = setup()
+  s.deps.content = async (_page, end) => { s.advance(end - s.now()); return 'finished' }
+  assert.equal(await s.run(), 'finished')
+  assert.equal(s.context.budget.browsed, 0)
+  assert.equal(s.now(), s.context.deadline)
+})
+
+for (const endsAtBudget of [false, true]) test(`a content surface with no completed view distinguishes early stalls from budget expiry (${endsAtBudget})`, async () => {
+  let now = Date.now()
+  const end = now + 10_000
+  const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 0, stories: 0 })
+  const deps = { now: () => now, random: (min: number) => min,
+    openReels: async () => true,
+    reels: async () => { if (endsAtBudget) { now = end; throw new SessionEnded() } },
+    home: async () => 'finished' as const,
+  }
+  const state: FeedState = { next: 'reels', homeSeen: new Set(), reelsSeen: new Set() }
+  assert.equal(await browseContent({} as Page, end, { browse_home_feed: false }, budget, state, () => {}, () => false, deps),
+    endsAtBudget ? 'finished' : 'stalled')
+})
+
 test('topic following lives in the browsing flow and never owns post likes', async () => {
   const s = setup(3)
   s.context.config = { warmup_topics: ['Fishing'], watch_stories: false }

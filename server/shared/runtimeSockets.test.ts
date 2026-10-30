@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process'
 
 for (const scenario of [
   'lease',
+  'failed grant',
   'graceful release',
   'lost during release',
   'failed recovery',
@@ -58,7 +59,14 @@ for (const scenario of [
       const reason = new Error('Stopped fixture')
       let updates = 0, errors = 0, lost = 0
       try {
-        if (scenario === 'lease') {
+        if (scenario === 'failed grant') {
+          const pending = nativeLease('/displays/lease', {profileName:'fixture'}, controller.signal, () => lost++)
+          const rejected = assert.rejects(pending, /Display startup failed: Display process exited/)
+          await until(() => messages.length === 1)
+          sockets[0].send(JSON.stringify({ready:false,error:'Display startup failed: Display process exited'}))
+          await rejected
+          assert.equal(lost,0)
+        } else if (scenario === 'lease') {
           let granted = false
           const pending = nativeLease('/browser/lease', {profileName:'fixture'}, controller.signal, () => lost++)
           void pending.then(() => { granted = true })

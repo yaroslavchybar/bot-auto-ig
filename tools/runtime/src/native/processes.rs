@@ -121,16 +121,14 @@ impl Processes {
         super::content::atomic_write(&self.registry_file(), &serde_json::to_vec(entries)?).await
     }
     #[cfg(target_os = "linux")]
-    pub async fn track_resource(&self, pid: u32) -> Result<()> {
-        let (start, args) = tokio::task::spawn_blocking(move || identity(pid))
-            .await
-            .ok()
-            .flatten()
-            .ok_or_else(|| Failure::unavailable("Could not verify display process identity"))?;
-        let script = args
-            .first()
-            .map(PathBuf::from)
-            .ok_or_else(|| Failure::unavailable("Display process has no executable"))?;
+    pub async fn track_resource(&self, child: &mut tokio::process::Child) -> Result<()> {
+        let (pid, start, script) = resource_identity(child, async |pid| {
+            tokio::task::spawn_blocking(move || identity(pid))
+                .await
+                .ok()
+                .flatten()
+        })
+        .await?;
         let mut registry = self.registry.lock().await;
         registry.push(Registry { pid, script, start });
         self.persist(&registry).await
@@ -839,6 +837,37 @@ fn encoded(path: &str, key: &str, value: &str) -> String {
     let url = reqwest::Url::parse_with_params("http://local/", [(key, value)]).unwrap();
     format!("{path}?{}", url.query().unwrap())
 }
+/// Newly spawned processes may not expose their command line immediately. Never register an unverified PID.
+#[cfg(any(test, target_os = "linux"))]
+async fn resource_identity(
+    child: &mut tokio::process::Child,
+    mut read: impl AsyncFnMut(u32) -> Option<(u64, Vec<std::ffi::OsString>)>,
+) -> Result<(u32, u64, PathBuf)> {
+    let pid = child
+        .id()
+        .ok_or_else(|| Failure::unavailable("Display process already exited"))?;
+    for attempt in 0..20 {
+        if let Some(status) = child.try_wait()? {
+            return Err(Failure::unavailable(format!(
+                "Display process exited during startup ({status})"
+            )));
+        }
+        if let Some((start, args)) = read(pid).await {
+            if let Some(script) = args.first().filter(|arg| !arg.is_empty()) {
+                if start > 0 && child.try_wait()?.is_none() {
+                    return Ok((pid, start, PathBuf::from(script)));
+                }
+            }
+        }
+        if attempt < 19 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+    Err(Failure::unavailable(
+        "Display process identity unavailable during startup",
+    ))
+}
+
 fn identity(pid: u32) -> Option<(u64, Vec<std::ffi::OsString>)> {
     let mut system = sysinfo::System::new();
     system.refresh_processes_specifics(

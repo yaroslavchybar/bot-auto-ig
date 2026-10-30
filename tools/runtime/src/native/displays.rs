@@ -69,10 +69,11 @@ impl Displays {
             None
         };
         let mut clipboard = session.clipboard.lock().await;
+        let writing = input.is_some();
+        self.check_session(&session, writing).await?;
         if clipboard.is_none() {
             *clipboard = Some(clipboard::Clipboard::open(session.info.display_num)?);
         }
-        let writing = input.is_some();
         let text = match clipboard.as_ref().unwrap().request(input).await {
             Ok(text) => text,
             Err(error) => {
@@ -376,8 +377,11 @@ pub async fn display_lease(State(state): State<Arc<Displays>>, ws: WebSocketUpgr
                 return;
             }
             #[cfg(target_os = "linux")]
-            if let Err(error) = linux_lease(state, socket, name, automation).await {
+            if let Err(error) = linux_lease(state, &mut socket, name, automation).await {
                 ig_service_common::service_error("display.lease_failed", &error.message);
+                let _ = tokio::time::timeout(Duration::from_secs(3), socket.send(Message::Text(
+                    json!({"ready": false, "error": format!("Display startup failed: {}", error.message)}).to_string().into(),
+                ))).await;
             }
             #[cfg(not(target_os = "linux"))]
             {
@@ -416,7 +420,7 @@ pub(super) async fn lifetime(socket: &mut WebSocket) -> bool {
 #[cfg(target_os = "linux")]
 async fn linux_lease(
     state: Arc<Displays>,
-    mut socket: WebSocket,
+    socket: &mut WebSocket,
     name: &str,
     automation: &str,
 ) -> Result<()> {
@@ -448,7 +452,7 @@ async fn linux_lease(
     let result = async {
         let mut command = tokio::process::Command::new("Xtigervnc");
         command.args([format!(":{number}"), "-geometry".into(), "1366x960".into(), "-depth".into(), "24".into(), "-rfbport".into(), rfb.to_string(), "-SecurityTypes".into(), "None".into(), "-AlwaysShared".into(), "-localhost=1".into(), "-SendPrimary=0".into(), "-SetPrimary=0".into()]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).process_group(0).kill_on_drop(true);
-        let child = command.spawn().map_err(|_| Failure::unavailable("Could not start display"))?; let pid = child.id().unwrap(); children.push((pid, child)); state.processes.track_resource(pid).await?;
+        let child = command.spawn().map_err(|_| Failure::unavailable("Could not start display"))?; let pid = child.id().unwrap(); children.push((pid, child)); state.processes.track_resource(&mut children.last_mut().unwrap().1).await?;
         let mut ready = false;
         for _ in 0..50 {
             if children[0].1.try_wait()?.is_some() { return Err(Failure::unavailable("Display stopped during startup")); }
@@ -457,19 +461,27 @@ async fn linux_lease(
         }
         if !ready { return Err(Failure::unavailable("Display startup timed out")); }
         let child = tokio::process::Command::new("fluxbox").args(["-display", &format!(":{number}")]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).process_group(0).kill_on_drop(true).spawn().map_err(|_| Failure::unavailable("Could not start window manager"))?;
-        let pid = child.id().unwrap(); children.push((pid, child)); state.processes.track_resource(pid).await?;
+        let pid = child.id().unwrap(); children.push((pid, child)); state.processes.track_resource(&mut children.last_mut().unwrap().1).await?;
         socket.send(Message::Text(json!({"ready": true, "display": session.info}).to_string().into())).await.map_err(|_| Failure::unavailable("Display owner disconnected"))?;
         let _ = state.api.events.send(json!({"type": "display_allocated", "id": session.info.id, "automationId": automation, "profileName": name, "vncPort": session.info.vnc_port, "displayNum": number}));
         let mut health = tokio::time::interval(Duration::from_secs(2));
-        let owner = lifetime(&mut socket); tokio::pin!(owner);
+        let owner = lifetime(socket); tokio::pin!(owner);
         loop { tokio::select! { _ = &mut owner => break, _ = health.tick() => { if children.iter_mut().any(|(_, child)| !matches!(child.try_wait(), Ok(None))) { break; } } } }
         Ok(())
     }.await;
+    // Stop clipboard readers before taking down their X11 connection.
+    let mut clipboard = session.clipboard.lock().await;
+    if let Some(worker) = clipboard.take() {
+        worker.stop();
+    }
     for (pid, mut child) in children {
+        let exited = matches!(child.try_wait(), Ok(Some(_)));
+        // Descendants can remain in the process group after its direct child exits.
         super::processes::kill_tree(pid, false).await;
-        if tokio::time::timeout(Duration::from_secs(2), child.wait())
-            .await
-            .is_err()
+        if !exited
+            && tokio::time::timeout(Duration::from_secs(2), child.wait())
+                .await
+                .is_err()
         {
             super::processes::kill_tree(pid, true).await;
             let _ = child.kill().await;
@@ -477,6 +489,7 @@ async fn linux_lease(
         state.processes.forget_resource(pid).await;
     }
     state.sessions.lock().await.remove(&session.info.vnc_port);
+    drop(clipboard);
     let _ = state.api.events.send(json!({"type": "display_released", "automationId": automation, "profileName": name, "vncPort": session.info.vnc_port}));
     result
 }
@@ -677,6 +690,31 @@ mod tests {
         let mut state = Displays::new(api, processes);
         Arc::get_mut(&mut state).unwrap().capture = Some(capture);
         (root, state)
+    }
+    #[tokio::test]
+    async fn queued_clipboard_requests_cannot_reopen_a_worker_after_session_cleanup() {
+        use axum::{
+            body::{Body, Bytes},
+            extract::Request,
+        };
+        let (_root, state) = state(Arc::new(|_| Ok(vec![])));
+        let active = session(6081);
+        state.sessions.lock().await.insert(6081, active.clone());
+        let clipboard = active.clipboard.lock().await;
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let body = Body::from_stream(futures_util::stream::once(async move {
+            let _ = started.send(());
+            Ok::<_, std::io::Error>(Bytes::from_static(br#"{"text":"queued text"}"#))
+        }));
+        let request = Request::builder().method("POST").body(body).unwrap();
+        let copy = state.clone();
+        let pending = tokio::spawn(async move { copy.clipboard(6081, request).await });
+        ready.await.unwrap();
+        state.sessions.lock().await.remove(&6081);
+        drop(clipboard);
+        let error = pending.await.unwrap().unwrap_err();
+        assert_eq!(error.message, "Display session ended");
+        assert!(active.clipboard.lock().await.is_none());
     }
     #[tokio::test]
     async fn file_picker_streams_to_the_browser_and_rejects_an_ended_session_before_eof() {

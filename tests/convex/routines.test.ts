@@ -687,7 +687,8 @@ test.each(['goto: Timeout 45000ms exceeded.',
   'Element "<ElementHandle>" failed visible check: element is not visible',
   'Element "<ElementHandle>" failed attached check: element not found in DOM',
   'Element "<ElementHandle>" failed pointer_events check: element is covered by <div>',
-  'Browser worker stopped'])(
+  'Browser worker stopped', 'Rust disconnected before granting the resource',
+  'Rust resource connection failed', 'Display startup failed: Display process exited during startup (exit status: 1)'])(
   'saved navigation failures recover through HTTP readiness and runtime snapshots: %s', async issue => {
   vi.useFakeTimers();
   try {

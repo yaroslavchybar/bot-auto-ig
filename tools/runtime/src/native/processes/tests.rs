@@ -3,6 +3,67 @@ use crate::test_support::{body, Fixture};
 use axum::{response::IntoResponse, Json};
 use std::sync::atomic::AtomicUsize;
 
+async fn resource_child() -> tokio::process::Child {
+    let mut command = Command::new("bun");
+    command
+        .args(["--eval", "setInterval(()=>{},1000)"])
+        .kill_on_drop(true)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    command.spawn().unwrap()
+}
+
+#[tokio::test(start_paused = true)]
+async fn resource_identity_retries_empty_reads_without_registering_an_unverified_process() {
+    let mut child = resource_child().await;
+    let pid = child.id().unwrap();
+    let mut calls = 0;
+    let result = resource_identity(&mut child, async |seen| {
+        assert_eq!(seen, pid);
+        calls += 1;
+        match calls {
+            1 => None,
+            2 => Some((123, vec![])),
+            _ => Some((123, vec!["bun".into()])),
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(result, (pid, 123, PathBuf::from("bun")));
+    assert_eq!(calls, 3);
+    child.kill().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn resource_identity_gives_up_after_a_bounded_number_of_reads() {
+    let mut child = resource_child().await;
+    let mut calls = 0;
+    let started = tokio::time::Instant::now();
+    let error = resource_identity(&mut child, async |_| {
+        calls += 1;
+        Some((123, vec![]))
+    })
+    .await
+    .unwrap_err();
+    assert!(error.message.contains("identity unavailable"));
+    assert_eq!(calls, 20);
+    assert_eq!(started.elapsed(), Duration::from_millis(950));
+    child.kill().await.unwrap();
+}
+
+#[tokio::test]
+async fn resource_identity_rejects_an_exited_child_without_reading_a_reused_pid() {
+    let mut child = resource_child().await;
+    child.kill().await.unwrap();
+    assert!(resource_identity(&mut child, async |_| {
+        panic!("Exited PID must not be inspected")
+    })
+    .await
+    .is_err());
+}
+
 #[cfg(windows)]
 async fn wait_for(mut condition: impl AsyncFnMut() -> bool) {
     tokio::time::timeout(Duration::from_secs(5), async {
