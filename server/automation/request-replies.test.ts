@@ -145,9 +145,9 @@ test('pending requests accept, type, authorize and send in order', async () => {
   assert.deepEqual(f.calls.slice(0, 7), ['navigate', 'prepare', 'accepted', 'type', 'claim', 'send', 'sent'])
 })
 
-test('a request sends slash-separated messages under one claim and verifies repeated text separately', async () => {
+test('a request sends backslash-separated messages under one claim and verifies repeated text separately', async () => {
   const f = fixture(), drafts: string[] = []
-  f.deps.plan = async () => ({ message: 'Hello alice / Hello alice', uncertain: false, pending: [f.identity] })
+  f.deps.plan = async () => ({ message: 'Hello alice \\ Hello alice', uncertain: false, pending: [f.identity] })
   f.deps.type = async (_editor, text) => { drafts.push(text) }
   await f.run()
   assert.deepEqual(drafts, ['Hello alice', 'Hello alice'])
@@ -159,7 +159,7 @@ test('a request sends slash-separated messages under one claim and verifies repe
 
 for (const interruption of ['failure', 'stop'] as const) test(`a ${interruption} after the first request reply never restarts the sequence`, async () => {
   const f = fixture(), send = f.deps.send
-  f.deps.plan = async () => ({ message: 'Hello alice / Hello alice / Third', uncertain: false, pending: [f.identity] })
+  f.deps.plan = async () => ({ message: 'Hello alice \\ Hello alice \\ Third', uncertain: false, pending: [f.identity] })
   let attempts = 0
   f.deps.send = async (...args) => {
     if (++attempts === 2) throw new Error('Connection reset')

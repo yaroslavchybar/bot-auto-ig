@@ -145,7 +145,7 @@ test('DM tasks keep message variations intact and supply the recipient name for 
   vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
   const { t, args, loggedIn, profile, automation } = await setup();
   await loggedIn();
-  const message = '{Hi|Hey} [name] / How are you, [username]?';
+  const message = '{Hi|Hey} [name] \\ How are you, [username]?';
   await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreach: { ...automation.routine!.outreach!, message } } }));
   const claim = (await reserveFollow(t, args))!;
   await t.run(ctx => ctx.db.patch(claim.leadId, { fullName: 'Alice Smith' }));
@@ -158,7 +158,7 @@ test('DM tasks keep message variations intact and supply the recipient name for 
 });
 
 test('routine saves reject broken or possibly empty message variations', () => {
-  for (const message of ['{Hi|Hey', '{{username}', '{Hi| }', 'Hi//Hey', 'Hi/{Hey| }']) {
+  for (const message of ['{Hi|Hey', '{{username}', '{Hi| }', 'Hi\\\\Hey', 'Hi\\{Hey| }']) {
     expect(() => validateRoutine({ ...defaultRoutine, outreach: { leadListId: 'list' as Id<'leadLists'>, profileIds: [], allProfiles: true, message } })).toThrow(/variation|empty/);
   }
   const route = { leadListId: 'list' as Id<'leadLists'>, profileIds: [], message: '{Hey|Hi' };

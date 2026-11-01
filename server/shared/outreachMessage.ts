@@ -4,34 +4,29 @@ type Part = string | { options: Part[][] } | { newMessage: true }
 function parseTemplate(template: string): Part[] {
   if (template.length > 1000) throw new Error('Message must be at most 1,000 characters')
   let position = 0
-  function read(group: boolean, insideUrl = false): Part[][] {
+  function read(group: boolean): Part[][] {
     const options: Part[][] = [[]]
-    let text = '', url = insideUrl
+    let text = ''
     const flush = () => {
       if (text) options[options.length - 1].push(text)
       text = ''
     }
     while (position < template.length) {
       const character = template[position]
-      if (/\s/.test(character)) url = false
-      if (/^(?:https?:\/\/|www\.)/i.test(template.slice(position))) url = true
       const placeholder = template.startsWith('{{', position)
         ? template.slice(position).match(/^\{\{[^{}|]*\}\}/)?.[0]
         : undefined
       if (placeholder) {
         text += placeholder
         position += placeholder.length
-      } else if (character === '\\' && template[position + 1] === '/') {
-        text += '/'
-        position += 2
-      } else if (character === '/' && !url) {
+      } else if (character === '\\') {
         flush()
         options[options.length - 1].push({ newMessage: true })
         position++
       } else if (character === '{') {
         flush()
         position++
-        const nested = read(true, url)
+        const nested = read(true)
         const current = options[options.length - 1]
         if (nested.length > 1) current.push({ options: nested })
         else current.push('{', ...nested[0], '}')
@@ -44,7 +39,6 @@ function parseTemplate(template: string): Part[] {
         position++
         flush()
         options.push([])
-        url = insideUrl
       } else {
         text += character
         position++

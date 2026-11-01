@@ -462,7 +462,7 @@ test('an existing followed recipient is checked and authorized before sending', 
 
 test('a multi-message outreach authorizes once and confirms a new bubble for repeated text', async () => {
   const s = setup(), drafts: string[] = [], positions: number[] = []
-  s.attempt.message = 'Hello alice / Hello alice'
+  s.attempt.message = 'Hello alice \\ Hello alice'
   let delivered = 0
   s.locator.count = async () => delivered
   s.locator.nth = (index: number) => ({ ...s.locator, waitFor: async () => {
@@ -481,7 +481,7 @@ test('a multi-message outreach authorizes once and confirms a new bubble for rep
 
 for (const interruption of ['failure', 'stop'] as const) test(`a ${interruption} after the first outreach message keeps the sequence claimed for review`, async () => {
   const s = setup()
-  s.attempt.message = 'Hello alice / How are you? / Third message'
+  s.attempt.message = 'Hello alice \\ How are you? \\ Third message'
   let attempts = 0, stopped = false
   s.deps.sendMessage = async () => {
     s.calls.push('send')
