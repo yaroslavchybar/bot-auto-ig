@@ -905,7 +905,7 @@ test.each([
   expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: unfinished.leadId, date: dayKey() })).toBe(follows);
   // Follow-back analytics still scan notifications while DM delivery is disabled.
   expect(await t.query(internal.routines.notifications, args)).toMatchObject({ date: dayKey() });
-  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: followed.username, kind: 'like' }] })).toBe(dms);
+  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: followed.username, kind: 'follow' }] })).toBe(true);
   expect((await t.query(internal.routines.dmTasks, args)).length).toBe(dms ? 1 : 0);
   expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: followed.leadId, date: dayKey() })).toBe(dms);
 

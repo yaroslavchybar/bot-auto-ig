@@ -55,33 +55,40 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
 
 const row = (name: string, text: string) => `<div data-pressable-container="true"><a href="/${name}/"><img alt="${name}'s profile picture"></a><span><a href="/${name}/">${name}</a> ${text}</span><button>Following</button><a href="/p/own-post/">Media thumbnail</a></div>`;
 
-test('notifications identify follow, like and comment actors without duplicate avatars', async () => {
-  const { result, wheels } = await notifications(row('alice', 'started following you. 1d') + row('bob', 'liked your post. 1h') + row('carol', 'commented: started following someone else.') + row('alice', 'started following you. 2d'));
-  assert.deepEqual(result?.map(({ username, kind }) => ({ username, kind })), [{ username: 'alice', kind: 'follow' }, { username: 'bob', kind: 'like' }, { username: 'carol', kind: 'comment' }]);
+test('notifications identify only follow-back actors without duplicate avatars', async () => {
+  const { result, wheels } = await notifications(row('alice', 'started following you. 1d') + row('bob', 'liked your post. 1h') + row('carol', 'commented: started following someone else.') + row('alice', 'started following you. 2d') + row('dave', 'started following you. just now'));
+  assert.deepEqual(result?.map(({ username, kind }) => ({ username, kind })), [{ username: 'alice', kind: 'follow' }, { username: 'dave', kind: 'follow' }]);
   assert.ok(result![0].timeUpperBound! > Date.now() - 1000, 'keep the newest follow event when an older duplicate appears later');
-  assert.equal(result![2].timeUpperBound, undefined, 'unknown dates must not serialize Infinity into the API');
+  assert.equal(result![1].timeUpperBound, undefined, 'unknown dates must not serialize Infinity into the API');
   assert.ok(wheels > 1, 'notification scanning uses smooth wheel input');
 });
 
-test('grouped likes include only named actors and comments exclude mentioned usernames', async () => {
+test('grouped likes and comments never qualify, including mentions of following', async () => {
   const grouped = `<div data-pressable-container="true"><button>Avatars</button><div><span dir="auto"><a href="/alice/">alice</a>, <a href="/bob/">bob</a> and 7 others liked your photo. <span>Oct 05</span></span></div><a href="/p/own/">Media thumbnail</a></div>`;
   const comment = row('carol', 'commented: Hi <a href="/someone_else/">someone_else</a> started following you. <span>Oct 04</span>');
   const { result } = await notifications(grouped + comment);
-  assert.deepEqual(result?.map(({ username, kind }) => ({ username, kind })), [
-    { username: 'alice', kind: 'like' }, { username: 'bob', kind: 'like' }, { username: 'carol', kind: 'comment' },
-  ]);
+  assert.deepEqual(result, []);
 });
 
-test('comment likes, story reactions, mentions and suggestions never qualify as post engagement', async () => {
+test('comment likes, story reactions, mentions and suggestions never qualify as follow-backs', async () => {
   const html = ['liked your comment.', 'liked your story.', 'mentioned you in a comment: started following you.',
     'is on Instagram. Follow them to see their posts.'].map(text => row('alice', text)).join('') +
     row('bob', 'commented: Hello').replace('<a href="/p/own-post/">Media thumbnail</a>', '');
   assert.deepEqual((await notifications(html)).result, []);
 });
 
-test('stale engagement rows are ignored using the timestamp outside comment text', async () => {
+test('grouped follow-backs keep named actors, but inline comment quotes never create actors', async () => {
+  const grouped = `<div data-pressable-container="true"><button>Avatars</button><div><span dir="auto"><a href="/alice/">alice</a>, <a href="/bob/">bob</a> and 7 others started following you. <span>1h</span></span></div></div>`;
+  const mention = row('carol', 'mentioned you in a comment: <a href="/dave/">dave</a> started following you. <span>1h</span>');
+  const { result } = await notifications(grouped + mention);
+  assert.deepEqual(result?.map(({ username, kind }) => ({ username, kind })), [
+    { username: 'alice', kind: 'follow' }, { username: 'bob', kind: 'follow' },
+  ]);
+});
+
+test('stale follow-backs and quoted follow text in comments are ignored', async () => {
   const html = row('alice', 'commented: 1s old content <span>Jan 01</span>') +
-    row('bob', 'liked your photo. <span>Jan 02</span>');
+    row('bob', 'started following you. <span>Jan 02</span>');
   assert.deepEqual((await notifications(html, { since: Date.UTC(new Date().getUTCFullYear(), 0, 5) })).result, []);
 });
 

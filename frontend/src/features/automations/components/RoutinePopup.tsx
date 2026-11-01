@@ -112,7 +112,7 @@ export function RoutinePopup({
     ? `Follow cap starts at ${policy.initialDms}, growing up to ${policy.maxDms}. Each day's target varies from up to 3 below the current cap to the full cap (minimum 1).`
     : 'New follows are off.'
   const dmSummary = policy.notificationDmsEnabled !== false
-    ? 'Daily notification checks find follow-backs, likes, and comments before sending DMs.'
+    ? 'Daily notification checks find leads who followed back before sending DMs.'
     : 'Notification DMs are off.'
   const outreachSummary = policy.outreachEnabled
     ? `${followingSummary} ${dmSummary}`

@@ -9,7 +9,7 @@ import {
   routineFollowTasks,
   routineRecordFollow,
   routineBeginFollow, routineNotifications, routineRecordNotifications, routineDmTasks, routineDismissDm,
-  routineCancelFollow, routineOwnLikerPlan,
+  routineCancelFollow,
   type DbAutomationRow,
   warmupPauseFollows,
   routineFinishScreening,
@@ -37,7 +37,6 @@ import { logOperation } from '../shared/logger.js'
 import { DecisionRefusedError } from './actions/openrouter-decision.js'
 import { beginSessionDecision } from './actions/session-decision.js'
 import { browseLeadPosts } from './actions/lead-posts.js'
-import { scanOwnPostLikers } from './own-post-likers.js'
 
 const dependencies = {
   ready: routineReady,
@@ -55,8 +54,6 @@ const dependencies = {
   notifications: routineNotifications,
   recordNotifications: routineRecordNotifications,
   readNotifications: readOutreachNotifications,
-  scanPostLikers: scanOwnPostLikers,
-  likerPlan: routineOwnLikerPlan,
   dmTasks: routineDmTasks,
   dismissDm: routineDismissDm,
   checkNotifications,
@@ -365,10 +362,8 @@ export async function runRoutineSession(
                   log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
                   return followed ? 'followed' : 'blocked';
                 }
-                const engagement = 'engagement' in attempt ? attempt.engagement : undefined;
-                scope.add({ dmTrigger: engagement ?? 'follow_back' });
-                if (!(await isFollowing(page)) || (!engagement &&
-                  (!profileState.canMessage || profileState.isPrivate))) {
+                scope.add({ dmTrigger: 'follow_back' });
+                if (!(await isFollowing(page)) || !profileState.canMessage || profileState.isPrivate) {
                   await deps.dismissDm(profileId, attempt.leadId);
                   scope.add({ outcome: 'skipped', result: 'dm_not_eligible' });
                   return 'blocked';
@@ -483,20 +478,10 @@ export async function runRoutineSession(
       async (session, day, unread = true) => {
         deadline = session.end;
         if (shouldStop()) return;
-        const scanPendingLikers = async () => {
-          if (day < 8 || shouldStop()) return;
-          try {
-            const plan = await deps.likerPlan(automation._id, profileId);
-            if (plan && !shouldStop()) await deps.scanPostLikers(automation._id, profileId, page, session, log, plan);
-          } catch (error) {
-            if (!shouldStop()) log({ event: 'automation.routine.own_post_likers_skipped', error });
-          }
-        };
         const scan = day >= 8 ? await deps.notifications(automation._id, profileId) : null;
         if (shouldStop()) return;
         if (!scan) {
           if (unread) await deps.checkNotifications(page, log, session);
-          await scanPendingLikers();
           return;
         }
         let events: OutreachNotification[] | null = null;
@@ -512,7 +497,6 @@ export async function runRoutineSession(
           await deps.recordNotifications(automation._id, profileId, scan.date, events);
           log({ event: 'automation.routine.notifications', notificationCount: events.length });
         }
-        await scanPendingLikers();
       },
     );
     hadActivity = result.minutes > 0;

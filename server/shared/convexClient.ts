@@ -363,16 +363,12 @@ export const routineNotifications = (automationId: string, profileId: string) =>
   convexFetch<{ date: string; since: number } | null>('/api/routines/notifications', {
     method: 'POST', body: { automationId, profileId },
   })
-export const routineOwnLikerPlan = (automationId: string, profileId: string) =>
-  convexFetch<{ date: string; ownerIgId: string; runId: string; checkedMediaIds: string[] } | null>('/api/routines/own-likers-plan', {
-    method: 'POST', body: { automationId, profileId },
-  })
 export const routineRecordNotifications = (automationId: string, profileId: string, date: string, events: import('./outreachNotifications.js').OutreachNotification[]) =>
-  convexFetch<{ ok: boolean; scanLikers: boolean }>('/api/routines/record-notifications', {
+  convexFetch<{ ok: boolean }>('/api/routines/record-notifications', {
     method: 'POST', body: { automationId, profileId, date, events },
   })
 export const routineDmTasks = (automationId: string, profileId: string) =>
-  convexFetch<Array<{ leadId: string; username: string; fullName?: string; message: string; date: string; engagement?: 'like' | 'comment' }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })
+  convexFetch<Array<{ leadId: string; username: string; fullName?: string; message: string; date: string }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })
 export const routineDismissDm = (profileId: string, leadId: string) =>
   convexFetch('/api/routines/dismiss-dm', { method: 'POST', body: { profileId, leadId } })
 export const routineBeginFollow = (automationId: string, profileId: string, leadId: string, date: string, attemptId: string,

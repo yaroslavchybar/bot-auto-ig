@@ -138,7 +138,7 @@ test('follow-back notifications stop enabling DMs when unfollow becomes due', as
     body: JSON.stringify({ ...args, date: dayKey(), events: [{ username: lead.username.toUpperCase(), kind: 'follow' }] }),
   })
   expect(response.status).toBe(200)
-  expect(await response.json()).toEqual({ ok: true, scanLikers: false })
+  expect(await response.json()).toEqual({ ok: true })
   expect(await t.query(internal.routines.notifications, args)).toBeNull()
   expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
   const saved = (await t.run(ctx => ctx.db.get(lead.leadId)))!
@@ -148,32 +148,51 @@ test('follow-back notifications stop enabling DMs when unfollow becomes due', as
   expect(await t.query(internal.routines.followTasks, args)).toMatchObject([{ leadId: lead.leadId }])
 })
 
-test.each(['like', 'comment'] as const)('%s notifications permit one DM to a followed lead without a follow-back', async kind => {
+test.each(['like', 'comment'] as const)('%s evidence never authorizes a DM without a follow-back', async kind => {
   const { t, args, claim } = await setup()
   const lead = await claim()
-  const event = { username: lead.username, kind }
-  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [event] })).toBe(false)
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
   await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
-  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [event] })).toBe(false)
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
-  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [event, event] })).toBe(kind === 'like')
-  expect(await t.run(ctx => ctx.db.get(lead.leadId))).toMatchObject({ postEngagement: { kind, at: Date.now() } })
-  expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.followBackAt).toBeUndefined()
-  expect(await t.query(internal.routines.dmTasks, args)).toMatchObject([{ leadId: lead.leadId, engagement: kind }])
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: lead.username, kind }] })
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  const saved = (await t.run(ctx => ctx.db.get(lead.leadId)))!
+  expect(saved.dmEligible).not.toBe(true)
+  expect(saved.followBackAt).toBeUndefined()
+  expect(saved.postEngagement).toBeUndefined()
+  expect((await t.run(ctx => ctx.db.query('accountProgress').unique()))?.likerScanPendingAt).toBeUndefined()
+
+  // Existing engagement queues must also fail the final Send authorization.
+  await t.run(ctx => ctx.db.patch(lead.leadId, { dmEligible: true, postEngagement: { kind, at: Date.now() } }))
   const input = { ...args, leadId: lead.leadId, date: dayKey() }
-  const before = await t.query(internal.routines.target, args)
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
+  await t.run(ctx => ctx.db.patch(lead.leadId, { followBackAt: saved.followDate! - 1 }))
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
+  await t.run(ctx => ctx.db.patch(lead.leadId, { followBackAt: undefined }))
+
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'follow' }] })
+  const [task] = await t.query(internal.routines.dmTasks, args)
+  expect(task).toMatchObject({ leadId: lead.leadId })
+  expect(task).not.toHaveProperty('engagement')
   expect(await t.mutation(internal.routines.beginSend, input)).toBe(true)
   expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
-  await t.mutation(internal.routines.finishSend, { profileId: args.profileId, leadId: lead.leadId, date: dayKey(), sent: true })
-  expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [event] })).toBe(false)
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
-  expect(await t.query(internal.routines.target, args)).toEqual(before)
+})
+
+test('a queued DM loses authorization when its follow-back evidence is removed', async () => {
+  const { t, args, claim } = await setup()
+  const lead = await claim()
+  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'follow' }] })
+  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
+  await t.run(ctx => ctx.db.patch(lead.leadId, { followBackAt: undefined, postEngagement: { kind: 'like', at: Date.now() } }))
+  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: lead.leadId, date: dayKey() })).toBe(false)
+  expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.dmStartedAt).toBeUndefined()
 })
 
 test.each(['expired', 'other sender', 'unfollowed', 'uncertain', 'blocked', 'sent'] as const)(
-  'post engagement cannot authorize a DM when the lead is %s', async reason => {
+  'follow-backs cannot authorize a DM when the lead is %s', async reason => {
     const { t, args, claim } = await setup()
     const lead = await claim()
     await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
@@ -187,25 +206,14 @@ test.each(['expired', 'other sender', 'unfollowed', 'uncertain', 'blocked', 'sen
       ...(reason === 'blocked' ? { dmBlocked: true } : {}),
       ...(reason === 'sent' ? { dmSent: true } : {}),
     }))
-    expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'like' }] })).toBe(false)
+    expect(await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'follow' }] })).toBe(true)
     expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
     expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: lead.leadId, date: dayKey() })).toBe(false)
   },
 )
 
-test('unrelated likes and empty scans do not trigger liker scraping; matching likes need no notification cache', async () => {
-  const { t, args, claim } = await setup()
-  const lead = await claim()
-  await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
-  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
-  const record = (events: { username: string; kind: 'like' }[]) => t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events })
-  expect(await record([])).toBe(false)
-  expect(await record([{ username: 'stranger', kind: 'like' }])).toBe(false)
-  // Eligibility comes from current follow/DM state, even when the same row is shown again.
-  for (let i = 0; i < 2; i++) expect(await record([{ username: lead.username, kind: 'like' }])).toBe(true)
-})
-
-test.each(['follow', 'like', 'comment'] as const)('%s notifications cannot message an already-sent lead, even from a stale queue', async kind => {
+test('follow-back notifications cannot message an already-sent lead, even from a stale queue', async () => {
+  const kind = 'follow' as const
   const { t, args, claim } = await setup()
   const lead = await claim()
   await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: lead.leadId, followed: true })
@@ -218,7 +226,7 @@ test.each(['follow', 'like', 'comment'] as const)('%s notifications cannot messa
   await t.run(ctx => ctx.db.patch(lead.leadId, { dmSent: true }))
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
   expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: lead.leadId, date: dayKey() })).toBe(false)
-  expect(await t.mutation(internal.routines.recordNotifications, notification)).toBe(false)
+  expect(await t.mutation(internal.routines.recordNotifications, notification)).toBe(true)
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
   expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.dmStartedAt).toBeUndefined()
 })

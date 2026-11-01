@@ -78,10 +78,8 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     sendMessage: async () => { await locator.press(); },
     closeMessage: async () => { calls.push('close-message'); },
     notifications: async () => null,
-    recordNotifications: async () => ({ ok: true, scanLikers: false }),
+    recordNotifications: async () => ({ ok: true }),
     readNotifications: async () => [],
-    scanPostLikers: async () => {},
-    likerPlan: async () => null,
     reserve: async () => { calls.push('reserve'); return attempt; },
     begin: async () => { calls.push('authorize'); return true; },
     finish: async (_, __, ___, value, blocked) => { calls.push(value ? 'sent' : blocked ? 'blocked' : 'uncertain'); sent = value; },
@@ -532,8 +530,8 @@ test('a follow-back notification permits a DM without opening the Following list
 
 test('notification DMs do not need a signed-in username lookup', async () => {
   const s = setup();
-  s.deps.dmTasks = async () => [s.attempt, { ...s.attempt, leadId: 'liker', engagement: 'like' },
-    { ...s.attempt, leadId: 'commenter', engagement: 'comment' }];
+  s.deps.dmTasks = async () => [s.attempt, { ...s.attempt, leadId: 'second' },
+    { ...s.attempt, leadId: 'third' }];
   const locate = s.page.locator.bind(s.page);
   s.page.locator = ((selector: string) => {
     assert.notEqual(selector, 'a', 'Do not look up the navigation avatar');
@@ -561,28 +559,18 @@ test('notification DMs and new follows share the session without a follow-back l
 
 test('a stop while loading DM tasks does not continue with DMs or follows', async () => {
   const s = setup('follow'); let stopped = false;
-  s.deps.dmTasks = async () => { stopped = true; return [s.attempt, { ...s.attempt, engagement: 'like' }]; };
+  s.deps.dmTasks = async () => { stopped = true; return [s.attempt]; };
   await s.run(() => stopped);
   assert.ok(!s.calls.includes('sent') && !s.calls.includes('follow') && !s.calls.includes('reserve'));
   assert.equal(s.result().issue, undefined);
 });
 
-for (const engagement of ['like', 'comment'] as const) for (const relationship of ['Following', 'Requested'] as const)
-  test(`${engagement} on our post permits a DM without a follow-back (${relationship})`, async () => {
-    const s = setup('dm', relationship);
-    s.deps.dmTasks = async () => [{ ...s.attempt, engagement }];
-    await s.run();
-    assert.ok(s.calls.includes('send') && s.calls.includes('close-message'));
-    assert.ok(!s.calls.includes('follow'));
-    assert.equal(s.result().issue, undefined);
-  });
-
-test('post engagement never starts a follow again after the relationship is gone', async () => {
-  const s = setup('dm', 'Follow');
-  s.deps.dmTasks = async () => [{ ...s.attempt, engagement: 'like' }];
+for (const engagement of ['like', 'comment'] as const) test(`saved ${engagement} flags cannot bypass the private-profile DM guard`, async () => {
+  const s = setup('dm', 'Requested');
+  s.deps.dmTasks = async () => [{ ...s.attempt, engagement }];
   await s.run();
   assert.ok(s.calls.includes('dismiss-dm'));
-  assert.ok(!s.calls.includes('send') && !s.calls.includes('follow'));
+  assert.ok(!s.calls.includes('authorize') && !s.calls.includes('send') && !s.calls.includes('follow'));
 });
 
 for (const relationship of ['Following', 'Requested'] as const) test(`existing ${relationship} is never claimed as a new follow`, async () => {
@@ -626,66 +614,8 @@ for (const relationship of ['Follow', 'Following', 'Requested'] as const) {
 
 test('startup uses a brief notification visit when no follow-back scan is due', async () => {
   const s = setup(); let visits = 0;
-  let likerScans = 0;
-  s.deps.scanPostLikers = async () => { likerScans++; };
   s.deps.checkNotifications = async () => { visits++; return true; };
   await s.run(); assert.equal(visits, 1); assert.ok(s.calls.includes('sent'));
-  assert.equal(likerScans, 0);
-});
-
-for (const kind of ['follow', 'comment', 'like', 'empty'] as const) test(`no eligible like match skips liker scraping (${kind})`, async () => {
-  const s = setup(); let likerScans = 0;
-  s.deps.notifications = async () => ({ date: s.attempt.date, since: 0 });
-  s.deps.readNotifications = async () => kind === 'empty' ? [] : [{ username: 'stranger', kind }];
-  s.deps.recordNotifications = async () => ({ ok: true, scanLikers: false });
-  s.deps.scanPostLikers = async () => { likerScans++; };
-  await s.run();
-  assert.equal(likerScans, 0);
-  assert.equal(s.result().issue, undefined);
-});
-
-test('a matching like notification triggers snapshots before DM activity without requiring a follow-back', async () => {
-  const s = setup();
-  let checked = false;
-  s.deps.notifications = async () => ({ date: s.attempt.date, since: 0 });
-  s.deps.readNotifications = async () => [{ username: 'alice', kind: 'like' }];
-  s.deps.recordNotifications = async () => { s.calls.push('record-notifications'); return { ok: true, scanLikers: true }; };
-  s.deps.likerPlan = async () => ({ date: s.attempt.date, ownerIgId: '123', runId: 'run', checkedMediaIds: [] });
-  s.deps.scanPostLikers = async (automation, profile, page) => {
-    assert.equal(automation, 'automation'); assert.equal(profile, 'profile'); assert.equal(page, s.page);
-    assert.ok(s.calls.includes('record-notifications'));
-    checked = true;
-  };
-  s.deps.dmTasks = async () => checked ? [{ ...s.attempt, engagement: 'like' }] : [];
-  await s.run();
-  assert.ok(s.calls.includes('sent'));
-});
-
-test('unavailable snapshots preserve the notification path and ordinary outreach', async () => {
-  const s = setup();
-  s.deps.notifications = async () => ({ date: s.attempt.date, since: 0 });
-  s.deps.readNotifications = async () => [{ username: 'alice', kind: 'like' }];
-  s.deps.recordNotifications = async () => ({ ok: true, scanLikers: true });
-  s.deps.likerPlan = async () => ({ date: s.attempt.date, ownerIgId: '123', runId: 'run', checkedMediaIds: [] });
-  s.deps.scanPostLikers = async () => { throw new Error('Owner request quota exhausted'); };
-  await s.run();
-  assert.ok(s.calls.includes('sent'));
-  assert.equal(s.result().issue, undefined);
-});
-
-test('a pending liker trigger retries on a later session without another notification scan', async () => {
-  const s = setup('follow');
-  let scans = 0;
-  s.deps.likerPlan = async () => ({ date: s.attempt.date, ownerIgId: '123', runId: 'run', checkedMediaIds: ['already-scanned'] });
-  s.deps.scanPostLikers = async (_a, _p, _page, _session, _log, plan) => {
-    assert.deepEqual(plan?.checkedMediaIds, ['already-scanned']);
-    if (++scans === 1) throw new Error('Transient liker failure');
-  };
-  s.deps.readNotifications = async () => { throw new Error('Notifications already scanned'); };
-  await s.run();
-  await s.run();
-  assert.equal(scans, 2);
-  assert.equal(s.result().issue, undefined);
 });
 
 for (const fails of [false, true]) test(`follow cancellation errors are logged without replacing the lead result (original error=${fails})`, async () => {
@@ -733,7 +663,7 @@ test('a due follow-back scan queues discovered DMs before activity starts', asyn
   s.deps.recordNotifications = async (_a, _p, date, names) => {
     assert.equal(date, s.attempt.date); assert.deepEqual(names, [{ username: 'alice', kind: 'follow' }]);
     discovered = true; s.calls.push('record-notifications');
-    return { ok: true, scanLikers: false };
+    return { ok: true };
   };
   s.deps.dmTasks = async () => discovered ? [s.attempt] : [];
   await s.run();
@@ -744,15 +674,12 @@ test('a due follow-back scan queues discovered DMs before activity starts', asyn
 
 for (const result of [null, new errors.TimeoutError('Notifications loading')]) test(`incomplete follow-back scans stay retryable (${String(result)})`, async () => {
   const s = setup('follow');
-  let likerScans = 0;
-  s.deps.scanPostLikers = async () => { likerScans++; };
   s.deps.notifications = async () => ({ date: s.attempt.date, since: 0 });
   s.deps.readNotifications = async () => { if (result instanceof Error) throw result; return result; };
   s.deps.recordNotifications = async () => { throw new Error('Incomplete scans must not be recorded'); };
   await s.run();
   assert.ok(s.calls.includes('follow'));
   assert.equal(s.result().issue, undefined);
-  assert.equal(likerScans, 0);
 });
 
 test('week-one startup keeps the brief notification visit without outreach', async () => {

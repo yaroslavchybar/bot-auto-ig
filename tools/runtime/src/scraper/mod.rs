@@ -1,6 +1,5 @@
 mod cache;
 mod instagram;
-mod own_posts;
 mod providers;
 #[cfg(test)]
 mod tests;
@@ -438,7 +437,6 @@ fn source_completion(
 pub fn router(service: Arc<Scraper>) -> Router {
     Router::new()
         .route("/scraper/work", post(update))
-        .route("/scraper/own-post-likers", post(own_posts::scan))
         .with_state(service)
 }
 async fn update(State(service): State<Arc<Scraper>>, Json(work): Json<Work>) -> Json<Value> {

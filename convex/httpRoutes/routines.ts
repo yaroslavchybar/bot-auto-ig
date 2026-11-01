@@ -4,17 +4,6 @@ import { internal } from "../_generated/api";
 import { jsonResponse, parseBody, withErrorHandling } from "./shared";
 
 export function registerRoutineRoutes(http: HttpRouter) {
-  http.route({ path: '/api/routines/own-likers-plan', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
-    const b = await parseBody(request);
-    return jsonResponse(await ctx.runQuery(internal.ownPostLikers.plan, { automationId: b.automationId, profileId: b.profileId }));
-  }) });
-  for (const path of ['reserve', 'snapshot', 'finish'] as const) http.route({ path: `/api/routines/own-likers-${path}`, method: 'POST', handler: withErrorHandling(async (ctx, request) => {
-    const b = await parseBody(request);
-    const common = { automationId: b.automationId, profileId: b.profileId, runId: b.runId };
-    if (path === 'reserve') return jsonResponse(await ctx.runMutation(internal.ownPostLikers.reserve, { ...common, requestId: b.requestId }));
-    if (path === 'finish') return jsonResponse(await ctx.runMutation(internal.ownPostLikers.finish, { ...common, date: b.date }));
-    return jsonResponse(await ctx.runMutation(internal.ownPostLikers.snapshot, { ...common, date: b.date, ownerIgId: b.ownerIgId, mediaId: b.mediaId, likers: b.likers }));
-  }) });
   http.route({
     path: '/api/routines/screening',
     method: 'POST',
@@ -48,11 +37,11 @@ export function registerRoutineRoutes(http: HttpRouter) {
   }) });
   http.route({ path: '/api/routines/record-notifications', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
-    const scanLikers = await ctx.runMutation(internal.routines.recordNotifications, {
+    const ok = await ctx.runMutation(internal.routines.recordNotifications, {
       automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
       date: String(b.date), events: b.events,
     });
-    return jsonResponse({ ok: true, scanLikers });
+    return jsonResponse({ ok });
   }) });
   http.route({ path: '/api/routines/dismiss-dm', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);

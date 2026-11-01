@@ -434,15 +434,11 @@ export function pendingDm(lead: Doc<'leads'>, profileId: Id<'profiles'>, now: nu
     (lead.unfollowAt ?? lead.followDate + followDelay) > now;
 }
 
-function hasPostEngagement(lead: Doc<'leads'>) {
-  return lead.postEngagement !== undefined && lead.followDate !== undefined && lead.postEngagement.at >= lead.followDate;
+function hasFollowBack(lead: Doc<'leads'>) {
+  return lead.followBackAt !== undefined && lead.followDate !== undefined && lead.followBackAt >= lead.followDate;
 }
 
-function hasNotificationEvidence(lead: Doc<'leads'>) {
-  return hasPostEngagement(lead) || (lead.followBackAt !== undefined && lead.followDate !== undefined && lead.followBackAt >= lead.followDate);
-}
-
-/** Scan notifications once daily while followed leads are awaiting engagement. */
+/** Scan notifications once daily while outreach leads are awaiting follow-backs. */
 export const notifications = internalQuery({
   args: outreachArgs,
   handler: async (ctx, args) => {
@@ -467,7 +463,7 @@ export const notifications = internalQuery({
   },
 });
 
-/** Queue followed leads with a follow-back, a like on our post, or a comment on our post. */
+/** Queue only followed leads with a follow-back notification. */
 export const recordNotifications = internalMutation({
   args: { ...outreachArgs, date: v.string(), events: v.array(v.object({ username: v.string(),
     kind: v.union(v.literal('follow'), v.literal('like'), v.literal('comment')), timeUpperBound: v.optional(v.number()) })) },
@@ -476,34 +472,29 @@ export const recordNotifications = internalMutation({
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!e?.maintenance || args.date !== dayKey()) return false;
     const route = e.outreach, now = Date.now();
-    let requestLikerScan = false;
     for (const event of args.events) {
+      if (event.kind !== 'follow') continue;
       const username = event.username.trim().toLowerCase();
       const leads = await ctx.db.query('leads').withIndex('by_username', q => q.eq('username', username)).collect();
       for (const lead of leads) {
         if (event.timeUpperBound !== undefined && event.timeUpperBound < (lead.followDate ?? Infinity)) continue;
-        if (event.kind === 'follow' && lead.senderId === args.profileId &&
+        if (lead.senderId === args.profileId &&
           lead.followDate !== undefined && lead.followDate <= now && lead.followBackAt === undefined) {
           await recordOutreachFollowBack(ctx, lead);
           await ctx.db.patch(lead._id, { followBackAt: now });
         }
         // Preserve follow-back eligibility while delivery is off; sending still rechecks canSendDm.
-        if ((event.kind === 'follow' || canSendDm(e)) && pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
+        if (pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
           lead.classification && (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
           route?.leadListId === lead.outreachListId &&
           lead.outreachListId && await ctx.db.get(lead.outreachListId)) {
-          if (event.kind === 'like') requestLikerScan = true;
-          await ctx.db.patch(lead._id, { dmEligible: true, ...(event.kind === 'follow'
-            ? {} : { postEngagement: { kind: event.kind, at: now } }) });
+          await ctx.db.patch(lead._id, { dmEligible: true });
         }
       }
     }
     const state = await ensureProgress(ctx, args.profileId);
-    await ctx.db.patch(state._id, { lastNotificationsDate: args.date, lastNotificationsAt: now,
-      ...(requestLikerScan && state.lastLikerScanDate !== args.date && state.likerScanPendingAt === undefined
-        ? { likerScanPendingAt: now } : {}),
-    });
-    return requestLikerScan;
+    await ctx.db.patch(state._id, { lastNotificationsDate: args.date, lastNotificationsAt: now });
+    return true;
   },
 });
 
@@ -521,13 +512,12 @@ export const dmTasks = internalQuery({
       if (
         lead.classification &&
         (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
-        pendingDm(lead, args.profileId, Date.now()) && hasNotificationEvidence(lead) &&
+        pendingDm(lead, args.profileId, Date.now()) && hasFollowBack(lead) &&
         route && lead.outreachAutomationId === args.automationId &&
         (await ctx.db.get(route.leadListId))
       ) {
         tasks.push({ leadId: lead._id, username: lead.username,
           fullName: lead.fullName, message: route.message, date: dayKey(),
-          ...(hasPostEngagement(lead) ? { engagement: lead.postEngagement!.kind } : {}),
         });
         if (tasks.length === 50) return tasks; // More than can fit in a single browser session.
       }
@@ -536,7 +526,7 @@ export const dmTasks = internalQuery({
   },
 });
 
-/** Atomically authorize one Send after qualifying notification evidence. */
+/** Atomically authorize one Send after a qualifying follow-back. */
 export const beginSend = internalMutation({
   args: { ...outreachArgs, leadId: v.id('leads'), date: v.string(), now: v.optional(v.number()) },
   handler: async (ctx, args) => {
@@ -545,7 +535,7 @@ export const beginSend = internalMutation({
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!lead || !canSendDm(e) || !lead.classification ||
       !(e.policy.allowedCategories ?? ['male']).includes(lead.classification) ||
-      !lead.dmEligible || !hasNotificationEvidence(lead) || !pendingDm(lead, args.profileId, now) ||
+      !lead.dmEligible || !hasFollowBack(lead) || !pendingDm(lead, args.profileId, now) ||
       dayKey(now) !== args.date ||
       lead.outreachAutomationId !== args.automationId || !lead.outreachListId ||
       !(await ctx.db.get(lead.outreachListId)) ||

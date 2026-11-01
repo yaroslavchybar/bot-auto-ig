@@ -102,8 +102,8 @@ export const reserve = internalMutation({
   handler: (ctx, args) => reserveRequest(ctx, args),
 })
 
-/** The owning automation may use its own browser session; source scrapers still require an idle profile. */
-export async function reserveRequest(
+/** Source scrapers require an idle profile. */
+async function reserveRequest(
   ctx: MutationCtx,
   {
     profileId,
@@ -116,13 +116,12 @@ export async function reserveRequest(
     sourceId?: Id<'scrapeSources'>
     runId?: string
   },
-  ownBrowser = false,
 ) {
   if (!requestId || requestId.length > 100) throw new Error('Invalid request ID')
   const now = Date.now()
   const state = await scraperRequestState(ctx, profileId, now)
   if (state.paused) return { allowed: false, retryAt: now, reason: 'Profile is paused' }
-  if (state.blocked && !ownBrowser)
+  if (state.blocked)
     return { allowed: false, retryAt: now, reason: 'Scraper profile is busy in the browser' }
   if (sourceId) {
     if (!runId) throw new Error('Missing scraper run ID')

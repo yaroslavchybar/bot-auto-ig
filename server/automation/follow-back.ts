@@ -18,14 +18,13 @@ export function notificationState(el: Element) {
     for (const node of description?.childNodes ?? []) {
       if (node.nodeType === 1 && (node as Element).matches('a[href]')) actors.push(node as HTMLAnchorElement);
       if (node.nodeType !== 3) continue;
-      const match = node.textContent?.match(/^\s*(?:and\s+(?:\d+\s+)?others\s+)?(started following you\.|liked your (?:post|photo|video|reel)\.|commented:)/i);
-      if (!match) continue;
-      kind = /^started/i.test(match[1]) ? 'follow' : /^liked/i.test(match[1]) ? 'like' : 'comment';
-      tail = node.textContent!.slice(match[0].length);
+      const text = node.textContent ?? '';
+      if (!text.trim() || /^\s*(?:,|and)\s*$/i.test(text)) continue;
+      // Only the event's first text counts; quoted follow text in comments is not evidence.
+      const match = text.match(/^\s*(?:and\s+(?:\d+\s+)?others\s+)?started following you\./i);
+      if (match) { kind = 'follow'; tail = text.slice(match[0].length); }
       break;
     }
-    // Likes on comments, story reactions, and mentions do not qualify as post engagement.
-    if (kind !== 'follow' && !row.querySelector('a[href^="/p/"], a[href^="/reel/"]')) kind = undefined;
     const events: OutreachNotification[] = kind ? actors.flatMap(a => {
       const href = a.getAttribute('href') ?? '', username = a.textContent?.trim().toLowerCase();
       return /^\/[\w.]+\/$/.test(href) && username === href.split('/')[1]?.toLowerCase()
@@ -42,7 +41,7 @@ export function notificationState(el: Element) {
       top: Math.max(0, rect.top), bottom: Math.min(view.innerHeight, rect.bottom) } };
 }
 
-/** Read follow-backs and engagement on our posts from the All notifications filter. */
+/** Read only follow-back actors from the All notifications filter. */
 export async function readOutreachNotifications(page: Page, stopped: () => boolean, since = 0,
   session = new BrowseSession(Infinity, stopped)): Promise<OutreachNotification[] | null> {
   if (stopped()) return null;
