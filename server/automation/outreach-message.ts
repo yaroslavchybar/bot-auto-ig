@@ -31,6 +31,11 @@ export const outreachMessagePopup = (page: Page, username: string) => {
 export const ownMessageControls = (page: Page, username: string, own: string) => outreachMessagePopup(page, username)
   .locator(`[role="group"][aria-label="Message actions"] [role="button"][aria-label="See more options for message from ${own}"]`)
 
+/** Count conversation text only: the typed draft and inbox previews are not delivered messages. */
+export const conversationMessageText = (page: Page, username: string, text: string) => outreachMessagePopup(page, username)
+  .getByText(text, { exact: true })
+  .and(page.locator(':not([contenteditable="true"], [contenteditable="true"] *, [aria-label="Thread list"], [aria-label="Thread list"] *)'))
+
 /** Sender labels identify our messages without reading text, colors, or sidebar previews. */
 export async function ownMessageState(page: Page, username: string, session: BrowseSession) {
   session.check()

@@ -18,7 +18,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     screeningToken: 'screen', isPrivate: undefined as boolean | undefined,
   };
   const locator = {
-    first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; }, filter() { return this; },
+    first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; }, and() { return this; }, filter() { return this; },
     getByRole() { return this; }, getByText() { return this; }, locator() { return this; }, count: async () => 1, ...visibleActionGeometry, hover: async () => {}, isVisible: async () => false,
     page: () => page,
     dispose: async () => {},

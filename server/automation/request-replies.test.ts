@@ -21,6 +21,7 @@ function fixture(getHref: () => Promise<string | null> = async () => '/alice/') 
     last() { return this }
     nth(index: number) { return new Field(this.key, index) }
     or(other: Field) { return new Field(`${this.key}|${other.key}`) }
+    and() { return this }
     locator(selector: string) { return selector === '[role="button"]' ? new Field('rows') : selector.startsWith('[role="group"]') ? new Field('outgoing') : this }
     getByRole(role: string, options: { name?: string } = {}) { return new Field(role === 'textbox' ? 'editor' : options.name ?? role) }
     getByText() { return new Field('text') }

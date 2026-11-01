@@ -5,7 +5,7 @@ import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { BrowseSession, SessionEnded } from './actions/session.js'
 import { visibleActionGeometry } from './actions/action-locator.test-support.js'
-import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, outreachMessagePopup, ownMessageState } from './outreach-message.js'
+import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, outreachMessagePopup, ownMessageState, conversationMessageText } from './outreach-message.js'
 
 function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox' | 'menu-inbox-root' = 'button',
   restored: 'chat' | 'messages' | 'delayed-chat' | 'delayed-messages' | 'none' = 'chat') {
@@ -44,7 +44,9 @@ function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox'
     }
     last() { return new Fields(() => this.find().slice(-1), false) }
     first() { return new Fields(() => this.find().slice(0, 1), false) }
+    nth(index: number) { return new Fields(() => this.find().slice(index, index + 1), false) }
     or(other: Fields) { return new Fields(() => [...new Set([...this.find(), ...other.find()])], false) }
+    and(other: Fields) { return new Fields(() => this.find().filter(node => other.find().includes(node)), false) }
     locator(selector: string) {
       if (selector.startsWith('xpath=ancestor::')) return new Fields(() => this.find().flatMap(node => {
         const ancestors: Element[] = []
@@ -66,6 +68,10 @@ function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox'
         .filter(node => node.textContent === name))
       return new Fields(() => this.find().flatMap(node => Array.from(node.querySelectorAll('button,[role="button"]')))
         .filter(node => (node.getAttribute('aria-label') ?? node.querySelector('svg')?.getAttribute('aria-label') ?? node.textContent) === name))
+    }
+    getByText(text: string) {
+      return new Fields(() => this.find().flatMap(node => [...node.querySelectorAll('*')])
+        .filter(node => node.textContent === text && ![...node.children].some(child => child.textContent === text)), false)
     }
     one() { const nodes = this.find(); assert.equal(nodes.length, 1); return nodes[0]! }
     page() { return page }
@@ -165,9 +171,12 @@ function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox'
     keyboard: {
     press: async (key: string) => new Fields(() => [document.activeElement! as unknown as Element]).press(key),
     type: async (text: string, options: { delay: number }) => new Fields(() => [document.activeElement! as unknown as Element]).pressSequentially(text, options),
-  }, locator: (selector: string) => new Fields(() => Array.from(document.querySelectorAll(
-    selector.startsWith('xpath=') ? '#message' : selector,
-  )) as unknown as Element[]) } as unknown as Page
+  }, locator: (selector: string) => new Fields(() => {
+    // Happy DOM does not apply complex ancestor selectors inside :not; use equivalent ancestry filtering.
+    const excludesDrafts = selector.startsWith(':not([contenteditable="true"],')
+    return Array.from(document.querySelectorAll(selector.startsWith('xpath=') ? '#message' : excludesDrafts ? '*' : selector))
+      .filter(node => !excludesDrafts || !node.closest('[contenteditable="true"], [aria-label="Thread list"]')) as unknown as Element[]
+  }) } as unknown as Page
   return { window, document, calls, page, session: new BrowseSession(Date.now() + 60_000, () => stopped),
     stopAfterCharacter: () => { afterCharacter = () => { stopped = true } },
     stopAfterProfileClick: () => { afterProfileClick = () => { stopped = true } },
@@ -223,6 +232,39 @@ test('recipient detection supports changed containers, translated labels and abs
     assert.ok(!f.calls.includes('other-close'))
   } finally { await f.window.happyDOM.close() }
 })
+
+for (const entry of ['button', 'menu-inbox'] as const) for (const nestedDraft of [false, true])
+  test(`delivery confirmation excludes drafts and previews (${entry}, nested draft: ${nestedDraft})`, async () => {
+    const f = fixture(false, entry)
+    try {
+      await openOutreachMessage(f.page, 'alice', f.session)
+      const editor = f.document.querySelector('#alice-editor')!
+      const chat = f.document.querySelector('#alice')!
+      const preview = f.document.createElement('span')
+      const previewParent = f.document.querySelector('[aria-label="Thread list"]') ?? f.document.querySelector('#other')!
+      previewParent.append(preview)
+      const confirmed = new Map<string, number>()
+      for (const message of ['Same message', 'Same message', 'https://www.instagram.com/example/']) {
+        preview.textContent = message
+        editor.replaceChildren()
+        const draft = nestedDraft ? f.document.createElement('p') : editor
+        draft.textContent = message
+        if (nestedDraft) editor.append(draft)
+        const text = conversationMessageText(f.page, 'alice', message)
+        const before = confirmed.get(message) ?? 0
+        // Reproduces the old bug: getByText also matches the editor before Send.
+        assert.ok(await outreachMessagePopup(f.page, 'alice').getByText(message, { exact: true }).count() > before)
+        assert.equal(await text.count(), before)
+        editor.replaceChildren()
+        const bubble = f.document.createElement(message.startsWith('https:') ? 'a' : 'p')
+        bubble.textContent = message
+        chat.append(bubble)
+        await text.nth(before).waitFor({ state: 'visible' })
+        assert.equal(await text.count(), before + 1)
+        confirmed.set(message, before + 1)
+      }
+    } finally { await f.window.happyDOM.close() }
+  })
 
 for (const entry of ['menu-overlay', 'menu-inbox', 'menu-inbox-root'] as const) {
   test(`a profile without Message opens through Options and cleans up ${entry}`, async () => {
