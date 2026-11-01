@@ -94,7 +94,7 @@ export default defineSchema({
     .index('by_username', ['username'])
     .index('by_ig_id', ['igId'])
     .index('by_classification', ['classification'])
-    .index('by_dm_pending', ['senderId', 'dmEligible', 'dmStartedAt'])
+    .index('by_dm_pending', ['senderId', 'dmSent', 'dmStartedAt', 'followBackAt'])
     .index('by_screening', ['screeningStatus', 'screeningRefused'])
     .index('by_screening_profile', ['screeningProfileId'])
     .index('by_follow_due', ['senderId', 'followed', 'followDate'])
@@ -112,6 +112,18 @@ export default defineSchema({
     .index('by_lead_list', ['leadId', 'listId'])
     .index('by_list_created', ['listId', 'leadCreatedAt'])
     .index('by_list_category', ['listId', 'available', 'classification', 'leadCreatedAt']),
+  requestReplies: defineTable({
+    profileId: v.id('profiles'),
+    automationId: v.id('automations'),
+    threadId: v.string(),
+    username: v.string(),
+    status: v.union(v.literal('pending'), v.literal('sending'), v.literal('sent'), v.literal('blocked')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_profile', ['profileId'])
+    .index('by_profile_thread', ['profileId', 'threadId'])
+    .index('by_profile_username', ['profileId', 'username'])
+    .index('by_profile_status', ['profileId', 'status', 'automationId']),
   accountProgress: defineTable({
     profileId: v.id('profiles'),
     issue: v.optional(v.string()),

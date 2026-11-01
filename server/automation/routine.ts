@@ -8,18 +8,19 @@ import {
   routineRecordSession,
   routineFollowTasks,
   routineRecordFollow,
-  routineBeginFollow, routineNotifications, routineRecordNotifications, routineDmTasks, routineDismissDm,
+  routineBeginFollow, routineNotifications, routineRecordNotifications, routineDmTasks,
   routineCancelFollow,
   type DbAutomationRow,
   warmupPauseFollows,
   routineFinishScreening,
+  routineRecordExistingDm,
 } from "../shared/convexClient.js";
 import { runBrowsingSession } from "./sessions.js";
 import { browseUntilEnd, scheduleRoutine } from './routine-schedule.js';
 import { followButton, isFollowing, messageWasBlocked, unfollow, outreachProfileState, profileAvailable,
 } from './follow.js';
-import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage } from './outreach-message.js';
-import { renderOutreachMessage } from '../shared/outreachMessage.js';
+import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, ownMessageState, ownMessageControls, outreachMessagePopup } from './outreach-message.js';
+import { renderOutreachMessages } from '../shared/outreachMessage.js';
 import { readOutreachNotifications } from './follow-back.js';
 import type { OutreachNotification } from '../shared/outreachNotifications.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
@@ -37,8 +38,10 @@ import { logOperation } from '../shared/logger.js'
 import { DecisionRefusedError } from './actions/openrouter-decision.js'
 import { beginSessionDecision } from './actions/session-decision.js'
 import { browseLeadPosts } from './actions/lead-posts.js'
+import { replyToMessageRequests } from './request-replies.js'
 
 const dependencies = {
+  requests: replyToMessageRequests,
   ready: routineReady,
   target: routineTarget,
   now: Date.now,
@@ -55,11 +58,12 @@ const dependencies = {
   recordNotifications: routineRecordNotifications,
   readNotifications: readOutreachNotifications,
   dmTasks: routineDmTasks,
-  dismissDm: routineDismissDm,
   checkNotifications,
   inspectProfile: outreachProfileState,
   profileAvailable,
   openMessage: openOutreachMessage,
+  messageHistory: ownMessageState,
+  recordExistingDm: routineRecordExistingDm,
   typeMessage: typeOutreachMessage,
   sendMessage: sendOutreachMessage,
   closeMessage: closeOutreachMessage,
@@ -186,6 +190,8 @@ export async function runRoutineSession(
           stopped: () => stopped() || !allowed || Boolean(liveAccess && !liveAccess()),
         });
         try {
+          await deps.requests(automation._id, profileId, page, new BrowseSession(deadline, shouldStop), log);
+          if (shouldStop()) return 'stopped';
           await cleanup();
         } catch (error) {
           if (shouldStop()) return 'stopped';
@@ -329,29 +335,31 @@ export async function runRoutineSession(
                   outreachRemaining = Math.max(0, outreachRemaining - 1)
                 }
                 if (shouldStop()) return 'unavailable';
-                const profileState = await timed('dmCheck', () => deps.inspectProfile(page, attempt.username, timeout(10_000)));
-                await check();
-                if (shouldStop()) return 'unavailable';
-                scope.add({ ...profileState });
-                if (!isDm && !profileState.isPrivate) {
-                  const browsePosts = async () => {
-                    try {
-                      await timed('leadPosts', () => deps.browseLeadPosts(page, attempt.username,
-                        new BrowseSession(deadline, shouldStop), log))
-                    } catch (error) {
-                      if (shouldStop()) return
+                if (!isDm) {
+                  const profileState = await timed('dmCheck', () => deps.inspectProfile(page, attempt.username, timeout(10_000)));
+                  await check();
+                  if (shouldStop()) return 'unavailable';
+                  scope.add({ ...profileState });
+                  if (!profileState.isPrivate) {
+                    const browsePosts = async () => {
+                      try {
+                        await timed('leadPosts', () => deps.browseLeadPosts(page, attempt.username,
+                          new BrowseSession(deadline, shouldStop), log))
+                      } catch (error) {
+                        if (shouldStop()) return
+                        await check()
+                        if (!(error instanceof SessionEnded) && !isTemporaryUiError(error)) throw error
+                        log({ event: 'automation.lead_posts.skipped', targetUsername: attempt.username, error })
+                        // Restore the exact recipient if a viewer failed to close or navigation changed.
+                        await page.goto(`https://www.instagram.com/${attempt.username}/`, {
+                          waitUntil: 'domcontentloaded', timeout: timeout(15_000),
+                        })
+                      }
                       await check()
-                      if (!(error instanceof SessionEnded) && !isTemporaryUiError(error)) throw error
-                      log({ event: 'automation.lead_posts.skipped', targetUsername: attempt.username, error })
-                      // Restore the exact recipient if a viewer failed to close or navigation changed.
-                      await page.goto(`https://www.instagram.com/${attempt.username}/`, {
-                        waitUntil: 'domcontentloaded', timeout: timeout(15_000),
-                      })
                     }
-                    await check()
+                    scope.add({ postBrowseOrder: 'before_follow' });
+                    await browsePosts();
                   }
-                  scope.add({ postBrowseOrder: 'before_follow' });
-                  await browsePosts();
                 }
                 if (shouldStop()) return 'unavailable';
                 if (!isDm) {
@@ -363,27 +371,30 @@ export async function runRoutineSession(
                   return followed ? 'followed' : 'blocked';
                 }
                 scope.add({ dmTrigger: 'follow_back' });
-                if (!(await isFollowing(page)) || !profileState.canMessage || profileState.isPrivate) {
-                  await deps.dismissDm(profileId, attempt.leadId);
-                  scope.add({ outcome: 'skipped', result: 'dm_not_eligible' });
-                  return 'blocked';
-                }
                 await check();
                 if (shouldStop()) return 'unavailable';
-                let message: string;
+                let messages: string[];
                 try {
-                  message = renderOutreachMessage(attempt.message, attempt, () => deps.random(0, 1));
+                  messages = renderOutreachMessages(attempt.message, attempt, () => deps.random(0, 1));
+                  scope.add({ messageCount: messages.length, confirmedMessages: 0 });
                 } catch (error) {
                   log({ event: 'automation.routine.invalid_message', leadId: attempt.leadId, targetUsername: attempt.username, error, outcome: 'blocked',
                   });
-                  await deps.dismissDm(profileId, attempt.leadId);
                   scope.add({ outcome: 'rejected', result: 'invalid_message', error });
                   return 'blocked';
                 }
                 const messaging = new BrowseSession(deadline, shouldStop);
                 messageOpened = true;
                 const composer = await timed('dmOpen', () => deps.openMessage(page, attempt.username, messaging));
-                await timed('dmType', () => deps.typeMessage(composer, message, messaging));
+                const history = await timed('dmHistory', () => deps.messageHistory(page, attempt.username, messaging));
+                if (shouldStop()) return 'unavailable';
+                if (history.hasOwnMessage) {
+                  const recorded = await deps.recordExistingDm({ automationId: automation._id, profileId,
+                    username: attempt.username, threadId: history.threadId });
+                  scope.add({ outcome: 'skipped', result: 'existing_outgoing_message', recorded });
+                  return 'blocked';
+                }
+                await timed('dmType', () => deps.typeMessage(composer, messages[0], messaging));
                 await check(true);
                 if (shouldStop()) return 'unavailable';
                 let authorized: boolean | undefined;
@@ -412,18 +423,28 @@ export async function runRoutineSession(
                     return 'unavailable';
                   }
                   if (shouldStop()) return 'unavailable';
-                  sendAttempted = true;
-                  await timed('dmSend', () => deps.sendMessage(page, attempt.username, messaging));
-                  // A cleared composer alone is insufficient: require the outgoing message in the thread.
-                  await page
-                    .getByText(message, { exact: true })
-                    .last()
-                    .waitFor({ state: "visible", timeout: 15_000 });
-                  if (await messageWasBlocked(page)) {
-                    blocked = true;
-                  } else {
-                    sent = true;
+                  const popup = outreachMessagePopup(page, attempt.username);
+                  const outgoing = ownMessageControls(page, attempt.username, history.ownUsername);
+                  let confirmedMessages = 0;
+                  for (const [index, message] of messages.entries()) {
+                    if (index > 0) {
+                      if (shouldStop()) throw new SessionEnded('Stopped before completing messages');
+                      await timed('dmType', () => deps.typeMessage(composer, message, messaging));
+                      await check(true);
+                    }
+                    const previousMessages = await popup.getByText(message, { exact: true }).count();
+                    const previousOutgoing = await outgoing.count();
+                    if (shouldStop()) throw new SessionEnded('Stopped before completing messages');
+                    sendAttempted = true;
+                    await timed('dmSend', () => deps.sendMessage(page, attempt.username, messaging));
+                    // Repeated text must produce another outgoing bubble before continuing.
+                    await popup.getByText(message, { exact: true }).nth(previousMessages).waitFor({ state: 'visible', timeout: 15_000 });
+                    await outgoing.nth(previousOutgoing).waitFor({ state: 'attached', timeout: 5000 });
+                    if (await messageWasBlocked(page)) { blocked = true; break; }
+                    confirmedMessages++;
+                    scope.add({ confirmedMessages });
                   }
+                  sent = confirmedMessages === messages.length;
                 } finally {
                   await finalizeDelivery();
                 }

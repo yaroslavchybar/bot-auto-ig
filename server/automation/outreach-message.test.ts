@@ -5,13 +5,13 @@ import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { BrowseSession, SessionEnded } from './actions/session.js'
 import { visibleActionGeometry } from './actions/action-locator.test-support.js'
-import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, outreachMessagePopup } from './outreach-message.js'
+import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, outreachMessagePopup, ownMessageState } from './outreach-message.js'
 
 function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox' | 'menu-inbox-root' = 'button',
   restored: 'chat' | 'messages' | 'delayed-chat' | 'delayed-messages' | 'none' = 'chat') {
   const window = new Window()
   const document = window.document
-  document.body.innerHTML = `<main id="profile"><header>
+  document.body.innerHTML = `<nav><a href="/self/"><img alt="self's profile picture"></a></nav><main id="profile"><header>
     <button id="message" ${entry === 'button' ? '' : 'hidden'}>Message</button>
     <button id="options" aria-label="Options" aria-expanded="false"></button></header></main>
     <div role="dialog" id="menu" hidden><button id="menu-message">Send message</button></div>
@@ -194,6 +194,21 @@ test('DM controls stay in the recipient popup; keyboard newlines never send; Clo
     assert.equal(f.calls.filter(call => call === 'alice-close').length, 1)
   } finally { await f.window.happyDOM.close() }
 })
+
+for (const entry of ['button', 'menu-inbox'] as const) for (const own of [false, true])
+  test(`message ownership uses sender labels in the ${entry} chat (${own ? 'our message' : 'incoming only'})`, async () => {
+    const f = fixture(false, entry)
+    try {
+      const action = (sender: string) => `<div role="group" aria-label="Message actions"><div role="button" aria-label="See more options for message from ${sender}"></div></div>`
+      // An outgoing message in another chat, a preview, or quoted text is not evidence in Alice's chat.
+      f.document.querySelector('#other')!.insertAdjacentHTML('beforeend', action('self'))
+      f.document.querySelector('#alice')!.insertAdjacentHTML('beforeend', `<p>self: Hi</p>${action('alice')}${own ? action('self') : ''}`)
+      await openOutreachMessage(f.page, 'alice', f.session)
+      const state = await ownMessageState(f.page, 'alice', f.session)
+      assert.deepEqual(state, { ownUsername: 'self', hasOwnMessage: own, threadId: entry === 'menu-inbox' ? '123' : undefined })
+      assert.ok(!f.calls.includes('alice-send'))
+    } finally { await f.window.happyDOM.close() }
+  })
 
 test('recipient detection supports changed containers, translated labels and absolute profile links', async () => {
   const f = fixture()

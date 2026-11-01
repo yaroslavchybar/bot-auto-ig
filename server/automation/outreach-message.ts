@@ -5,6 +5,7 @@ import { clickAction } from './actions/action-locator.js'
 import { BrowseSession } from './actions/session.js'
 import { random } from './actions/shared.js'
 import { currentLogScope, redactLogValues } from '../shared/logger.js'
+import { ownUsername } from './follow-back.js'
 
 const editorSelector = '[role="textbox"][contenteditable="true"]'
 const closeControl = './/*[@role="button" or self::button][@aria-label="Close" or .//*[@aria-label="Close"]]'
@@ -25,6 +26,21 @@ export const outreachMessagePopup = (page: Page, username: string) => {
   const inbox = page.locator('main').filter({ has: page.locator('[aria-label="Thread list"]') })
     .filter({ has: recipient }).filter({ has: page.locator(editorSelector) }).filter({ visible: true })
   return overlay.or(inbox).last()
+}
+
+export const ownMessageControls = (page: Page, username: string, own: string) => outreachMessagePopup(page, username)
+  .locator(`[role="group"][aria-label="Message actions"] [role="button"][aria-label="See more options for message from ${own}"]`)
+
+/** Sender labels identify our messages without reading text, colors, or sidebar previews. */
+export async function ownMessageState(page: Page, username: string, session: BrowseSession) {
+  session.check()
+  const popup = outreachMessagePopup(page, username)
+  await popup.locator(editorSelector).waitFor({ state: 'visible', timeout: session.timeout(5000) })
+  const own = await ownUsername(page)
+  const count = await ownMessageControls(page, username, own).count()
+  session.check()
+  return { ownUsername: own, hasOwnMessage: count > 0,
+    threadId: new URL(page.url()).pathname.match(/^\/direct\/t\/(\d{1,40})\/?$/)?.[1] }
 }
 
 export async function openOutreachMessage(page: Page, username: string, session: BrowseSession): Promise<Locator> {

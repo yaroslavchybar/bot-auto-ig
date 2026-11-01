@@ -124,7 +124,7 @@ test('old public-DM eligibility cannot bypass following and notification evidenc
   expect(await t.query(internal.routines.target, args)).toEqual(before)
 })
 
-test('follow-back notifications stop enabling DMs when unfollow becomes due', async () => {
+test('a recorded follow-back remains eligible when unfollow becomes due', async () => {
   const { t, args, claim } = await setup()
   const lead = await claim()
   await t.mutation(internal.routines.beginFollow, { ...args, leadId: lead.leadId, date: dayKey() })
@@ -143,8 +143,8 @@ test('follow-back notifications stop enabling DMs when unfollow becomes due', as
   expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
   const saved = (await t.run(ctx => ctx.db.get(lead.leadId)))!
   vi.setSystemTime(saved.unfollowAt!)
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
-  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: lead.leadId, date: dayKey() })).toBe(false)
+  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
+  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: lead.leadId, date: dayKey() })).toBe(true)
   expect(await t.query(internal.routines.followTasks, args)).toMatchObject([{ leadId: lead.leadId }])
 })
 
@@ -167,8 +167,7 @@ test.each(['like', 'comment'] as const)('%s evidence never authorizes a DM witho
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
   expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
   await t.run(ctx => ctx.db.patch(lead.leadId, { followBackAt: saved.followDate! - 1 }))
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
-  expect(await t.mutation(internal.routines.beginSend, input)).toBe(false)
+  expect(await t.query(internal.routines.dmTasks, args)).toHaveLength(1)
   await t.run(ctx => ctx.db.patch(lead.leadId, { followBackAt: undefined }))
 
   await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: lead.username, kind: 'follow' }] })
@@ -191,7 +190,7 @@ test('a queued DM loses authorization when its follow-back evidence is removed',
   expect((await t.run(ctx => ctx.db.get(lead.leadId)))?.dmStartedAt).toBeUndefined()
 })
 
-test.each(['expired', 'other sender', 'unfollowed', 'uncertain', 'blocked', 'sent'] as const)(
+test.each(['other sender', 'uncertain', 'blocked', 'sent'] as const)(
   'follow-backs cannot authorize a DM when the lead is %s', async reason => {
     const { t, args, claim } = await setup()
     const lead = await claim()
@@ -199,9 +198,7 @@ test.each(['expired', 'other sender', 'unfollowed', 'uncertain', 'blocked', 'sen
     vi.setSystemTime(new Date('2026-10-12T10:00:00Z'))
     const other = (await seedProfile(t, { name: 'Other sender' }))!
     await t.run(ctx => ctx.db.patch(lead.leadId, {
-      ...(reason === 'expired' ? { unfollowAt: Date.now() } : {}),
       ...(reason === 'other sender' ? { senderId: other._id } : {}),
-      ...(reason === 'unfollowed' ? { followed: false } : {}),
       ...(reason === 'uncertain' ? { dmStartedAt: Date.now() } : {}),
       ...(reason === 'blocked' ? { dmBlocked: true } : {}),
       ...(reason === 'sent' ? { dmSent: true } : {}),
@@ -277,7 +274,7 @@ test('conversion history survives unfollow and a late follow-back does not consu
   await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: first.username, kind: 'follow' }] })
   expect((await t.query(api.analytics.overview, { date: dayKey(), period: '7days' })).outreach.totals)
     .toEqual({ followed: 2, followedBack: 1, pending: 1, rate: 50 })
-  expect(await t.query(internal.routines.dmTasks, args)).toEqual([])
+  expect(await t.query(internal.routines.dmTasks, args)).toMatchObject([{ leadId: first.leadId }])
 })
 
 test('a notification older than this lead follow cannot inflate conversions or enable a DM', async () => {
@@ -310,5 +307,29 @@ test('follow-back history stays with the original automation after the profile c
   await t.mutation(internal.routines.recordNotifications, { ...current, date: dayKey(), events: [{ username: lead.username, kind: 'follow' }] })
   const history = await t.run(ctx => ctx.db.query('outreachDays').unique())
   expect(history).toMatchObject({ automationId: args.automationId, followed: 1, followedBack: 1, pending: 0 })
-  expect(await t.query(internal.routines.dmTasks, current)).toEqual([])
+  expect(await t.query(internal.routines.dmTasks, current)).toMatchObject([{ leadId: lead.leadId }])
 })
+
+test.each(['old and unfollowed', 'same day', 'different route and category', 'missing follow date'] as const)(
+  'saved follow-backs queue without a fresh notification: %s', async condition => {
+    const { t, args } = await setup()
+    const oldList = await t.mutation(api.leads.createList, { name: 'Previous route' })
+    const now = Date.now()
+    const leadId = await t.run(async ctx => {
+      const state = (await ctx.db.query('accountProgress').unique())!
+      await ctx.db.patch(state._id, { lastNotificationsDate: dayKey() })
+      return ctx.db.insert('leads', {
+        username: 'backlog', senderId: args.profileId, dmSent: false, dmEligible: false,
+        followed: condition === 'same day', createdAt: now - 30 * 86_400_000,
+        followDate: condition === 'missing follow date' ? undefined : condition === 'same day' ? now - 1000 : now - 30 * 86_400_000,
+        followBackAt: condition === 'same day' ? now : now - 20 * 86_400_000,
+        unfollowAt: now - 7 * 86_400_000,
+        ...(condition === 'different route and category' ? { outreachListId: oldList, classification: 'female' as const } : {}),
+      })
+    })
+    expect(await t.query(internal.routines.notifications, args)).toBeNull()
+    expect(await t.query(internal.routines.dmTasks, args)).toMatchObject([{ leadId, username: 'backlog', message: 'Hello' }])
+    expect(await t.mutation(internal.routines.beginSend, { ...args, leadId, date: dayKey() })).toBe(true)
+    expect(await t.mutation(internal.routines.beginSend, { ...args, leadId, date: dayKey() })).toBe(false)
+  },
+)

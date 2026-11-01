@@ -4,6 +4,26 @@ import { internal } from "../_generated/api";
 import { jsonResponse, parseBody, withErrorHandling } from "./shared";
 
 export function registerRoutineRoutes(http: HttpRouter) {
+  http.route({ path: '/api/routines/existing-dm', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request)
+    return jsonResponse(await ctx.runMutation(internal.routines.recordExistingDm, {
+      automationId: b.automationId, profileId: b.profileId, username: b.username, threadId: b.threadId,
+    }))
+  }) })
+  http.route({ path: '/api/routines/request-replies/plan', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request)
+    return jsonResponse(await ctx.runQuery(internal.requestReplies.plan, { automationId: b.automationId, profileId: b.profileId }))
+  }) })
+  for (const action of ['prepare', 'begin', 'finish'] as const) http.route({
+    path: `/api/routines/request-replies/${action}`, method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+      const b = await parseBody(request)
+      const args = { automationId: b.automationId, profileId: b.profileId, threadId: b.threadId, username: b.username }
+      if (action === 'prepare') return jsonResponse(await ctx.runMutation(internal.requestReplies.prepare, args))
+      if (action === 'begin') return jsonResponse(await ctx.runMutation(internal.requestReplies.begin, args))
+      await ctx.runMutation(internal.requestReplies.finish, { ...args, sent: b.sent === true, blocked: b.blocked === true })
+      return jsonResponse({ ok: true })
+    }),
+  })
   http.route({
     path: '/api/routines/screening',
     method: 'POST',
@@ -42,11 +62,6 @@ export function registerRoutineRoutes(http: HttpRouter) {
       date: String(b.date), events: b.events,
     });
     return jsonResponse({ ok });
-  }) });
-  http.route({ path: '/api/routines/dismiss-dm', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
-    const b = await parseBody(request);
-    await ctx.runMutation(internal.routines.dismissDm, { profileId: b.profileId as Id<'profiles'>, leadId: b.leadId as Id<'leads'> });
-    return jsonResponse({ ok: true });
   }) });
   http.route({ path: '/api/routines/begin-follow', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);

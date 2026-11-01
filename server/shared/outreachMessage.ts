@@ -1,28 +1,37 @@
-type Part = string | { options: Part[][] }
+type Part = string | { options: Part[][] } | { newMessage: true }
 
 /** Parse variations without expanding every possible combination. Double braces are placeholders. */
 function parseTemplate(template: string): Part[] {
   if (template.length > 1000) throw new Error('Message must be at most 1,000 characters')
   let position = 0
-  function read(group: boolean): Part[][] {
+  function read(group: boolean, insideUrl = false): Part[][] {
     const options: Part[][] = [[]]
-    let text = ''
+    let text = '', url = insideUrl
     const flush = () => {
       if (text) options[options.length - 1].push(text)
       text = ''
     }
     while (position < template.length) {
       const character = template[position]
+      if (/\s/.test(character)) url = false
+      if (/^(?:https?:\/\/|www\.)/i.test(template.slice(position))) url = true
       const placeholder = template.startsWith('{{', position)
         ? template.slice(position).match(/^\{\{[^{}|]*\}\}/)?.[0]
         : undefined
       if (placeholder) {
         text += placeholder
         position += placeholder.length
+      } else if (character === '\\' && template[position + 1] === '/') {
+        text += '/'
+        position += 2
+      } else if (character === '/' && !url) {
+        flush()
+        options[options.length - 1].push({ newMessage: true })
+        position++
       } else if (character === '{') {
         flush()
         position++
-        const nested = read(true)
+        const nested = read(true, url)
         const current = options[options.length - 1]
         if (nested.length > 1) current.push({ options: nested })
         else current.push('{', ...nested[0], '}')
@@ -35,6 +44,7 @@ function parseTemplate(template: string): Part[] {
         position++
         flush()
         options.push([])
+        url = insideUrl
       } else {
         text += character
         position++
@@ -49,40 +59,49 @@ function parseTemplate(template: string): Part[] {
 
 export function validateOutreachMessage(template: string) {
   const parts = parseTemplate(template)
-  const minimumText = (items: Part[]): number =>
-    items.reduce(
-      (sum, part) =>
-        sum +
-        (typeof part === 'string'
-          ? part.trim().length
-          : Math.min(...part.options.map(minimumText))),
-      0,
-    )
-  if (template.trim() && minimumText(parts) === 0)
-    throw new Error('Message variations must not produce an empty message')
+  const empty = () => new Error('Message variations and separators must not produce an empty message')
+  // At most two states per branch: the current message has text, or it does not.
+  const ends = (items: Part[], states: Set<boolean>): Set<boolean> => {
+    for (const part of items) {
+      if (typeof part === 'string') {
+        if (part.trim()) states = new Set([true])
+      } else if ('options' in part) {
+        states = new Set(part.options.flatMap(option => [...ends(option, new Set(states))]))
+      } else {
+        if (states.has(false)) throw empty()
+        states = new Set([false])
+      }
+    }
+    return states
+  }
+  if (ends(parts, new Set([false])).has(false) && template.trim()) throw empty()
 }
 
-/** Resolve choices once per DM, then insert recipient data so names cannot become variations. */
-export function renderOutreachMessage(
+/** Resolve the whole sequence once, then insert recipient data so names cannot become syntax. */
+export function renderOutreachMessages(
   template: string,
   recipient: { username: string; fullName?: string },
   random: () => number = Math.random,
-): string {
-  const render = (parts: Part[]): string =>
-    parts
-      .map((part) =>
-        typeof part === 'string'
-          ? part
-          : render(part.options[Math.floor(random() * part.options.length)]),
-      )
-      .join('')
+): string[] {
+  validateOutreachMessage(template)
+  const messages = ['']
+  const render = (parts: Part[]): void => {
+    for (const part of parts) {
+      if (typeof part === 'string') messages[messages.length - 1] += part
+      else if ('options' in part) render(part.options[Math.floor(random() * part.options.length)])
+      else messages.push('')
+    }
+  }
+  render(parseTemplate(template))
   const name = recipient.fullName?.trim().split(/\s+/)[0] || recipient.username
-  const message = render(parseTemplate(template)).replace(
-    /\[username\]|\[name\]|\{\{username\}\}|\{\{name\}\}|\{name\}/g,
-    (placeholder) =>
-      placeholder === '[username]' || placeholder === '{{username}}' ? recipient.username : name,
-  )
-  if (!message.trim()) throw new Error('Message variation is empty')
-  if (message.length > 1000) throw new Error('Rendered message must be at most 1,000 characters')
-  return message
+  return messages.map(text => {
+    const message = text.trim().replace(
+      /\[username\]|\[name\]|\{\{username\}\}|\{\{name\}\}|\{name\}/g,
+      (placeholder) =>
+        placeholder === '[username]' || placeholder === '{{username}}' ? recipient.username : name,
+    )
+    if (!message.trim()) throw new Error('Message variation is empty')
+    if (message.length > 1000) throw new Error('Rendered message must be at most 1,000 characters')
+    return message
+  })
 }

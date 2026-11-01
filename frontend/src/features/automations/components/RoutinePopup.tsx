@@ -112,8 +112,8 @@ export function RoutinePopup({
     ? `Follow cap starts at ${policy.initialDms}, growing up to ${policy.maxDms}. Each day's target varies from up to 3 below the current cap to the full cap (minimum 1).`
     : 'New follows are off.'
   const dmSummary = policy.notificationDmsEnabled !== false
-    ? 'Daily notification checks find leads who followed back before sending DMs.'
-    : 'Notification DMs are off.'
+    ? 'DM leads who followed back. Accept incoming message requests and send the saved message once.'
+    : 'Notification and request DMs are off.'
   const outreachSummary = policy.outreachEnabled
     ? `${followingSummary} ${dmSummary}`
     : 'Off. No outreach follows or DMs.'
@@ -382,7 +382,7 @@ export function RoutinePopup({
                   <SettingsGroup title="Outreach actions">
                     <ToggleRow label="Follow new leads" checked={policy.followingEnabled !== false}
                       onChange={(checked) => change('followingEnabled', checked)} wide />
-                    <ToggleRow label="Send DMs from notifications" checked={policy.notificationDmsEnabled !== false}
+                    <ToggleRow label="Send DMs from notifications and requests" checked={policy.notificationDmsEnabled !== false}
                       onChange={(checked) => change('notificationDmsEnabled', checked)} wide />
                   </SettingsGroup>
                   <SettingsGroup title="Lead categories">

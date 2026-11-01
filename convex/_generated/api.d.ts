@@ -44,6 +44,7 @@ import type * as profiles_queries from "../profiles/queries.js";
 import type * as proxies from "../proxies.js";
 import type * as proxyCountryZones from "../proxyCountryZones.js";
 import type * as proxyUsage from "../proxyUsage.js";
+import type * as requestReplies from "../requestReplies.js";
 import type * as routineErrors from "../routineErrors.js";
 import type * as routinePolicy from "../routinePolicy.js";
 import type * as routines from "../routines.js";
@@ -102,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   proxies: typeof proxies;
   proxyCountryZones: typeof proxyCountryZones;
   proxyUsage: typeof proxyUsage;
+  requestReplies: typeof requestReplies;
   routineErrors: typeof routineErrors;
   routinePolicy: typeof routinePolicy;
   routines: typeof routines;

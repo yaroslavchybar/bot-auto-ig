@@ -27,6 +27,7 @@ export async function deleteProfileData(ctx: MutationCtx, profileId: Id<'profile
   for (const account of accounts) await ctx.db.delete(account._id)
   for (const table of [
     'accountProgress',
+    'requestReplies',
     'warmupStates',
     'modelSetupStates',
     'scraperProfiles',

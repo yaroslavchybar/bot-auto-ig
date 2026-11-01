@@ -93,6 +93,28 @@ describe('retry behaviour via convexFetch integration', () => {
     assert.equal(fetchCalls.length, 1)
   })
 
+  it('retries transient failures when reading the request-reply plan', async () => {
+    const { routineRequestReplyPlan } = await import('./convexClient.js')
+    const plan = { message: 'Hello', uncertain: false, pending: [] }
+    stubFetch([{ status: 503, body: 'Unavailable' }, 'network-error', { status: 200, body: JSON.stringify(plan) }])
+    assert.deepEqual(await routineRequestReplyPlan({ automationId: 'automation', profileId: 'profile' }), plan)
+    assert.equal(fetchCalls.length, 3)
+    assert.ok(fetchCalls.every(call => call.url.endsWith('/api/routines/request-replies/plan')))
+  })
+
+  it('does not retry request-reply writes when their response body fails', async () => {
+    const { routinePrepareRequestReply, routineBeginRequestReply, routineFinishRequestReply } = await import('./convexClient.js')
+    const args = { automationId: 'automation', profileId: 'profile', threadId: '123', username: 'alice' }
+    const writes = [() => routinePrepareRequestReply(args), () => routineBeginRequestReply(args),
+      () => routineFinishRequestReply({ ...args, sent: true, blocked: false })]
+    for (const write of writes) {
+      fetchCalls = []
+      stubFetch(['body-error', { status: 200, body: 'true' }])
+      await assert.rejects(write, /Connection reset/)
+      assert.equal(fetchCalls.length, 1)
+    }
+  })
+
   it('does not repeat an applied profile update when its response body fails', async () => {
     const { profilesUpdateByName } = await import('./convexClient.js')
     let updates = 0

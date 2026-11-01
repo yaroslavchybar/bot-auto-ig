@@ -145,7 +145,7 @@ test('DM tasks keep message variations intact and supply the recipient name for 
   vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
   const { t, args, loggedIn, profile, automation } = await setup();
   await loggedIn();
-  const message = '{Hi|Hey} [name], [username]!';
+  const message = '{Hi|Hey} [name] / How are you, [username]?';
   await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreach: { ...automation.routine!.outreach!, message } } }));
   const claim = (await reserveFollow(t, args))!;
   await t.run(ctx => ctx.db.patch(claim.leadId, { fullName: 'Alice Smith' }));
@@ -158,7 +158,7 @@ test('DM tasks keep message variations intact and supply the recipient name for 
 });
 
 test('routine saves reject broken or possibly empty message variations', () => {
-  for (const message of ['{Hi|Hey', '{{username}', '{Hi| }']) {
+  for (const message of ['{Hi|Hey', '{{username}', '{Hi| }', 'Hi//Hey', 'Hi/{Hey| }']) {
     expect(() => validateRoutine({ ...defaultRoutine, outreach: { leadListId: 'list' as Id<'leadLists'>, profileIds: [], allProfiles: true, message } })).toThrow(/variation|empty/);
   }
   const route = { leadListId: 'list' as Id<'leadLists'>, profileIds: [], message: '{Hey|Hi' };
@@ -858,7 +858,7 @@ test('daily notification completion is reset next day; stale completion is ignor
   } finally { vi.useRealTimers(); }
 });
 
-test.each(['expired', 'unfollowed', 'paused', 'route removed', 'automation disabled', 'DMs disabled'])('DM authorization rejects %s recipients', async reason => {
+test.each(['paused', 'route removed', 'automation disabled', 'DMs disabled'])('DM authorization rejects %s recipients', async reason => {
   vi.useFakeTimers();
   try {
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
@@ -869,8 +869,6 @@ test.each(['expired', 'unfollowed', 'paused', 'route removed', 'automation disab
     await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), events: [{ username: claim.username, kind: 'follow' }] });
     const [task] = await t.query(internal.routines.dmTasks, args);
     expect(task).toBeDefined();
-    if (reason === 'expired') await t.run(ctx => ctx.db.patch(claim.leadId, { unfollowAt: Date.now() }));
-    if (reason === 'unfollowed') await t.run(ctx => ctx.db.patch(claim.leadId, { followed: false }));
     if (reason === 'paused') await t.mutation(api.routines.setAccount, { profileId: args.profileId, paused: true });
     if (reason === 'route removed') await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreach: undefined } }));
     if (reason === 'automation disabled') await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });

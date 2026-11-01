@@ -369,8 +369,19 @@ export const routineRecordNotifications = (automationId: string, profileId: stri
   })
 export const routineDmTasks = (automationId: string, profileId: string) =>
   convexFetch<Array<{ leadId: string; username: string; fullName?: string; message: string; date: string }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })
-export const routineDismissDm = (profileId: string, leadId: string) =>
-  convexFetch('/api/routines/dismiss-dm', { method: 'POST', body: { profileId, leadId } })
+export type RequestReplyIdentity = { threadId: string; username: string }
+export type RequestReplyContext = { automationId: string; profileId: string }
+export type RequestReplyPlan = { message: string; uncertain: boolean; pending: RequestReplyIdentity[] }
+export const routineRecordExistingDm = (body: RequestReplyContext & { username: string; threadId?: string }) =>
+  convexFetch<boolean>('/api/routines/existing-dm', { method: 'POST', body, maxRetries: 0 })
+export const routineRequestReplyPlan = (body: RequestReplyContext) =>
+  convexFetch<RequestReplyPlan | null>('/api/routines/request-replies/plan', { method: 'POST', body })
+export const routinePrepareRequestReply = (body: RequestReplyContext & RequestReplyIdentity) =>
+  convexFetch<boolean>('/api/routines/request-replies/prepare', { method: 'POST', body, maxRetries: 0 })
+export const routineBeginRequestReply = (body: RequestReplyContext & RequestReplyIdentity) =>
+  convexFetch<boolean>('/api/routines/request-replies/begin', { method: 'POST', body, maxRetries: 0 })
+export const routineFinishRequestReply = (body: RequestReplyContext & RequestReplyIdentity & { sent: boolean; blocked: boolean }) =>
+  convexFetch('/api/routines/request-replies/finish', { method: 'POST', body, maxRetries: 0 })
 export const routineBeginFollow = (automationId: string, profileId: string, leadId: string, date: string, attemptId: string,
 ) =>
   convexFetch<boolean>('/api/routines/begin-follow', { method: 'POST', body: { automationId, profileId, leadId, date, attemptId }, maxRetries: 0,

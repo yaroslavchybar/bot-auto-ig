@@ -220,7 +220,7 @@ export function OutreachAssignments({
             />
             <p id={'assignment-message-help'} className="text-xs text-subtle-copy">
               {
-                'Use {Hi|Hey|Hello} for random variations, [username] for the username, or [name] for the first name (username if missing).'
+                'Use {Hi|Hey|Hello} for variations, / for a new message, [username] for the username, or [name] for the first name. Example: {Hi|Hey} / How are you?'
               }
             </p>
           </div>

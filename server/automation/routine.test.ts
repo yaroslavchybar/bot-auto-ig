@@ -19,7 +19,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
   };
   const locator = {
     first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; }, filter() { return this; },
-    getByRole() { return this; }, count: async () => 1, ...visibleActionGeometry, hover: async () => {}, isVisible: async () => false,
+    getByRole() { return this; }, getByText() { return this; }, locator() { return this; }, count: async () => 1, ...visibleActionGeometry, hover: async () => {}, isVisible: async () => false,
     page: () => page,
     dispose: async () => {},
     click: async () => { calls.push('message-button'); },
@@ -46,6 +46,7 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
           } : locator,
   } as unknown as Page;
   const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
+    requests: async () => {},
     profileAvailable: async () => true,
     browseLeadPosts: async () => {},
     searchProfile: async () => true,
@@ -70,10 +71,11 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     cancelFollow: async () => { calls.push('cancel-follow'); },
     checkNotifications: async () => false,
     dmTasks: async () => (mode === 'dm' ? [attempt] : []),
-    dismissDm: async () => { calls.push('dismiss-dm'); },
     inspectProfile: async () => { calls.push('check-message'); return { isPrivate: privateProfile,
       canMessage: !privateProfile && relationship !== 'Requested' }; },
     openMessage: async () => { calls.push('message-button'); await locator.waitFor(); return locator as unknown as Locator; },
+    messageHistory: async () => ({ ownUsername: 'self', hasOwnMessage: false, threadId: undefined }),
+    recordExistingDm: async () => { calls.push('existing-dm'); return true; },
     typeMessage: async (_composer, text) => { await locator.fill(text); },
     sendMessage: async () => { await locator.press(); },
     closeMessage: async () => { calls.push('close-message'); },
@@ -125,7 +127,7 @@ for (const mode of ['follow', 'dm'] as const) test(`unavailable ${mode} recipien
     return s.attempt;
   };
   await s.run();
-  for (const action of ['screen', 'check-message', 'authorize-follow', 'follow', 'authorize', 'message-button', 'compose', 'send', 'record-unfollow', 'dismiss-dm'])
+  for (const action of ['screen', 'check-message', 'authorize-follow', 'follow', 'authorize', 'message-button', 'compose', 'send', 'record-unfollow'])
     assert.ok(!s.calls.includes(action), action);
   assert.equal(s.calls.filter(call => call === 'screen-saved').length, mode === 'follow' ? 1 : 0);
   assert.ok(s.calls.includes('browse'));
@@ -197,6 +199,28 @@ test('DM activity never invokes lead post browsing', async () => {
   const s = setup('dm')
   s.deps.browseLeadPosts = async () => { throw new Error('Only new lead Follow visits may browse posts') }
   await s.run(); assert.ok(s.calls.includes('sent')); assert.equal(s.result().issue, undefined)
+})
+
+for (const relationship of ['Following', 'Follow'] as const) test(`a manual outgoing DM is saved before typing (${relationship})`, async () => {
+  const s = setup('dm', relationship)
+  s.deps.messageHistory = async () => ({ ownUsername: 'self', hasOwnMessage: true, threadId: '123' })
+  s.deps.recordExistingDm = async args => {
+    assert.deepEqual(args, { automationId: 'automation', profileId: 'profile', username: 'alice', threadId: '123' })
+    s.calls.push('existing-dm'); return true
+  }
+  await s.run()
+  assert.ok(s.calls.includes('existing-dm') && s.calls.includes('close-message') && s.calls.includes('browse'))
+  for (const call of ['compose', 'authorize', 'send', 'sent']) assert.ok(!s.calls.includes(call), call)
+  assert.equal(s.result().issue, undefined)
+})
+
+test('failure to save a detected manual DM never falls through to Send', async () => {
+  const s = setup('dm')
+  s.deps.messageHistory = async () => ({ ownUsername: 'self', hasOwnMessage: true, threadId: undefined })
+  s.deps.recordExistingDm = async () => { throw new Error('Existing DM save unavailable') }
+  await s.run()
+  assert.match(s.result().issue ?? '', /Existing DM save unavailable/)
+  for (const call of ['compose', 'authorize', 'send']) assert.ok(!s.calls.includes(call), call)
 })
 
 test('rejected leads never browse posts or Like them', async () => {
@@ -431,10 +455,45 @@ test('Instagram warnings stop outreach before reserving or following a lead', as
 
 test('an existing followed recipient is checked and authorized before sending', async () => {
   const s = setup(); await s.run();
-  assert.deepEqual(s.calls, ['browse', 'navigate', 'check-message', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'close-message', 'browse', 'record-completed',
+  assert.deepEqual(s.calls, ['browse', 'navigate', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'confirm', 'sent', 'close-message', 'browse', 'record-completed',
   ]);
   assert.equal(s.result().sent, true);
 });
+
+test('a multi-message outreach authorizes once and confirms a new bubble for repeated text', async () => {
+  const s = setup(), drafts: string[] = [], positions: number[] = []
+  s.attempt.message = 'Hello alice / Hello alice'
+  let delivered = 0
+  s.locator.count = async () => delivered
+  s.locator.nth = (index: number) => ({ ...s.locator, waitFor: async () => {
+    positions.push(index); assert.ok(delivered > index, 'require another outgoing message')
+  } })
+  s.deps.typeMessage = async (_editor, text) => { drafts.push(text) }
+  s.deps.sendMessage = async () => { s.calls.push('send'); delivered++ }
+  await s.run()
+  assert.deepEqual(drafts, ['Hello alice', 'Hello alice'])
+  assert.deepEqual(positions, [0, 0, 1, 1])
+  assert.equal(s.calls.filter(c => c === 'authorize').length, 1)
+  assert.equal(s.calls.filter(c => c === 'send').length, 2)
+  assert.equal(s.calls.filter(c => c === 'sent').length, 1)
+  assert.equal(s.result().issue, undefined)
+})
+
+for (const interruption of ['failure', 'stop'] as const) test(`a ${interruption} after the first outreach message keeps the sequence claimed for review`, async () => {
+  const s = setup()
+  s.attempt.message = 'Hello alice / How are you? / Third message'
+  let attempts = 0, stopped = false
+  s.deps.sendMessage = async () => {
+    s.calls.push('send')
+    if (++attempts === 2) throw new Error('Connection reset')
+    if (interruption === 'stop') stopped = true
+  }
+  await s.run(() => stopped)
+  assert.equal(attempts, interruption === 'stop' ? 1 : 2)
+  assert.equal(s.calls.filter(c => c === 'authorize').length, 1)
+  assert.ok(s.calls.includes('uncertain') && !s.calls.includes('sent'))
+  assert.match(s.result().issue ?? '', /Delivery needs review/)
+})
 
 for (const finishFails of [false, true]) test(`stopping after DM authorization finalizes the claim (finish fails: ${finishFails})`, async () => {
   const s = setup();
@@ -487,19 +546,17 @@ test('message variations are resolved once and confirmation uses the exact compo
 });
 
 for (const message of ['{Hi|Hey', '{|}', 'a'.repeat(990) + '[name]']) {
-  test(`an invalid message is dismissed and the session continues (${message.length} characters)`, async () => {
+  test(`an invalid message is skipped and the session continues (${message.length} characters)`, async () => {
     const s = setup();
-    const dismissed: string[] = [], authorized: string[] = [], composed: string[] = [];
+    const authorized: string[] = [], composed: string[] = [];
     s.deps.dmTasks = async () => [
       { leadId: 'invalid', date: '2026-09-21', username: 'alice', fullName: 'a'.repeat(20), message,
       },
       { leadId: 'valid', date: '2026-09-21', username: 'bob', message: 'Hello [username]' },
     ];
-    s.deps.dismissDm = async (_, leadId) => { dismissed.push(leadId); };
     s.deps.begin = async (_, __, leadId) => { authorized.push(leadId); return true; };
     s.locator.fill = async (text?: string) => { composed.push(text!); };
     assert.equal(await s.run(), true);
-    assert.deepEqual(dismissed, ['invalid']);
     assert.deepEqual(authorized, ['valid']);
     assert.deepEqual(composed, ['Hello bob']);
     assert.equal(s.calls.filter((call) => call === 'send').length, 1);
@@ -508,15 +565,18 @@ for (const message of ['{Hi|Hey', '{|}', 'a'.repeat(990) + '[name]']) {
   });
 }
 
-test('an inaccessible profile defers the recipient without composing a DM', async () => {
-  const s = setup(); s.setPrivate(true); await s.run();
-  assert.ok(s.calls.includes('check-message')); assert.ok(!s.calls.includes('message-button')); assert.ok(!s.calls.includes('send'));
+test('a follow-back DM opens the chat without loading private posts', async () => {
+  const s = setup(); s.setPrivate(true);
+  s.deps.inspectProfile = async () => { throw new Error('DMs do not inspect profile posts') };
+  await s.run();
+  assert.ok(s.calls.includes('message-button') && s.calls.includes('send'));
+  assert.equal(s.result().issue, undefined);
 });
 
-test('a recipient we no longer follow cannot receive a DM', async () => {
+test('a saved follow-back can receive a DM after we unfollowed them', async () => {
   const s = setup('dm', 'Follow'); await s.run();
-  assert.ok(s.calls.includes('dismiss-dm'));
-  assert.ok(!s.calls.includes('send') && !s.calls.includes('follow'));
+  assert.ok(s.calls.includes('send') && !s.calls.includes('follow'));
+  assert.equal(s.result().issue, undefined);
 });
 
 test('a follow-back notification permits a DM without opening the Following list', async () => {
@@ -524,22 +584,22 @@ test('a follow-back notification permits a DM without opening the Following list
   s.page.getByRole = (() => { throw new Error('Following-list dialogs must not be opened'); }) as Page['getByRole'];
   await s.run();
   assert.ok(s.calls.includes('send') && s.calls.includes('close-message'));
-  assert.ok(!s.calls.includes('dismiss-dm'));
   assert.equal(s.result().issue, undefined);
 });
 
-test('notification DMs do not need a signed-in username lookup', async () => {
+test('every queued DM checks our message history and an existing manual reply skips only that recipient', async () => {
   const s = setup();
-  s.deps.dmTasks = async () => [s.attempt, { ...s.attempt, leadId: 'second' },
-    { ...s.attempt, leadId: 'third' }];
-  const locate = s.page.locator.bind(s.page);
-  s.page.locator = ((selector: string) => {
-    assert.notEqual(selector, 'a', 'Do not look up the navigation avatar');
-    return locate(selector);
-  }) as Page['locator'];
+  const inspected: string[] = [];
+  s.deps.dmTasks = async () => [s.attempt, { ...s.attempt, leadId: 'second', username: 'bob' },
+    { ...s.attempt, leadId: 'third', username: 'carol' }];
+  s.deps.messageHistory = async (_page, username) => {
+    inspected.push(username);
+    return { ownUsername: 'self', hasOwnMessage: username === 'bob', threadId: undefined };
+  };
   await s.run();
-  assert.equal(s.calls.filter(call => call === 'sent').length, 3);
-  assert.ok(!s.calls.includes('dismiss-dm'));
+  assert.deepEqual(inspected, ['alice', 'bob', 'carol']);
+  assert.equal(s.calls.filter(call => call === 'sent').length, 2);
+  assert.equal(s.calls.filter(call => call === 'existing-dm').length, 1);
   assert.equal(s.result().issue, undefined);
 });
 
@@ -553,7 +613,7 @@ test('notification DMs and new follows share the session without a follow-back l
   };
   await s.run();
   assert.ok(s.calls.includes('follow'));
-  assert.ok(s.calls.includes('sent') && !s.calls.includes('dismiss-dm'));
+  assert.ok(s.calls.includes('sent'));
   assert.equal(s.result().issue, undefined);
 });
 
@@ -565,12 +625,13 @@ test('a stop while loading DM tasks does not continue with DMs or follows', asyn
   assert.equal(s.result().issue, undefined);
 });
 
-for (const engagement of ['like', 'comment'] as const) test(`saved ${engagement} flags cannot bypass the private-profile DM guard`, async () => {
+for (const engagement of ['like', 'comment'] as const) test(`saved ${engagement} flags cannot bypass final DM authorization`, async () => {
   const s = setup('dm', 'Requested');
   s.deps.dmTasks = async () => [{ ...s.attempt, engagement }];
+  s.deps.begin = async () => { s.calls.push('authorize'); return false; };
   await s.run();
-  assert.ok(s.calls.includes('dismiss-dm'));
-  assert.ok(!s.calls.includes('authorize') && !s.calls.includes('send') && !s.calls.includes('follow'));
+  assert.ok(s.calls.includes('authorize'));
+  assert.ok(!s.calls.includes('send') && !s.calls.includes('follow'));
 });
 
 for (const relationship of ['Following', 'Requested'] as const) test(`existing ${relationship} is never claimed as a new follow`, async () => {
@@ -591,22 +652,22 @@ test('private follow requests are recorded but never messaged before approval', 
   assert.ok(!s.calls.includes('send')); assert.equal(s.result().issue, undefined);
 });
 
-test('a requested lead in the revisit queue stays pending rather than sending a DM', async () => {
+test('a recorded follow-back can open a chat even while our own follow request is pending', async () => {
   const s = setup('dm', 'Requested'); await s.run();
-  assert.ok(s.calls.includes('navigate') && s.calls.includes('check-message'));
-  assert.ok(!s.calls.includes('send')); assert.equal(s.result().issue, undefined);
+  assert.ok(s.calls.includes('navigate') && s.calls.includes('message-button'));
+  assert.ok(s.calls.includes('send')); assert.equal(s.result().issue, undefined);
 });
 
 for (const relationship of ['Follow', 'Following', 'Requested'] as const) {
-  test(`private DM candidates never authorize or start a follow (${relationship})`, async () => {
+  test(`saved follow-back DM candidates do not follow again (${relationship})`, async () => {
     const s = setup('dm', relationship);
     s.setPrivate(true);
     s.deps.beginFollow = async () => { s.calls.push('authorize-follow'); throw new Error('DM revisits must not reserve follow quota'); };
     s.deps.follow = async () => { throw new Error('DM revisits must not follow'); };
     await s.run();
-    assert.ok(s.calls.includes('check-message'));
+    assert.ok(!s.calls.includes('check-message'));
     assert.ok(!s.calls.includes('authorize-follow') && !s.calls.includes('follow') && !s.calls.includes('record-follow'));
-    assert.ok(!s.calls.includes('message-button') && !s.calls.includes('send'));
+    assert.ok(s.calls.includes('message-button') && s.calls.includes('send'));
     assert.equal(s.result().issue, undefined);
     assert.equal(s.calls.at(-1), 'record-completed');
   });

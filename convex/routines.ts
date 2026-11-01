@@ -428,14 +428,16 @@ export const cancelFollow = internalMutation({
 
 const outreachArgs = { automationId: v.id('automations'), profileId: v.id('profiles') };
 
-export function pendingDm(lead: Doc<'leads'>, profileId: Id<'profiles'>, now: number) {
-  if (lead.senderId !== profileId || lead.dmSent || lead.dmBlocked || lead.dmStartedAt !== undefined) return false;
-  return lead.followed && lead.followDate !== undefined && dayKey(lead.followDate) < dayKey(now) &&
-    (lead.unfollowAt ?? lead.followDate + followDelay) > now;
+function pendingDm(lead: Doc<'leads'>, profileId: Id<'profiles'>) {
+  return lead.senderId === profileId && lead.followBackAt !== undefined &&
+    !lead.dmSent && !lead.dmBlocked && lead.dmStartedAt === undefined;
 }
 
-function hasFollowBack(lead: Doc<'leads'>) {
-  return lead.followBackAt !== undefined && lead.followDate !== undefined && lead.followBackAt >= lead.followDate;
+// Request replies can predate a lead's import or sender assignment.
+async function requestReplyClaimed(ctx: QueryCtx, profileId: Id<'profiles'>, username: string) {
+  return !!await ctx.db.query('requestReplies').withIndex('by_profile_username', q =>
+    q.eq('profileId', profileId).eq('username', username))
+    .filter(q => q.neq(q.field('status'), 'pending')).first();
 }
 
 /** Scan notifications once daily while outreach leads are awaiting follow-backs. */
@@ -443,27 +445,17 @@ export const notifications = internalQuery({
   args: outreachArgs,
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    const date = dayKey(), now = Date.now();
+    const date = dayKey();
     if (!e?.maintenance || e.state?.lastNotificationsDate === date) return null;
     for await (const lead of ctx.db.query('leads').withIndex('by_follow_back', q =>
       q.eq('senderId', args.profileId).eq('followBackAt', undefined).gt('followDate', undefined).lt('followDate', Date.parse(date)))) {
       return { date, since: Math.max(lead.followDate!, (e.state?.lastNotificationsAt ?? 0) - 86_400_000) };
     }
-    if (!canSendDm(e)) return null;
-    const route = e.outreach;
-    for await (const lead of ctx.db.query('leads').withIndex('by_follow_due', q =>
-      q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lt('followDate', Date.parse(date)))) {
-      if (pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
-        lead.classification && (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
-        route?.leadListId === lead.outreachListId) {
-        return { date, since: Math.max(lead.followDate!, (e.state?.lastNotificationsAt ?? 0) - 86_400_000) };
-      }
-    }
     return null;
   },
 });
 
-/** Queue only followed leads with a follow-back notification. */
+/** Persist follow-back evidence independently of DM settings or delivery attempts. */
 export const recordNotifications = internalMutation({
   args: { ...outreachArgs, date: v.string(), events: v.array(v.object({ username: v.string(),
     kind: v.union(v.literal('follow'), v.literal('like'), v.literal('comment')), timeUpperBound: v.optional(v.number()) })) },
@@ -471,7 +463,7 @@ export const recordNotifications = internalMutation({
     if (args.events.length > 1000) throw new Error('Too many notification rows');
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!e?.maintenance || args.date !== dayKey()) return false;
-    const route = e.outreach, now = Date.now();
+    const now = Date.now();
     for (const event of args.events) {
       if (event.kind !== 'follow') continue;
       const username = event.username.trim().toLowerCase();
@@ -482,13 +474,6 @@ export const recordNotifications = internalMutation({
           lead.followDate !== undefined && lead.followDate <= now && lead.followBackAt === undefined) {
           await recordOutreachFollowBack(ctx, lead);
           await ctx.db.patch(lead._id, { followBackAt: now });
-        }
-        // Preserve follow-back eligibility while delivery is off; sending still rechecks canSendDm.
-        if (pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
-          lead.classification && (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
-          route?.leadListId === lead.outreachListId &&
-          lead.outreachListId && await ctx.db.get(lead.outreachListId)) {
-          await ctx.db.patch(lead._id, { dmEligible: true });
         }
       }
     }
@@ -504,18 +489,12 @@ export const dmTasks = internalQuery({
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!canSendDm(e)) return [];
     const route = e.outreach;
+    if (!route?.message.trim() || !await ctx.db.get(route.leadListId)) return [];
     const tasks = [];
     for await (const lead of ctx.db.query('leads').withIndex('by_dm_pending', (q) =>
-      q.eq('senderId', args.profileId).eq('dmEligible', true).eq('dmStartedAt', undefined),
+      q.eq('senderId', args.profileId).eq('dmSent', false).eq('dmStartedAt', undefined).gt('followBackAt', undefined),
       )) {
-      if (route?.leadListId !== lead.outreachListId) continue;
-      if (
-        lead.classification &&
-        (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
-        pendingDm(lead, args.profileId, Date.now()) && hasFollowBack(lead) &&
-        route && lead.outreachAutomationId === args.automationId &&
-        (await ctx.db.get(route.leadListId))
-      ) {
+      if (pendingDm(lead, args.profileId) && !await requestReplyClaimed(ctx, args.profileId, lead.username)) {
         tasks.push({ leadId: lead._id, username: lead.username,
           fullName: lead.fullName, message: route.message, date: dayKey(),
         });
@@ -533,24 +512,37 @@ export const beginSend = internalMutation({
     const now = args.now ?? Date.now();
     const lead = await ctx.db.get(args.leadId);
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!lead || !canSendDm(e) || !lead.classification ||
-      !(e.policy.allowedCategories ?? ['male']).includes(lead.classification) ||
-      !lead.dmEligible || !hasFollowBack(lead) || !pendingDm(lead, args.profileId, now) ||
-      dayKey(now) !== args.date ||
-      lead.outreachAutomationId !== args.automationId || !lead.outreachListId ||
-      !(await ctx.db.get(lead.outreachListId)) ||
-      profileOutreach(e.policy, args.profileId)?.leadListId !== lead.outreachListId) return false;
+    if (!lead || !canSendDm(e) || !pendingDm(lead, args.profileId) || dayKey(now) !== args.date ||
+      !e.outreach?.message.trim() || !await ctx.db.get(e.outreach.leadListId)) return false;
+    if (await requestReplyClaimed(ctx, args.profileId, lead.username)) return false;
     await ctx.db.patch(lead._id, { dmStartedAt: now, dmStartedDate: args.date, dmEligible: false });
     return true;
   },
 });
 
-export const dismissDm = internalMutation({
-  args: { profileId: v.id('profiles'), leadId: v.id('leads') },
+/** Reconcile observed chat history without counting a historical manual DM as today's send. */
+export const recordExistingDm = internalMutation({
+  args: { ...outreachArgs, username: v.string(), threadId: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const lead = await ctx.db.get(args.leadId);
-    if (lead?.senderId === args.profileId && lead.dmEligible && lead.dmStartedAt === undefined)
-      await ctx.db.patch(lead._id, { dmEligible: false });
+    if (!/^[\w.]{1,30}$/.test(args.username) || (args.threadId !== undefined && !/^\d{1,40}$/.test(args.threadId)))
+      throw new Error('Invalid existing DM identity');
+    if (!await eligibility(ctx, args.automationId, args.profileId)) return false;
+    const leads = (await ctx.db.query('leads').withIndex('by_username', q => q.eq('username', args.username)).collect())
+      .filter(lead => lead.senderId === args.profileId);
+    const now = Date.now();
+    const threadId = args.threadId;
+    if (threadId !== undefined) {
+      const row = await ctx.db.query('requestReplies').withIndex('by_profile_thread', q =>
+        q.eq('profileId', args.profileId).eq('threadId', threadId)).unique();
+      if (row && row.username !== args.username) throw new Error('Existing DM recipient changed');
+      if (row) await ctx.db.patch(row._id, { status: 'sent', updatedAt: now });
+      else await ctx.db.insert('requestReplies', { ...args, threadId, status: 'sent', createdAt: now, updatedAt: now });
+    } else if (!leads.length) return false;
+    for (const lead of leads) {
+      await ctx.db.patch(lead._id, { dmSent: true, dmEligible: false });
+      await setLeadAvailability(ctx, lead._id, false);
+    }
+    return true;
   },
 });
 
