@@ -22,7 +22,7 @@ function fixture(getHref: () => Promise<string | null> = async () => '/alice/') 
     nth(index: number) { return new Field(this.key, index) }
     or(other: Field) { return new Field(`${this.key}|${other.key}`) }
     and() { return this }
-    locator(selector: string) { return selector === '[role="button"]' ? new Field('rows') : selector.startsWith('[role="group"]') ? new Field('outgoing') : this }
+    locator(selector: string) { return selector === '[role="button"]' ? new Field('rows') : selector.startsWith('[role="article"]') ? new Field('outgoing') : this }
     getByRole(role: string, options: { name?: string } = {}) { return new Field(role === 'textbox' ? 'editor' : options.name ?? role) }
     getByText() { return new Field('text') }
     count = async () => this.key === 'rows' ? Number(stage === 'accept') : ['text', 'outgoing'].includes(this.key) ? delivered : 0
@@ -43,7 +43,8 @@ function fixture(getHref: () => Promise<string | null> = async () => '/alice/') 
   }
   const editor = new Field('editor')
   const page = { url: () => 'https://www.instagram.com/direct/t/123/',
-    locator: () => new Field(), getByRole: (_role: string, opts: { name?: string } = {}) => new Field(opts.name ?? _role),
+    locator: () => new Field(), getByText: () => new Field('text'),
+    getByRole: (_role: string, opts: { name?: string } = {}) => new Field(opts.name ?? _role),
     goto: async () => { calls.push('navigate') },
   } as unknown as Page
   const identity = { username: 'alice', threadId: '123' }
@@ -152,7 +153,7 @@ test('a request sends backslash-separated messages under one claim and verifies 
   f.deps.type = async (_editor, text) => { drafts.push(text) }
   await f.run()
   assert.deepEqual(drafts, ['Hello alice', 'Hello alice'])
-  assert.deepEqual(f.confirmations, [0, 0, 1, 1])
+  assert.deepEqual(f.confirmations, [0, 1])
   assert.equal(f.calls.filter(c => c === 'claim').length, 1)
   assert.equal(f.calls.filter(c => c === 'send').length, 2)
   assert.equal(f.calls.filter(c => c === 'sent').length, 1)

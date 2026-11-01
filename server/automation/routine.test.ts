@@ -455,7 +455,7 @@ test('Instagram warnings stop outreach before reserving or following a lead', as
 
 test('an existing followed recipient is checked and authorized before sending', async () => {
   const s = setup(); await s.run();
-  assert.deepEqual(s.calls, ['browse', 'navigate', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'confirm', 'sent', 'close-message', 'browse', 'record-completed',
+  assert.deepEqual(s.calls, ['browse', 'navigate', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'close-message', 'browse', 'record-completed',
   ]);
   assert.equal(s.result().sent, true);
 });
@@ -472,7 +472,7 @@ test('a multi-message outreach authorizes once and confirms a new bubble for rep
   s.deps.sendMessage = async () => { s.calls.push('send'); delivered++ }
   await s.run()
   assert.deepEqual(drafts, ['Hello alice', 'Hello alice'])
-  assert.deepEqual(positions, [0, 0, 1, 1])
+  assert.deepEqual(positions, [0, 1])
   assert.equal(s.calls.filter(c => c === 'authorize').length, 1)
   assert.equal(s.calls.filter(c => c === 'send').length, 2)
   assert.equal(s.calls.filter(c => c === 'sent').length, 1)

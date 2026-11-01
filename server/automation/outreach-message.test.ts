@@ -5,7 +5,7 @@ import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { BrowseSession, SessionEnded } from './actions/session.js'
 import { visibleActionGeometry } from './actions/action-locator.test-support.js'
-import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, outreachMessagePopup, ownMessageState, conversationMessageText } from './outreach-message.js'
+import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, outreachMessagePopup, ownMessageState, outgoingMessageText } from './outreach-message.js'
 
 function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox' | 'menu-inbox-root' = 'button',
   restored: 'chat' | 'messages' | 'delayed-chat' | 'delayed-messages' | 'none' = 'chat') {
@@ -48,6 +48,14 @@ function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox'
     or(other: Fields) { return new Fields(() => [...new Set([...this.find(), ...other.find()])], false) }
     and(other: Fields) { return new Fields(() => this.find().filter(node => other.find().includes(node)), false) }
     locator(selector: string) {
+      if (selector.startsWith('xpath=ancestor::*[count(.//*[@role="article"]')) return new Fields(() => [...new Set(this.find().flatMap(node => {
+        for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+          if (parent.querySelectorAll('[role="article"][aria-roledescription="message"]').length === 1 &&
+            parent.querySelector('[role="group"][aria-label="Message actions"] [role="button"][aria-label*=" message from "]'))
+            return [parent]
+        }
+        return []
+      }))], false)
       if (selector.startsWith('xpath=ancestor::')) return new Fields(() => this.find().flatMap(node => {
         const ancestors: Element[] = []
         for (let parent = node.parentElement; parent; parent = parent.parentElement) {
@@ -168,16 +176,36 @@ function fixture(nested = false, entry: 'button' | 'menu-overlay' | 'menu-inbox'
     goto: async () => { assert.fail('Inbox cleanup must not navigate to a constructed profile URL') },
     waitForURL: async (matches: (url: URL) => boolean) => assert.ok(matches(new URL(url))),
     getByRole: (role: string, options: { name?: string }) => new Fields(() => [document.body] as unknown as Element[]).getByRole(role, options),
+    getByText: (text: string) => new Fields(() => [document.body] as unknown as Element[]).getByText(text),
     keyboard: {
     press: async (key: string) => new Fields(() => [document.activeElement! as unknown as Element]).press(key),
     type: async (text: string, options: { delay: number }) => new Fields(() => [document.activeElement! as unknown as Element]).pressSequentially(text, options),
   }, locator: (selector: string) => new Fields(() => {
-    // Happy DOM does not apply complex ancestor selectors inside :not; use equivalent ancestry filtering.
-    const excludesDrafts = selector.startsWith(':not([contenteditable="true"],')
-    return Array.from(document.querySelectorAll(selector.startsWith('xpath=') ? '#message' : excludesDrafts ? '*' : selector))
-      .filter(node => !excludesDrafts || !node.closest('[contenteditable="true"], [aria-label="Thread list"]')) as unknown as Element[]
+    return Array.from(document.querySelectorAll(selector.startsWith('xpath=') ? '#message' : selector)) as unknown as Element[]
   }) } as unknown as Page
-  return { window, document, calls, page, session: new BrowseSession(Date.now() + 60_000, () => stopped),
+  const addMessage = (sender: string, text: string, chat = 'alice', linkPreview = false) => {
+    const row = document.createElement('div')
+    const article = document.createElement('div')
+    article.setAttribute('role', 'article')
+    article.setAttribute('aria-roledescription', 'message')
+    const body = document.createElement(linkPreview ? 'a' : 'div')
+    body.textContent = text
+    article.append(body)
+    if (linkPreview) {
+      body.setAttribute('href', text)
+      const preview = document.createElement('span')
+      preview.textContent = 'Example profile preview'
+      article.append(preview)
+    }
+    row.append(article)
+    // Live Instagram keeps sender metadata beside the article, even when the controls are hidden.
+    row.insertAdjacentHTML('beforeend', `<div><div role="group" aria-label="Message actions" data-igd-message-actions-hidden="true">
+      <div role="button" aria-label="React to message from ${sender}"></div>
+      <div role="button" aria-label="Reply to message from ${sender}"></div></div></div>`)
+    document.querySelector(`#${chat}`)!.append(row)
+    return row
+  }
+  return { window, document, calls, page, addMessage, session: new BrowseSession(Date.now() + 60_000, () => stopped),
     stopAfterCharacter: () => { afterCharacter = () => { stopped = true } },
     stopAfterProfileClick: () => { afterProfileClick = () => { stopped = true } },
     loseFocusAfterSelectAll: () => { afterSelectAll = () => { document.querySelector<HTMLElement>('#other-editor')!.focus() } },
@@ -208,13 +236,44 @@ for (const entry of ['button', 'menu-inbox'] as const) for (const own of [false,
   test(`message ownership uses sender labels in the ${entry} chat (${own ? 'our message' : 'incoming only'})`, async () => {
     const f = fixture(false, entry)
     try {
-      const action = (sender: string) => `<div role="group" aria-label="Message actions"><div role="button" aria-label="See more options for message from ${sender}"></div></div>`
       // An outgoing message in another chat, a preview, or quoted text is not evidence in Alice's chat.
-      f.document.querySelector('#other')!.insertAdjacentHTML('beforeend', action('self'))
-      f.document.querySelector('#alice')!.insertAdjacentHTML('beforeend', `<p>self: Hi</p>${action('alice')}${own ? action('self') : ''}`)
+      f.addMessage('self', 'Hi', 'other')
+      f.document.querySelector('#alice')!.insertAdjacentHTML('beforeend', '<p>self: Hi</p>')
+      f.addMessage('alice', 'Hi')
+      if (own) f.addMessage('self', 'Hi')
       await openOutreachMessage(f.page, 'alice', f.session)
       const state = await ownMessageState(f.page, 'alice', f.session)
       assert.deepEqual(state, { ownUsername: 'self', hasOwnMessage: own, threadId: entry === 'menu-inbox' ? '123' : undefined })
+      assert.ok(!f.calls.includes('alice-send'))
+    } finally { await f.window.happyDOM.close() }
+  })
+
+for (const entry of ['button', 'menu-inbox'] as const)
+  test(`message ownership survives nested bodies without borrowing another message's sender (${entry})`, async () => {
+    const f = fixture(false, entry)
+    try {
+      await openOutreachMessage(f.page, 'alice', f.session)
+      const wrapBody = (row: Element, depth: number) => {
+        const article = row.querySelector('[role="article"]')!
+        for (let level = 0; level < depth; level++) {
+          const wrapper = f.document.createElement('div')
+          article.replaceWith(wrapper)
+          wrapper.append(article)
+        }
+      }
+      const incoming = f.addMessage('alice', 'Shared text')
+      wrapBody(incoming as unknown as Element, 2)
+      assert.equal((await ownMessageState(f.page, 'alice', f.session)).hasOwnMessage, false)
+
+      const outgoing = f.addMessage('self', 'Shared text')
+      wrapBody(outgoing as unknown as Element, 3)
+      const orphan = f.addMessage('alice', 'Unconfirmed text')
+      orphan.querySelector('[aria-label="Message actions"]')!.remove()
+      wrapBody(orphan as unknown as Element, 1)
+
+      assert.equal((await ownMessageState(f.page, 'alice', f.session)).hasOwnMessage, true)
+      assert.equal(await outgoingMessageText(f.page, 'alice', 'self', 'Shared text').count(), 1)
+      assert.equal(await outgoingMessageText(f.page, 'alice', 'self', 'Unconfirmed text').count(), 0)
       assert.ok(!f.calls.includes('alice-send'))
     } finally { await f.window.happyDOM.close() }
   })
@@ -234,12 +293,11 @@ test('recipient detection supports changed containers, translated labels and abs
 })
 
 for (const entry of ['button', 'menu-inbox'] as const) for (const nestedDraft of [false, true])
-  test(`delivery confirmation excludes drafts and previews (${entry}, nested draft: ${nestedDraft})`, async () => {
+  test(`delivery confirmation requires our bubble, including links and repeated text (${entry}, nested draft: ${nestedDraft})`, async () => {
     const f = fixture(false, entry)
     try {
       await openOutreachMessage(f.page, 'alice', f.session)
       const editor = f.document.querySelector('#alice-editor')!
-      const chat = f.document.querySelector('#alice')!
       const preview = f.document.createElement('span')
       const previewParent = f.document.querySelector('[aria-label="Thread list"]') ?? f.document.querySelector('#other')!
       previewParent.append(preview)
@@ -250,15 +308,19 @@ for (const entry of ['button', 'menu-inbox'] as const) for (const nestedDraft of
         const draft = nestedDraft ? f.document.createElement('p') : editor
         draft.textContent = message
         if (nestedDraft) editor.append(draft)
-        const text = conversationMessageText(f.page, 'alice', message)
+        const text = outgoingMessageText(f.page, 'alice', 'self', message)
         const before = confirmed.get(message) ?? 0
         // Reproduces the old bug: getByText also matches the editor before Send.
         assert.ok(await outreachMessagePopup(f.page, 'alice').getByText(message, { exact: true }).count() > before)
         assert.equal(await text.count(), before)
+        // The lead can reply with the same text while our message is still unconfirmed.
+        f.addMessage('alice', message)
+        assert.equal(await text.count(), before)
+        await assert.rejects(text.nth(before).waitFor({ state: 'visible' }), errors.TimeoutError)
         editor.replaceChildren()
-        const bubble = f.document.createElement(message.startsWith('https:') ? 'a' : 'p')
-        bubble.textContent = message
-        chat.append(bubble)
+        // No new "See more options" button is needed, even for a rich link preview.
+        f.addMessage('self', message, 'alice', message.startsWith('https:'))
+        f.addMessage('alice', 'A new reply')
         await text.nth(before).waitFor({ state: 'visible' })
         assert.equal(await text.count(), before + 1)
         confirmed.set(message, before + 1)

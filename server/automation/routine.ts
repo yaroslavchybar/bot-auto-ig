@@ -19,7 +19,7 @@ import { runBrowsingSession } from "./sessions.js";
 import { browseUntilEnd, scheduleRoutine } from './routine-schedule.js';
 import { followButton, isFollowing, messageWasBlocked, unfollow, outreachProfileState, profileAvailable,
 } from './follow.js';
-import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, ownMessageState, ownMessageControls, conversationMessageText } from './outreach-message.js';
+import { openOutreachMessage, typeOutreachMessage, sendOutreachMessage, closeOutreachMessage, ownMessageState, outgoingMessageText } from './outreach-message.js';
 import { renderOutreachMessages } from '../shared/outreachMessage.js';
 import { readOutreachNotifications } from './follow-back.js';
 import type { OutreachNotification } from '../shared/outreachNotifications.js';
@@ -423,7 +423,6 @@ export async function runRoutineSession(
                     return 'unavailable';
                   }
                   if (shouldStop()) return 'unavailable';
-                  const outgoing = ownMessageControls(page, attempt.username, history.ownUsername);
                   let confirmedMessages = 0;
                   for (const [index, message] of messages.entries()) {
                     if (index > 0) {
@@ -431,15 +430,13 @@ export async function runRoutineSession(
                       await timed('dmType', () => deps.typeMessage(composer, message, messaging));
                       await check(true);
                     }
-                    const text = conversationMessageText(page, attempt.username, message);
+                    const text = outgoingMessageText(page, attempt.username, history.ownUsername, message);
                     const previousMessages = await text.count();
-                    const previousOutgoing = await outgoing.count();
                     if (shouldStop()) throw new SessionEnded('Stopped before completing messages');
                     sendAttempted = true;
                     await timed('dmSend', () => deps.sendMessage(page, attempt.username, messaging));
                     // Repeated text must produce another outgoing bubble before continuing.
                     await text.nth(previousMessages).waitFor({ state: 'visible', timeout: 15_000 });
-                    await outgoing.nth(previousOutgoing).waitFor({ state: 'attached', timeout: 5000 });
                     if (await messageWasBlocked(page)) { blocked = true; break; }
                     confirmedMessages++;
                     scope.add({ confirmedMessages });

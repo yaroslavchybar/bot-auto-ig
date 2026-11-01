@@ -11,7 +11,7 @@ import { assertInstagramReady } from './actions/instagram-state.js'
 import { backToFeed } from './actions/navigation.js'
 import { isTemporaryUiError } from './actions/ui-errors.js'
 import type { ActionLogger } from './actions/shared.js'
-import { outreachMessagePopup, typeOutreachMessage, sendOutreachMessage, ownMessageState, ownMessageControls, conversationMessageText } from './outreach-message.js'
+import { outreachMessagePopup, typeOutreachMessage, sendOutreachMessage, ownMessageState, outgoingMessageText } from './outreach-message.js'
 import { messageWasBlocked } from './follow.js'
 
 const dependencies = {
@@ -135,7 +135,6 @@ export async function replyToMessageRequests(automationId: string, profileId: st
         await deps.check(page, session)
         session.check()
         if (!sameIdentity(await deps.identity(page), identity)) throw new RequestIdentityError('Request recipient changed before Send')
-        const outgoing = ownMessageControls(page, identity.username, history.ownUsername)
         // An unacknowledged claim is never safe to retry automatically.
         let authorized: boolean
         try { authorized = await deps.begin(args) }
@@ -155,13 +154,11 @@ export async function replyToMessageRequests(automationId: string, profileId: st
             }
             session.check()
             if (!sameIdentity(await deps.identity(page), identity)) throw new RequestIdentityError('Request recipient changed during message sequence')
-            const text = conversationMessageText(page, identity.username, message)
+            const text = outgoingMessageText(page, identity.username, history.ownUsername, message)
             const previousMessages = await text.count()
-            const previousOutgoing = await outgoing.count()
             session.check()
             await deps.send(page, identity.username, session)
             await text.nth(previousMessages).waitFor({ state: 'visible', timeout: 15_000 })
-            await outgoing.nth(previousOutgoing).waitFor({ state: 'attached', timeout: 5000 })
             blocked = await deps.blocked(page)
             if (blocked) break
             confirmedMessages++

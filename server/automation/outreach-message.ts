@@ -28,13 +28,21 @@ export const outreachMessagePopup = (page: Page, username: string) => {
   return overlay.or(inbox).last()
 }
 
-export const ownMessageControls = (page: Page, username: string, own: string) => outreachMessagePopup(page, username)
-  .locator(`[role="group"][aria-label="Message actions"] [role="button"][aria-label="See more options for message from ${own}"]`)
+/** Find each article's nearest container with sender actions, allowing wrappers around the body. */
+const ownMessages = (page: Page, username: string, own: string) => {
+  const article = '[role="article"][aria-roledescription="message"]'
+  const labels = ['React to', 'Reply to', 'See more options for']
+    .map(action => `[aria-label="${action} message from ${own}"]`).join(',')
+  const sender = page.locator(`[role="group"][aria-label="Message actions"] [role="button"]:is(${labels})`)
+  const actions = './/*[@role="group"][@aria-label="Message actions"]//*[@role="button"][contains(@aria-label," message from ")]'
+  return outreachMessagePopup(page, username).locator(article)
+    .locator(`xpath=ancestor::*[count(.//*[@role="article"][@aria-roledescription="message"])=1][${actions}][1]`)
+    .filter({ has: sender }).locator(article)
+}
 
-/** Count conversation text only: the typed draft and inbox previews are not delivered messages. */
-export const conversationMessageText = (page: Page, username: string, text: string) => outreachMessagePopup(page, username)
-  .getByText(text, { exact: true })
-  .and(page.locator(':not([contenteditable="true"], [contenteditable="true"] *, [aria-label="Thread list"], [aria-label="Thread list"] *)'))
+/** Only our message bodies count as delivery evidence, never drafts, previews, or incoming echoes. */
+export const outgoingMessageText = (page: Page, username: string, own: string, text: string) => ownMessages(page, username, own)
+  .filter({ has: page.getByText(text, { exact: true }) })
 
 /** Sender labels identify our messages without reading text, colors, or sidebar previews. */
 export async function ownMessageState(page: Page, username: string, session: BrowseSession) {
@@ -42,7 +50,7 @@ export async function ownMessageState(page: Page, username: string, session: Bro
   const popup = outreachMessagePopup(page, username)
   await popup.locator(editorSelector).waitFor({ state: 'visible', timeout: session.timeout(5000) })
   const own = await ownUsername(page)
-  const count = await ownMessageControls(page, username, own).count()
+  const count = await ownMessages(page, username, own).count()
   session.check()
   return { ownUsername: own, hasOwnMessage: count > 0,
     threadId: new URL(page.url()).pathname.match(/^\/direct\/t\/(\d{1,40})\/?$/)?.[1] }
